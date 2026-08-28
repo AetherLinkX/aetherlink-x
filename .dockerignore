@@ -1,0 +1,9 @@
+*
+!patches/
+!patches/aetherlinkx-xray-core-v26.7.28.patch
+!remnawave/
+!remnawave/Dockerfile
+!remnawave/Dockerfile.backend
+!remnawave/backend-static-alx.patch
+!remnawave/patch-xray-schema.mjs
+!remnawave/xray-wasm.patch

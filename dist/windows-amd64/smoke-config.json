@@ -1,0 +1,27 @@
+{
+  "log": {
+    "loglevel": "none"
+  },
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 12345,
+      "protocol": "aetherlinkx",
+      "settings": {
+        "allowInsecureTransport": true,
+        "users": [
+          {
+            "id": "66ad4540-b58c-4ad2-9926-ea63445a9b57",
+            "secret": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
+          }
+        ]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "settings": {}
+    }
+  ]
+}

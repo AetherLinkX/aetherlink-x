@@ -1,0 +1,70 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "aetherlinkx-in",
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "aetherlinkx",
+      "settings": {
+        "users": [
+          {
+            "id": "018f3f89-01be-7b44-8a7f-23e54f92ea00",
+            "secret": "REPLACE_WITH_THE_SAME_32_BYTE_BASE64URL_SECRET",
+            "email": "player@example.com",
+            "level": 0
+          }
+        ],
+        "handshakeTimeoutSeconds": 4,
+        "turbo": {
+          "enabled": true,
+          "maxDatagramAgeMs": 35,
+          "destinationCacheSize": 64,
+          "maxUdpPayload": 8192,
+          "tcpKeepAliveIdle": 15,
+          "tcpKeepAliveInterval": 5,
+          "tcpUserTimeout": 10000,
+          "congestion": "auto",
+          "multipathTcp": true
+        },
+        "security": {
+          "pqMode": "required",
+          "xwingPrivateKey": "REPLACE_WITH_32_BYTE_XWING_PRIVATE_KEY_AS_BASE64URL",
+          "innerAead": true
+        },
+        "stealth": {
+          "enabled": true,
+          "minChunkSize": 256,
+          "maxChunkSize": 1200,
+          "maxPaddingBytes": 128,
+          "paddingProbabilityPercent": 25
+        }
+      },
+      "streamSettings": {
+        "method": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "target": "www.example.com:443",
+          "xver": 0,
+          "serverNames": [
+            "www.example.com"
+          ],
+          "privateKey": "REPLACE_WITH_REALITY_SERVER_PRIVATE_KEY",
+          "shortIds": [
+            "0123456789abcdef"
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    }
+  ]
+}

@@ -1,0 +1,4403 @@
+diff --git a/infra/conf/aetherlinkx.go b/infra/conf/aetherlinkx.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..773f2ca279bfb8b2d042f88b34fe5e26eff87cb7
+--- /dev/null
++++ b/infra/conf/aetherlinkx.go
+@@ -0,0 +1,256 @@
++package conf
++
++import (
++	"strings"
++	"unicode"
++
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/protocol"
++	"github.com/xtls/xray-core/common/serial"
++	"github.com/xtls/xray-core/proxy/aetherlinkx"
++	"google.golang.org/protobuf/proto"
++)
++
++type AetherLinkXTurboConfig struct {
++	Enabled              bool   `json:"enabled"`
++	MaxDatagramAgeMs     uint32 `json:"maxDatagramAgeMs"`
++	DestinationCacheSize uint32 `json:"destinationCacheSize"`
++	MaxUDPPayload        uint32 `json:"maxUdpPayload"`
++	TCPKeepAliveIdle     int32  `json:"tcpKeepAliveIdle"`
++	TCPKeepAliveInterval int32  `json:"tcpKeepAliveInterval"`
++	TCPUserTimeout       int32  `json:"tcpUserTimeout"`
++	Congestion           string `json:"congestion"`
++	MultipathTCP         bool   `json:"multipathTcp"`
++	MuxConcurrency       int32  `json:"muxConcurrency"`
++	XUDPConcurrency      int32  `json:"xudpConcurrency"`
++	XUDPProxyUDP443      string `json:"xudpProxyUdp443"`
++}
++
++type AetherLinkXSecurityConfig struct {
++	PQMode          string `json:"pqMode"`
++	XWingPublicKey  string `json:"xwingPublicKey"`
++	XWingPrivateKey string `json:"xwingPrivateKey"`
++	InnerAEAD       bool   `json:"innerAead"`
++}
++
++type AetherLinkXStealthConfig struct {
++	Enabled                   bool   `json:"enabled"`
++	MinChunkSize              uint32 `json:"minChunkSize"`
++	MaxChunkSize              uint32 `json:"maxChunkSize"`
++	MaxPaddingBytes           uint32 `json:"maxPaddingBytes"`
++	PaddingProbabilityPercent uint32 `json:"paddingProbabilityPercent"`
++}
++
++func (c *AetherLinkXStealthConfig) Build() *aetherlinkx.StealthConfig {
++	if c == nil {
++		return nil
++	}
++	return &aetherlinkx.StealthConfig{
++		Enabled:                   c.Enabled,
++		MinChunkSize:              c.MinChunkSize,
++		MaxChunkSize:              c.MaxChunkSize,
++		MaxPaddingBytes:           c.MaxPaddingBytes,
++		PaddingProbabilityPercent: c.PaddingProbabilityPercent,
++	}
++}
++
++func (c *AetherLinkXSecurityConfig) Build() *aetherlinkx.SecurityConfig {
++	if c == nil {
++		return nil
++	}
++	return &aetherlinkx.SecurityConfig{
++		PqMode:          c.PQMode,
++		XwingPublicKey:  c.XWingPublicKey,
++		XwingPrivateKey: c.XWingPrivateKey,
++		InnerAead:       c.InnerAEAD,
++	}
++}
++
++func (c *AetherLinkXTurboConfig) Build() (*aetherlinkx.TurboConfig, error) {
++	if c == nil {
++		return nil, nil
++	}
++	if c.MaxDatagramAgeMs > 65535 {
++		return nil, errors.New("AetherLink X maxDatagramAgeMs must not exceed 65535")
++	}
++	if c.DestinationCacheSize > 1024 {
++		return nil, errors.New("AetherLink X destinationCacheSize must not exceed 1024")
++	}
++	if c.MaxUDPPayload != 0 && (c.MaxUDPPayload < 512 || c.MaxUDPPayload > 32768) {
++		return nil, errors.New("AetherLink X maxUdpPayload must be between 512 and 32768")
++	}
++	if c.TCPKeepAliveIdle < 0 || c.TCPKeepAliveInterval < 0 || c.TCPUserTimeout < 0 {
++		return nil, errors.New("AetherLink X Turbo socket timeouts must not be negative")
++	}
++	if c.MuxConcurrency < 0 || c.MuxConcurrency > 1024 || c.XUDPConcurrency < 0 || c.XUDPConcurrency > 1024 {
++		return nil, errors.New("AetherLink X Turbo mux concurrency must be between 0 and 1024")
++	}
++	xudpPolicy := strings.ToLower(strings.TrimSpace(c.XUDPProxyUDP443))
++	if xudpPolicy == "" {
++		xudpPolicy = "reject"
++	}
++	if xudpPolicy != "reject" && xudpPolicy != "allow" && xudpPolicy != "skip" {
++		return nil, errors.New("invalid AetherLink X xudpProxyUdp443 policy")
++	}
++	congestion := strings.ToLower(strings.TrimSpace(c.Congestion))
++	if len(congestion) > 32 {
++		return nil, errors.New("AetherLink X congestion name is too long")
++	}
++	for _, char := range congestion {
++		if !unicode.IsLower(char) && !unicode.IsDigit(char) && char != '-' && char != '_' {
++			return nil, errors.New("invalid AetherLink X congestion name")
++		}
++	}
++	return &aetherlinkx.TurboConfig{
++		Enabled:              c.Enabled,
++		MaxDatagramAgeMs:     c.MaxDatagramAgeMs,
++		DestinationCacheSize: c.DestinationCacheSize,
++		MaxUdpPayload:        c.MaxUDPPayload,
++		TcpKeepAliveIdle:     c.TCPKeepAliveIdle,
++		TcpKeepAliveInterval: c.TCPKeepAliveInterval,
++		TcpUserTimeout:       c.TCPUserTimeout,
++		Congestion:           congestion,
++		MultipathTcp:         c.MultipathTCP,
++		MuxConcurrency:       c.MuxConcurrency,
++		XudpConcurrency:      c.XUDPConcurrency,
++		XudpProxyUdp443:      xudpPolicy,
++	}, nil
++}
++
++type AetherLinkXServerTarget struct {
++	Address *Address `json:"address"`
++	Port    uint16   `json:"port"`
++	Level   byte     `json:"level"`
++	Email   string   `json:"email"`
++	ID      string   `json:"id"`
++	Secret  string   `json:"secret"`
++}
++
++type AetherLinkXClientConfig struct {
++	Address                *Address                   `json:"address"`
++	Port                   uint16                     `json:"port"`
++	Level                  byte                       `json:"level"`
++	Email                  string                     `json:"email"`
++	ID                     string                     `json:"id"`
++	Secret                 string                     `json:"secret"`
++	Servers                []*AetherLinkXServerTarget `json:"servers"`
++	AllowInsecureTransport bool                       `json:"allowInsecureTransport"`
++	Turbo                  *AetherLinkXTurboConfig    `json:"turbo"`
++	Security               *AetherLinkXSecurityConfig `json:"security"`
++	Stealth                *AetherLinkXStealthConfig  `json:"stealth"`
++}
++
++func (c *AetherLinkXClientConfig) Build() (proto.Message, error) {
++	if c.Address != nil {
++		c.Servers = []*AetherLinkXServerTarget{{
++			Address: c.Address,
++			Port:    c.Port,
++			Level:   c.Level,
++			Email:   c.Email,
++			ID:      c.ID,
++			Secret:  c.Secret,
++		}}
++	}
++	if len(c.Servers) != 1 {
++		return nil, errors.New(`AetherLink X "servers" must contain exactly one endpoint`)
++	}
++	server := c.Servers[0]
++	if server.Address == nil || server.Port == 0 {
++		return nil, errors.New("AetherLink X server address and port are required")
++	}
++	account := &aetherlinkx.Account{Id: server.ID, Secret: server.Secret}
++	if _, err := account.AsAccount(); err != nil {
++		return nil, err
++	}
++	turbo, err := c.Turbo.Build()
++	if err != nil {
++		return nil, err
++	}
++	security := c.Security.Build()
++	if _, err := aetherlinkx.ParseClientSecurity(security); err != nil {
++		return nil, err
++	}
++	stealth := c.Stealth.Build()
++	if _, err := aetherlinkx.ParseStealthConfig(stealth); err != nil {
++		return nil, err
++	}
++	if stealth != nil && stealth.Enabled && (security == nil || !security.InnerAead) {
++		return nil, errors.New("AetherLink X Stealth requires innerAead")
++	}
++	return &aetherlinkx.ClientConfig{
++		Server: &protocol.ServerEndpoint{
++			Address: server.Address.Build(),
++			Port:    uint32(server.Port),
++			User: &protocol.User{
++				Level:   uint32(server.Level),
++				Email:   server.Email,
++				Account: serial.ToTypedMessage(account),
++			},
++		},
++		AllowInsecureTransport: c.AllowInsecureTransport,
++		Turbo:                  turbo,
++		Security:               security,
++		Stealth:                stealth,
++	}, nil
++}
++
++type AetherLinkXUserConfig struct {
++	ID     string `json:"id"`
++	Secret string `json:"secret"`
++	Level  byte   `json:"level"`
++	Email  string `json:"email"`
++}
++
++type AetherLinkXServerConfig struct {
++	Users                   []*AetherLinkXUserConfig   `json:"users"`
++	Clients                 []*AetherLinkXUserConfig   `json:"clients"`
++	AllowInsecureTransport  bool                       `json:"allowInsecureTransport"`
++	HandshakeTimeoutSeconds uint32                     `json:"handshakeTimeoutSeconds"`
++	Turbo                   *AetherLinkXTurboConfig    `json:"turbo"`
++	Security                *AetherLinkXSecurityConfig `json:"security"`
++	Stealth                 *AetherLinkXStealthConfig  `json:"stealth"`
++}
++
++func (c *AetherLinkXServerConfig) Build() (proto.Message, error) {
++	if c.Clients != nil {
++		c.Users = c.Clients
++	}
++	if len(c.Users) == 0 {
++		return nil, errors.New("AetherLink X requires at least one user")
++	}
++	turbo, err := c.Turbo.Build()
++	if err != nil {
++		return nil, err
++	}
++	security := c.Security.Build()
++	if _, err := aetherlinkx.ParseServerSecurity(security); err != nil {
++		return nil, err
++	}
++	stealth := c.Stealth.Build()
++	if _, err := aetherlinkx.ParseStealthConfig(stealth); err != nil {
++		return nil, err
++	}
++	if stealth != nil && stealth.Enabled && (security == nil || !security.InnerAead) {
++		return nil, errors.New("AetherLink X Stealth requires innerAead")
++	}
++	config := &aetherlinkx.ServerConfig{
++		Users:                   make([]*protocol.User, len(c.Users)),
++		AllowInsecureTransport:  c.AllowInsecureTransport,
++		HandshakeTimeoutSeconds: c.HandshakeTimeoutSeconds,
++		Turbo:                   turbo,
++		Security:                security,
++		Stealth:                 stealth,
++	}
++	for index, rawUser := range c.Users {
++		account := &aetherlinkx.Account{Id: rawUser.ID, Secret: rawUser.Secret}
++		if _, err := account.AsAccount(); err != nil {
++			return nil, errors.New("invalid AetherLink X user at index ", index).Base(err)
++		}
++		config.Users[index] = &protocol.User{
++			Level:   uint32(rawUser.Level),
++			Email:   rawUser.Email,
++			Account: serial.ToTypedMessage(account),
++		}
++	}
++	return config, nil
++}
+diff --git a/infra/conf/aetherlinkx_test.go b/infra/conf/aetherlinkx_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..87fe379cd99b040081d0dafd77bd20177588d791
+--- /dev/null
++++ b/infra/conf/aetherlinkx_test.go
+@@ -0,0 +1,107 @@
++package conf
++
++import (
++	"encoding/base64"
++	"testing"
++
++	"github.com/xtls/xray-core/app/proxyman"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/proxy/aetherlinkx"
++	"github.com/xtls/xray-core/transport/internet"
++)
++
++func validALXSecret() string {
++	secret := make([]byte, 32)
++	for index := range secret {
++		secret[index] = byte(index + 1)
++	}
++	return base64.RawURLEncoding.EncodeToString(secret)
++}
++
++func TestAetherLinkXAccountValidation(t *testing.T) {
++	config := &AetherLinkXClientConfig{
++		Address: &Address{Address: net.DomainAddress("example.com")},
++		Port:    443,
++		ID:      "66ad4540-b58c-4ad2-9926-ea63445a9b57",
++		Secret:  validALXSecret(),
++	}
++	if _, err := config.Build(); err != nil {
++		t.Fatal(err)
++	}
++	config.Secret = base64.RawURLEncoding.EncodeToString(make([]byte, 32))
++	if _, err := config.Build(); err == nil {
++		t.Fatal("all-zero AetherLink X secret was accepted")
++	}
++	config.Secret = "not-a-32-byte-secret"
++	if _, err := config.Build(); err == nil {
++		t.Fatal("invalid AetherLink X secret was accepted")
++	}
++}
++
++func TestAetherLinkXPublicOutboundRequiresTransportSecurity(t *testing.T) {
++	config := &AetherLinkXClientConfig{
++		Address: &Address{Address: net.DomainAddress("example.com")},
++	}
++	if err := validateOutboundTransportSecurity(config, &proxyman.SenderConfig{}); err == nil {
++		t.Fatal("public AetherLink X outbound without TLS/REALITY was accepted")
++	}
++	secure := &proxyman.SenderConfig{StreamSettings: &internet.StreamConfig{SecurityType: "xray.transport.internet.reality.Config"}}
++	if err := validateOutboundTransportSecurity(config, secure); err != nil {
++		t.Fatalf("secure AetherLink X outbound was rejected: %v", err)
++	}
++}
++
++func TestAetherLinkXInboundRequiresTransportSecurity(t *testing.T) {
++	config := &AetherLinkXServerConfig{}
++	if err := validateInboundTransportSecurity(config, &proxyman.ReceiverConfig{}); err == nil {
++		t.Fatal("AetherLink X inbound without TLS/REALITY was accepted")
++	}
++	config.AllowInsecureTransport = true
++	if err := validateInboundTransportSecurity(config, &proxyman.ReceiverConfig{}); err != nil {
++		t.Fatalf("explicit private/test override was rejected: %v", err)
++	}
++}
++
++func TestAetherLinkXTurboTransportTuning(t *testing.T) {
++	stream := &internet.StreamConfig{SocketSettings: &internet.SocketConfig{TcpKeepAliveIdle: 99}}
++	turbo := &AetherLinkXTurboConfig{Enabled: true, Congestion: "auto", MultipathTCP: true}
++	applyAetherLinkXTransportTuning(turbo, &stream)
++	if stream.SocketSettings.TcpKeepAliveIdle != 99 {
++		t.Fatal("explicit keep-alive setting was overwritten")
++	}
++	if stream.SocketSettings.TcpKeepAliveInterval != 5 || stream.SocketSettings.TcpUserTimeout != 10000 {
++		t.Fatalf("Turbo defaults were not applied: %+v", stream.SocketSettings)
++	}
++	if stream.SocketSettings.TcpCongestion != "" {
++		t.Fatal("auto congestion must preserve the operating system default")
++	}
++	if !stream.SocketSettings.TcpMptcp {
++		t.Fatal("MPTCP setting was not propagated")
++	}
++
++	stream = &internet.StreamConfig{}
++	turbo.Congestion = "bbr"
++	applyAetherLinkXTransportTuning(turbo, &stream)
++	if stream.SocketSettings.TcpCongestion != "bbr" {
++		t.Fatal("explicit congestion algorithm was not applied")
++	}
++	sender := new(proxyman.SenderConfig)
++	turbo.MuxConcurrency = 8
++	turbo.XUDPConcurrency = 4
++	turbo.XUDPProxyUDP443 = "allow"
++	applyAetherLinkXMuxTuning(turbo, sender)
++	if sender.MultiplexSettings == nil || !sender.MultiplexSettings.Enabled || sender.MultiplexSettings.Concurrency != 8 || sender.MultiplexSettings.XudpConcurrency != 4 {
++		t.Fatalf("Turbo mux settings were not applied: %+v", sender.MultiplexSettings)
++	}
++}
++
++func TestAetherLinkXSecurityValidation(t *testing.T) {
++	client := (&AetherLinkXSecurityConfig{PQMode: "required", XWingPublicKey: "invalid"}).Build()
++	if _, err := aetherlinkx.ParseClientSecurity(client); err == nil {
++		t.Fatal("invalid X-Wing public key was accepted")
++	}
++	server := (&AetherLinkXSecurityConfig{PQMode: "required", XWingPrivateKey: "invalid"}).Build()
++	if _, err := aetherlinkx.ParseServerSecurity(server); err == nil {
++		t.Fatal("invalid X-Wing private key was accepted")
++	}
++}
+diff --git a/infra/conf/xray.go b/infra/conf/xray.go
+index bdcabbd503b60e4e81a4bd8bb72b15a93c019e61..c85d3b2c09072c072d347ebab2ad586e15d8e274 100644
+--- a/infra/conf/xray.go
++++ b/infra/conf/xray.go
+@@ -26,6 +26,8 @@ var (
+ 		"shadowsocks":   func() interface{} { return new(ShadowsocksServerConfig) },
+ 		"mixed":         func() interface{} { return new(SocksServerConfig) },
+ 		"socks":         func() interface{} { return new(SocksServerConfig) },
++		"aetherlinkx":   func() interface{} { return new(AetherLinkXServerConfig) },
++		"alx":           func() interface{} { return new(AetherLinkXServerConfig) },
+ 		"vless":         func() interface{} { return new(VLessInboundConfig) },
+ 		"vmess":         func() interface{} { return new(VMessInboundConfig) },
+ 		"trojan":        func() interface{} { return new(TrojanServerConfig) },
+@@ -43,6 +45,8 @@ var (
+ 		"http":        func() interface{} { return new(HTTPClientConfig) },
+ 		"shadowsocks": func() interface{} { return new(ShadowsocksClientConfig) },
+ 		"socks":       func() interface{} { return new(SocksClientConfig) },
++		"aetherlinkx": func() interface{} { return new(AetherLinkXClientConfig) },
++		"alx":         func() interface{} { return new(AetherLinkXClientConfig) },
+ 		"vless":       func() interface{} { return new(VLessOutboundConfig) },
+ 		"vmess":       func() interface{} { return new(VMessOutboundConfig) },
+ 		"trojan":      func() interface{} { return new(TrojanClientConfig) },
+@@ -198,6 +202,12 @@ func (c *InboundDetourConfig) Build() (*core.InboundHandlerConfig, error) {
+ 	if dokodemoConfig, ok := rawConfig.(*DokodemoConfig); ok {
+ 		receiverSettings.ReceiveOriginalDestination = dokodemoConfig.FollowRedirect
+ 	}
++	if alxConfig, ok := rawConfig.(*AetherLinkXServerConfig); ok {
++		applyAetherLinkXTransportTuning(alxConfig.Turbo, &receiverSettings.StreamSettings)
++	}
++	if err := validateInboundTransportSecurity(rawConfig, receiverSettings); err != nil {
++		return nil, err
++	}
+ 	ts, err := rawConfig.(Buildable).Build()
+ 	if err != nil {
+ 		return nil, errors.New("failed to build inbound handler for protocol ", c.Protocol).Base(err)
+@@ -262,9 +272,87 @@ func validateOutboundTransportSecurity(rawConfig interface{}, senderSettings *pr
+ 		}
+ 	}
+ 
++	if alxCfg, ok := rawConfig.(*AetherLinkXClientConfig); ok {
++		if alxCfg.AllowInsecureTransport {
++			return nil
++		}
++		address := alxCfg.Address
++		if address == nil && len(alxCfg.Servers) == 1 {
++			address = alxCfg.Servers[0].Address
++		}
++		if requiresTransportSecurity(address) {
++			return errors.New("AetherLink X without TLS or REALITY is prohibited for public server addresses")
++		}
++	}
++
+ 	return nil
+ }
+ 
++func validateInboundTransportSecurity(rawConfig interface{}, receiverSettings *proxyman.ReceiverConfig) error {
++	alxCfg, ok := rawConfig.(*AetherLinkXServerConfig)
++	if !ok || alxCfg.AllowInsecureTransport {
++		return nil
++	}
++	if receiverSettings.StreamSettings != nil && receiverSettings.StreamSettings.GetSecurityType() != "" {
++		return nil
++	}
++	return errors.New("AetherLink X inbound requires TLS or REALITY; use allowInsecureTransport only on isolated private/test networks")
++}
++
++func applyAetherLinkXTransportTuning(turbo *AetherLinkXTurboConfig, streamSettings **internet.StreamConfig) {
++	if turbo == nil || !turbo.Enabled {
++		return
++	}
++	if *streamSettings == nil {
++		*streamSettings = &internet.StreamConfig{ProtocolName: "tcp"}
++	}
++	stream := *streamSettings
++	if stream.SocketSettings == nil {
++		stream.SocketSettings = new(internet.SocketConfig)
++	}
++	socket := stream.SocketSettings
++	if socket.TcpKeepAliveIdle == 0 {
++		socket.TcpKeepAliveIdle = turbo.TCPKeepAliveIdle
++		if socket.TcpKeepAliveIdle == 0 {
++			socket.TcpKeepAliveIdle = 15
++		}
++	}
++	if socket.TcpKeepAliveInterval == 0 {
++		socket.TcpKeepAliveInterval = turbo.TCPKeepAliveInterval
++		if socket.TcpKeepAliveInterval == 0 {
++			socket.TcpKeepAliveInterval = 5
++		}
++	}
++	if socket.TcpUserTimeout == 0 {
++		socket.TcpUserTimeout = turbo.TCPUserTimeout
++		if socket.TcpUserTimeout == 0 {
++			socket.TcpUserTimeout = 10000
++		}
++	}
++	if socket.TcpCongestion == "" && turbo.Congestion != "" && !strings.EqualFold(turbo.Congestion, "auto") {
++		socket.TcpCongestion = strings.ToLower(turbo.Congestion)
++	}
++	if turbo.MultipathTCP {
++		socket.TcpMptcp = true
++	}
++}
++
++func applyAetherLinkXMuxTuning(turbo *AetherLinkXTurboConfig, sender *proxyman.SenderConfig) {
++	if turbo == nil || !turbo.Enabled || turbo.MuxConcurrency <= 0 || sender.MultiplexSettings != nil {
++		return
++	}
++	xudpPolicy := strings.ToLower(strings.TrimSpace(turbo.XUDPProxyUDP443))
++	if xudpPolicy == "" {
++		xudpPolicy = "reject"
++	}
++	sender.MultiplexSettings = &proxyman.MultiplexingConfig{
++		Enabled:         true,
++		Concurrency:     turbo.MuxConcurrency,
++		XudpConcurrency: turbo.XUDPConcurrency,
++		XudpProxyUDP443: xudpPolicy,
++	}
++}
++
+ // Build implements Buildable.
+ func (c *OutboundDetourConfig) Build() (*core.OutboundHandlerConfig, error) {
+ 	senderSettings := &proxyman.SenderConfig{}
+@@ -358,13 +446,17 @@ func (c *OutboundDetourConfig) Build() (*core.OutboundHandlerConfig, error) {
+ 	if err != nil {
+ 		return nil, errors.New("failed to load outbound detour config for protocol ", c.Protocol).Base(err)
+ 	}
+-	if err := validateOutboundTransportSecurity(rawConfig, senderSettings); err != nil {
+-		return nil, err
++	if alxConfig, ok := rawConfig.(*AetherLinkXClientConfig); ok {
++		applyAetherLinkXTransportTuning(alxConfig.Turbo, &senderSettings.StreamSettings)
++		applyAetherLinkXMuxTuning(alxConfig.Turbo, senderSettings)
+ 	}
+ 	ts, err := rawConfig.(Buildable).Build()
+ 	if err != nil {
+ 		return nil, errors.New("failed to build outbound handler for protocol ", c.Protocol).Base(err)
+ 	}
++	if err := validateOutboundTransportSecurity(rawConfig, senderSettings); err != nil {
++		return nil, err
++	}
+ 
+ 	return &core.OutboundHandlerConfig{
+ 		SenderSettings: serial.ToTypedMessage(senderSettings),
+diff --git a/main/commands/all/aetherlinkx.go b/main/commands/all/aetherlinkx.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..4f72e7f8ac9d675fea1207e762b67a360d699e08
+--- /dev/null
++++ b/main/commands/all/aetherlinkx.go
+@@ -0,0 +1,47 @@
++package all
++
++import (
++	"crypto/rand"
++	"encoding/base64"
++	"fmt"
++
++	"github.com/cloudflare/circl/kem/xwing"
++	"github.com/xtls/xray-core/common/uuid"
++	"github.com/xtls/xray-core/main/commands/base"
++)
++
++var cmdAetherLinkXKeygen = &base.Command{
++	UsageLine: `{{.Exec}} aetherlinkx-keygen`,
++	Short:     `Generate an AetherLink X account and X-Wing hybrid KEM key pair`,
++	Long: `
++Generate independent credentials for AetherLink X.
++
++The account ID and secret are shared by one client and server user entry.
++Put XWingPrivateKey only on the server and XWingPublicKey only on clients.
++Never reuse the account secret as a REALITY, WireGuard, or X-Wing key.
++`,
++}
++
++func init() {
++	cmdAetherLinkXKeygen.Run = executeAetherLinkXKeygen
++}
++
++func executeAetherLinkXKeygen(_ *base.Command, _ []string) {
++	var secret [32]byte
++	if _, err := rand.Read(secret[:]); err != nil {
++		base.Errorf("failed to generate AetherLink X account secret: %v", err)
++		return
++	}
++	privateKey, publicKey, err := xwing.GenerateKeyPairPacked(nil)
++	if err != nil {
++		base.Errorf("failed to generate AetherLink X X-Wing key pair: %v", err)
++		return
++	}
++	id := uuid.New()
++	fmt.Printf("ID: %s\nSecret: %s\nXWingPrivateKey: %s\nXWingPublicKey: %s\n",
++		id.String(),
++		base64.RawURLEncoding.EncodeToString(secret[:]),
++		base64.RawURLEncoding.EncodeToString(privateKey),
++		base64.RawURLEncoding.EncodeToString(publicKey),
++	)
++}
+diff --git a/main/commands/all/commands.go b/main/commands/all/commands.go
+index fba3a4b8bb439f2fdfe17eb290342c7dd8d640a5..9f0a5b5871711e5cce276e78910148e4e9827306 100644
+--- a/main/commands/all/commands.go
++++ b/main/commands/all/commands.go
+@@ -19,5 +19,6 @@ func init() {
+ 		cmdMLDSA65,
+ 		cmdMLKEM768,
+ 		cmdVLESSEnc,
++		cmdAetherLinkXKeygen,
+ 	)
+ }
+diff --git a/main/distro/all/all.go b/main/distro/all/all.go
+index accb7b07fbe43cc54c94b4569f7fd3bcafaf55a6..d629e54d7b3ea72727c1e807a505d875ada0c9cd 100644
+--- a/main/distro/all/all.go
++++ b/main/distro/all/all.go
+@@ -35,6 +35,7 @@ import (
+ 	_ "github.com/xtls/xray-core/app/observatory"
+ 
+ 	// Inbound and outbound proxies.
++	_ "github.com/xtls/xray-core/proxy/aetherlinkx"
+ 	_ "github.com/xtls/xray-core/proxy/blackhole"
+ 	_ "github.com/xtls/xray-core/proxy/dns"
+ 	_ "github.com/xtls/xray-core/proxy/dokodemo"
+diff --git a/proxy/aetherlinkx/BENCHMARKS.md b/proxy/aetherlinkx/BENCHMARKS.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..a91cb449b3d62edec73cd38a146d7cfa463d3dd9
+--- /dev/null
++++ b/proxy/aetherlinkx/BENCHMARKS.md
+@@ -0,0 +1,20 @@
++# AetherLink X benchmark snapshot
++
++This snapshot is a development baseline, not a cross-platform performance guarantee.
++
++Environment: Windows amd64, Intel Core i7-7700HQ at 2.80 GHz, Go 1.26.0, `-benchtime=100x`.
++
++| Benchmark | Time/op | Bytes/op | Allocs/op | Throughput |
++|---|---:|---:|---:|---:|
++| classic authenticated handshake | 29.449 µs | 6,019 | 76 | — |
++| X-Wing + AEAD negotiation handshake | 695.718 µs | 25,342 | 84 | — |
++| 1 KiB ChaCha20-Poly1305 record including layer setup | 13.290 µs | 5,040 | 41 | 77.05 MB/s |
++| cached 512-byte Turbo UDP frame | 6.005 µs | 961 | 8 | 85.26 MB/s |
++
++The X-Wing cost occurs once per transport connection, so connection reuse matters. The record benchmark intentionally includes HKDF and AEAD construction each iteration and therefore represents connection setup plus one record, not steady-state bulk throughput.
++
++Reproduce with:
++
++```text
++go test ./proxy/aetherlinkx -run '^$' -bench '^BenchmarkAetherLinkX' -benchtime=100x -benchmem
++```
+diff --git a/proxy/aetherlinkx/README.md b/proxy/aetherlinkx/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..36aa0e74efe8f74f108dff2b09674df53807b11a
+--- /dev/null
++++ b/proxy/aetherlinkx/README.md
+@@ -0,0 +1,148 @@
++# AetherLink X for Xray-core
++
++Status: working experimental implementation, wire `1.1`. It is suitable for controlled testing, not an independently audited production security protocol.
++
++## What is implemented
++
++- Xray inbound/outbound handlers for TCP and destination-aware UDP-over-stream;
++- canonical UUID accounts with a separate random 32-byte Base64URL secret;
++- authenticated `ClientInit`/`ServerAccept`, fresh client/server nonces, session ID, a two-minute timestamp window and bounded replay cache;
++- hybrid post-quantum X-Wing KEM (X25519 + ML-KEM-768) with `off`, `prefer` and `required` policy;
++- optional directional ChaCha20-Poly1305 inner records with authenticated length, monotonic nonces and tamper rejection;
++- AetherLink Turbo UDP sequence/deadline metadata, negotiated payload limits and a bounded per-direction destination dictionary;
++- Stealth record shaping: random encrypted-record chunks and bounded random padding, without latency-producing sleeps;
++- automatic Xray Mux/XUDP settings when explicitly enabled, plus TCP keepalive, user-timeout, congestion and MPTCP socket tuning;
++- transport independence through Xray's existing RAW, XHTTP, gRPC and WebSocket implementations;
++- mandatory TLS/REALITY for normal JSON configurations; plaintext requires the explicit `allowInsecureTransport` override;
++- a WARP composition example using Xray's WireGuard outbound and `sockopt.dialerProxy`;
++- unit, tamper, replay, fuzz, benchmark and TLS/UDP end-to-end coverage;
++- `xray aetherlinkx-keygen` for UUID, account secret and X-Wing key generation.
++
++REALITY, TLS, WebSocket, gRPC and WARP remain existing Xray layers. ALX does not duplicate or fork them.
++
++## Security model
++
++TLS or REALITY remains mandatory on an untrusted network and supplies transport confidentiality, endpoint authentication and traffic persona. The ALX binder authenticates the user and all request metadata inside that transport. `innerAead` adds defense in depth but costs extra copies, allocations and bytes, and prevents a true Vision/splice fast path.
++
++`pqMode: "required"` performs a second, inner X-Wing encapsulation. Its shared secret is mixed with the account secret before request/response authentication and record-key derivation. This implementation deliberately uses standardized X-Wing rather than the obsolete `X25519Kyber768Draft00` name. Outer REALITY/TLS post-quantum negotiation and inner ALX X-Wing are independent layers.
++
++The server private X-Wing seed must never be placed in client configuration. The JSON builder rejects wrong-side key fields, malformed lengths and an all-zero private seed. The server rejects an inner-AEAD policy mismatch and an unavailable requested Turbo mode before `ServerAccept`; the client also rejects PQ, AEAD and Turbo downgrade/mismatch after authenticating a response.
++
++Clock synchronization is required because an authenticated `ClientInit` is accepted only within ±2 minutes. Replay entries are bounded; saturation fails closed for new initializations.
++
++## Wire 1.1
++
++Every handshake message starts with a two-byte big-endian body length, limited to 4096 bytes.
++
++`ClientInit` fixed prefix:
++
++| Field | Bytes |
++|---|---:|
++| magic `ALX1` | 4 |
++| major, minor, command, flags | 4 |
++| HMAC-derived key ID | 16 |
++| client nonce | 16 |
++| session ID | 8 |
++| Unix timestamp | 8 |
++| Turbo age/cache/payload | 6 |
++| X-Wing ciphertext length | 2 |
++
++The optional 1120-byte X-Wing ciphertext, destination and 32-byte HMAC-SHA256 binder follow. The binder key is HKDF-SHA256 over the account secret and, when enabled, the X-Wing shared secret.
++
++`ServerAccept` contains `ALXR`, version, status, authenticated feature flags, 16-byte server nonce, echoed session ID, six negotiated Turbo bytes and a 32-byte binder. Separate HKDF contexts are used for client authentication, server authentication, client-to-server records and server-to-client records.
++
++Inner AEAD records are:
++
++```text
++uint16 plaintext_length
++ChaCha20-Poly1305(
++  uint16 content_length || uint16 padding_length || content || random_padding,
++  associated_data = plaintext_length
++)
++```
++
++The encrypted length is bounded by the Xray buffer size before allocation. Each direction starts with counter zero under a different key; counter exhaustion terminates the stream.
++
++Turbo UDP frames contain marker `0xa1`, flags, sequence, send-time delta, destination-cache ID, optional destination, payload length and payload. Cache references are scoped to one direction and connection. The receiver can discard a stale packet after reading it. Because ALX UDP currently rides an ordered stream, this prevents stale delivery but cannot remove transport-level head-of-line blocking already caused by TCP retransmission.
++
++## Configuration
++
++Generate credentials with:
++
++```text
++xray aetherlinkx-keygen
++```
++
++Client protocol settings:
++
++```json
++{
++  "address": "alx.example.com",
++  "port": 443,
++  "id": "REPLACE_WITH_GENERATED_UUID",
++  "secret": "REPLACE_WITH_GENERATED_ACCOUNT_SECRET",
++  "turbo": {
++    "enabled": true,
++    "maxDatagramAgeMs": 35,
++    "destinationCacheSize": 64,
++    "maxUdpPayload": 8192,
++    "tcpKeepAliveIdle": 15,
++    "tcpKeepAliveInterval": 5,
++    "tcpUserTimeout": 10000,
++    "congestion": "auto",
++    "multipathTcp": true,
++    "muxConcurrency": 8,
++    "xudpConcurrency": 4,
++    "xudpProxyUdp443": "allow"
++  },
++  "security": {
++    "pqMode": "required",
++    "xwingPublicKey": "REPLACE_WITH_GENERATED_XWING_PUBLIC_KEY",
++    "innerAead": true
++  },
++  "stealth": {
++    "enabled": true,
++    "minChunkSize": 256,
++    "maxChunkSize": 1200,
++    "maxPaddingBytes": 128,
++    "paddingProbabilityPercent": 25
++  }
++}
++```
++
++Server protocol settings use the same `id` and `secret`, but `security.xwingPrivateKey` instead of the public key. Complete templates are in [`examples`](examples). Placeholder credentials are intentionally invalid until replaced.
++
++Turbo socket fields are defaults only: explicit `streamSettings.sockopt` values win. `congestion: "auto"` preserves the operating system default; names such as `bbr` request that OS algorithm and fail or have no benefit if the host/kernel does not support it. MPTCP requires operating-system support and only affects eligible RAW TCP sockets. It is disabled in the WARP example because WireGuard already supplies the underlay tunnel.
++
++`muxConcurrency` creates Xray Mux/XUDP settings only when the outbound has no explicit top-level `mux`. Aggressive Mux can reduce connection setup cost but may worsen gaming tail latency through head-of-line blocking. Measure p95/p99 RTT and disable it when loss is non-trivial.
++
++## Stealth and transport behavior
++
++ALX Stealth changes only encrypted inner record sizing. It does not claim to turn arbitrary traffic into a statistically faithful video call. Randomly changing TLS extensions per packet would itself be anomalous; TLS/uTLS/REALITY fingerprints should be selected by the outer Xray transport and remain coherent for the lifetime of that session.
++
++WebSocket `Transfer-Encoding: chunked` is not valid after an Upgrade. For WebSocket, ALX record boundaries may be split across normal binary frames by the existing transport, but ALX does not emit fake HTTP chunks. gRPC and HTTP/2 framing are likewise owned by their existing Xray transports.
++
++WARP is not an ALX wire capability. The WARP example dials the REALITY endpoint through a tagged WireGuard outbound. This hides the client's origin from the ALX endpoint but can add RTT; compare it against direct routing.
++
++## Known limits and next hardening work
++
++- no independent cryptographic audit or formal protocol analysis;
++- no native unreliable/QUIC datagram transport, so UDP-over-TCP retains head-of-line behavior;
++- no ALX-native multipath lane aggregation or migration; current support is OS MPTCP socket opt-in;
++- no Vision direct-copy adapter; inner AEAD and Stealth necessarily process every record;
++- no per-flow fair queue/CoDel scheduler inside ALX; Turbo currently supplies deadline metadata, destination compression and Xray/OS tuning;
++- no automatic congestion-algorithm switching based on live measurements;
++- no automatic WARP enrollment or credential acquisition;
++- wire `1.1` is experimental and may change incompatibly before a stable release.
++
++## Verification
++
++From the Xray source root:
++
++```text
++go test ./proxy/aetherlinkx -count=1
++go test ./infra/conf -run AetherLinkX -count=1
++go test ./testing/scenarios -run '^TestAetherLinkX(TLS|TurboUDP)$' -count=1
++go test ./proxy/aetherlinkx -run '^$' -fuzz FuzzDecodeRequestHeader -fuzztime 10s
++go test ./proxy/aetherlinkx -run '^$' -bench '^BenchmarkAetherLinkX' -benchtime 100x
++```
+diff --git a/proxy/aetherlinkx/SECURITY.md b/proxy/aetherlinkx/SECURITY.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..bc0732369827be6b34a39368bc5dfca0ae77cebd
+--- /dev/null
++++ b/proxy/aetherlinkx/SECURITY.md
+@@ -0,0 +1,61 @@
++# AetherLink X security notes
++
++## Trust boundaries
++
++ALX assumes the outer Xray TLS or REALITY transport is correctly configured and that the client has an authentic server transport key. `allowInsecureTransport` is only a test/private-network escape hatch. WARP changes the route and visible client IP; it is not server authentication and does not replace REALITY/TLS.
++
++The long-term ALX account secret authenticates a user. The server X-Wing private seed provides the hybrid KEM component. Compromise of either server-side value requires rotation. Logs must never include either secret.
++
++## Handshake properties
++
++- `key_id` is a 128-bit truncated HMAC derived from the UUID and account secret, not a plaintext UUID lookup.
++- `ClientInit` authenticates version, command, flags, timestamp, Turbo parameters, X-Wing ciphertext and destination.
++- `ServerAccept` authenticates the selected features, server nonce and echoed session ID.
++- client and server binder keys use different HKDF labels;
++- a ±2 minute authenticated timestamp window and bounded `(key_id, client_nonce)` cache reject delayed and immediate replay; an entry is inserted only after the complete authenticated request and server feature policy pass validation;
++- requested inner AEAD must match server policy, and requested Turbo fails closed when unavailable;
++- the client rejects authenticated PQ, inner-AEAD and Turbo downgrade/mismatch;
++- parser lengths and destination-cache sizes are bounded before allocation/use;
++- framing handles legal short writes and treats a zero-byte write as `io.ErrShortWrite`.
++
++X-Wing ciphertext decapsulation occurs before the request binder can be checked. This is unavoidable for a binder keyed by the hybrid shared secret and creates a CPU-amplification surface for peers that have reached the outer transport. Deploy connection/rate limits at the inbound and keep REALITY/TLS authentication in front of ALX.
++
++## Payload protection
++
++With `innerAead: true`, ALX derives separate ChaCha20-Poly1305 keys for each direction from the account secret, optional X-Wing secret, both nonces and session ID. Record length is authenticated as associated data. Counters never repeat under a session key and overflow fails closed. Malformed lengths, padding and tags terminate the stream.
++
++Without inner AEAD, payload confidentiality and integrity come only from TLS/REALITY. This lower-overhead mode is not safe over plaintext public transport.
++
++Stealth padding is encrypted and bounded. It is traffic shaping, not a cryptographic primitive, not a proof of indistinguishability and not a faithful video-call emulator.
++
++## Residual risks
++
++- the protocol and X-Wing composition have not received an independent cryptographic audit;
++- Go-managed secret byte slices are not guaranteed to be wiped from memory;
++- traffic timing, direction and approximate sizes remain observable;
++- inner AEAD has no mid-session rekey; session lifetime and byte limits are inherited from connection policy;
++- unknown-user lookup may be distinguishable by timing after the outer connection is established;
++- TCP-carried UDP is subject to head-of-line blocking even when stale packets are discarded at the receiver;
++- replay defense depends on synchronized clocks and in-process cache state; it is not shared across clustered servers;
++- `pqMode: "prefer"` is opportunistic on the server, but a client configured with a public key sends X-Wing and does not silently retry without PQ after a failed connection.
++
++## Deployment checklist
++
++1. Generate credentials with `xray aetherlinkx-keygen`; do not invent passwords or reuse REALITY/WireGuard keys.
++2. Keep the X-Wing private seed only on the server and the account secret on both endpoints.
++3. Use REALITY or TLS; never enable `allowInsecureTransport` on the Internet.
++4. Synchronize system clocks and rate-limit new inbound handshakes.
++5. Start with `pqMode: "required"` only after confirming both peers run the same experimental wire version.
++6. Benchmark inner AEAD and Stealth on the deployment CPU before enabling them for latency-sensitive traffic.
++7. Treat MPTCP, BBR, Mux and WARP as measured routing/OS policies, not unconditional accelerators.
++8. Rotate account and X-Wing keys after suspected compromise; restarting servers also clears replay state.
++
++## Validation performed
++
++- unit tests cover handshake round-trip, tampering, replay, stale timestamp, downgrade, X-Wing/AEAD, short writes, key-side validation and UDP/Turbo framing;
++- end-to-end Xray scenarios cover TLS TCP and Turbo UDP with required X-Wing, inner AEAD and Stealth;
++- fuzz targets cover `ClientInit` decoding and encrypted record decoding;
++- `go vet ./proxy/aetherlinkx` passes;
++- a Go race build was not available in the portable Windows toolchain because no CGO C compiler is installed.
++
++This is an engineering review, not a third-party security certification.
+diff --git a/proxy/aetherlinkx/account.go b/proxy/aetherlinkx/account.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..16574f194a58640ec97dab82d9363640c05a49e5
+--- /dev/null
++++ b/proxy/aetherlinkx/account.go
+@@ -0,0 +1,78 @@
++package aetherlinkx
++
++import (
++	"crypto/hmac"
++	"crypto/sha256"
++	"crypto/subtle"
++	"encoding/base64"
++	"strings"
++
++	"google.golang.org/protobuf/proto"
++
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/protocol"
++	"github.com/xtls/xray-core/common/uuid"
++)
++
++const secretSize = 32
++
++var keyIDContext = []byte("AetherLink X key-id v1")
++
++// MemoryAccount is the validated in-memory representation of an ALX account.
++type MemoryAccount struct {
++	ID     *protocol.ID
++	Secret [secretSize]byte
++	KeyID  [16]byte
++}
++
++// AsAccount implements protocol.AsAccount.
++func (a *Account) AsAccount() (protocol.Account, error) {
++	if len(a.GetId()) != 36 {
++		return nil, errors.New("AetherLink X id must be a canonical UUID")
++	}
++	id, err := uuid.ParseString(a.GetId())
++	if err != nil {
++		return nil, errors.New("failed to parse AetherLink X id").Base(err)
++	}
++
++	secretText := strings.TrimSpace(a.GetSecret())
++	secret, err := base64.RawURLEncoding.DecodeString(secretText)
++	if err != nil {
++		secret, err = base64.URLEncoding.DecodeString(secretText)
++	}
++	if err != nil || len(secret) != secretSize {
++		return nil, errors.New("AetherLink X secret must be exactly 32 bytes encoded as Base64URL")
++	}
++	var nonZero byte
++	for _, value := range secret {
++		nonZero |= value
++	}
++	if nonZero == 0 {
++		return nil, errors.New("AetherLink X secret must not be all zeroes")
++	}
++
++	memory := &MemoryAccount{ID: protocol.NewID(id)}
++	copy(memory.Secret[:], secret)
++	mac := hmac.New(sha256.New, memory.Secret[:])
++	_, _ = mac.Write(keyIDContext)
++	_, _ = mac.Write(memory.ID.Bytes())
++	copy(memory.KeyID[:], mac.Sum(nil)[:len(memory.KeyID)])
++	return memory, nil
++}
++
++// Equals implements protocol.Account.
++func (a *MemoryAccount) Equals(other protocol.Account) bool {
++	b, ok := other.(*MemoryAccount)
++	if !ok || !a.ID.Equals(b.ID) {
++		return false
++	}
++	return subtle.ConstantTimeCompare(a.Secret[:], b.Secret[:]) == 1
++}
++
++// ToProto implements protocol.Account.
++func (a *MemoryAccount) ToProto() proto.Message {
++	return &Account{
++		Id:     a.ID.String(),
++		Secret: base64.RawURLEncoding.EncodeToString(a.Secret[:]),
++	}
++}
+diff --git a/proxy/aetherlinkx/benchmark_test.go b/proxy/aetherlinkx/benchmark_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..2af82e18d40bc077ab542e75d80a9d11dac85b8c
+--- /dev/null
++++ b/proxy/aetherlinkx/benchmark_test.go
+@@ -0,0 +1,95 @@
++package aetherlinkx
++
++import (
++	"bytes"
++	"io"
++	"testing"
++	"time"
++
++	"github.com/cloudflare/circl/kem/xwing"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/net"
++)
++
++func BenchmarkAetherLinkXHandshakeClassic(b *testing.B) {
++	account := testAccount(b)
++	target := net.TCPDestination(net.DomainAddress("game.example"), 443)
++	b.ReportAllocs()
++	for b.Loop() {
++		var wire bytes.Buffer
++		if _, err := EncodeRequestHeader(&wire, target, account); err != nil {
++			b.Fatal(err)
++		}
++		if _, err := DecodeRequestHeader(&wire, testValidator(b, account)); err != nil {
++			b.Fatal(err)
++		}
++	}
++}
++
++func BenchmarkAetherLinkXHandshakeXWing(b *testing.B) {
++	privateKey, publicKey, err := xwing.GenerateKeyPairPacked(nil)
++	if err != nil {
++		b.Fatal(err)
++	}
++	account := testAccount(b)
++	target := net.TCPDestination(net.DomainAddress("game.example"), 443)
++	client := HandshakeOptions{Security: SecuritySettings{PQMode: PQModeRequired, XWingPublic: publicKey, InnerAEAD: true}}
++	server := HandshakeOptions{Security: SecuritySettings{PQMode: PQModeRequired, XWingPrivate: privateKey, InnerAEAD: true}}
++	b.ReportAllocs()
++	for b.Loop() {
++		var wire bytes.Buffer
++		if _, err := EncodeRequestHeader(&wire, target, account, client); err != nil {
++			b.Fatal(err)
++		}
++		if _, err := DecodeRequestHeader(&wire, testValidator(b, account), server); err != nil {
++			b.Fatal(err)
++		}
++	}
++}
++
++func BenchmarkAetherLinkXRecord1K(b *testing.B) {
++	session := benchmarkSession()
++	payload := make([]byte, 1024)
++	b.SetBytes(int64(len(payload)))
++	b.ReportAllocs()
++	for b.Loop() {
++		_, writer, err := newRecordLayer(bytes.NewReader(nil), io.Discard, session, true, StealthSettings{})
++		if err != nil {
++			b.Fatal(err)
++		}
++		if _, err := writer.Write(payload); err != nil {
++			b.Fatal(err)
++		}
++	}
++}
++
++func BenchmarkAetherLinkXTurboUDPCached(b *testing.B) {
++	target := net.UDPDestination(net.DomainAddress("game.example"), 27015)
++	turbo := TurboSettings{Enabled: true, MaxDatagramAge: 35 * time.Millisecond, DestinationCacheSize: 64, MaxUDPPayload: 8192}
++	writer := &PacketWriter{Writer: io.Discard, Target: target, Turbo: turbo, Epoch: time.Now()}
++	b.SetBytes(512)
++	b.ReportAllocs()
++	for b.Loop() {
++		packet := buf.New()
++		_, _ = packet.Write(make([]byte, 512))
++		packet.UDP = &target
++		if err := writer.WriteMultiBuffer(buf.MultiBuffer{packet}); err != nil {
++			b.Fatal(err)
++		}
++	}
++}
++
++func benchmarkSession() *Session {
++	session := &Session{InnerAEAD: true}
++	for index := range session.Secret {
++		session.Secret[index] = byte(index + 1)
++	}
++	for index := range session.ClientNonce {
++		session.ClientNonce[index] = byte(index + 2)
++		session.ServerNonce[index] = byte(index + 3)
++	}
++	for index := range session.SessionID {
++		session.SessionID[index] = byte(index + 4)
++	}
++	return session
++}
+diff --git a/proxy/aetherlinkx/client.go b/proxy/aetherlinkx/client.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..29e06cd3ebb42827dacfc0e44a03d9fabe7e38e1
+--- /dev/null
++++ b/proxy/aetherlinkx/client.go
+@@ -0,0 +1,152 @@
++package aetherlinkx
++
++import (
++	"context"
++	"io"
++	"time"
++
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/protocol"
++	"github.com/xtls/xray-core/common/retry"
++	"github.com/xtls/xray-core/common/session"
++	"github.com/xtls/xray-core/common/signal"
++	"github.com/xtls/xray-core/common/task"
++	core "github.com/xtls/xray-core/core"
++	"github.com/xtls/xray-core/features/policy"
++	"github.com/xtls/xray-core/transport"
++	"github.com/xtls/xray-core/transport/internet"
++	"github.com/xtls/xray-core/transport/internet/stat"
++)
++
++// Client implements the AetherLink X outbound proxy.
++type Client struct {
++	server        *protocol.ServerSpec
++	policyManager policy.Manager
++	turbo         TurboSettings
++	security      SecuritySettings
++	stealth       StealthSettings
++}
++
++func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
++	if config.Server == nil {
++		return nil, errors.New("no AetherLink X server configured")
++	}
++	server, err := protocol.NewServerSpecFromPB(config.Server)
++	if err != nil {
++		return nil, errors.New("failed to parse AetherLink X server").Base(err)
++	}
++	security, err := ParseClientSecurity(config.Security)
++	if err != nil {
++		return nil, err
++	}
++	stealth, err := ParseStealthConfig(config.Stealth)
++	if err != nil {
++		return nil, err
++	}
++	if stealth.Enabled && !security.InnerAEAD {
++		return nil, errors.New("AetherLink X Stealth requires innerAead")
++	}
++	v := core.MustFromContext(ctx)
++	return &Client{
++		server:        server,
++		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
++		turbo:         normalizeTurbo(config.Turbo),
++		security:      security,
++		stealth:       stealth,
++	}, nil
++}
++
++// Process implements proxy.Outbound.
++func (c *Client) Process(ctx context.Context, link *transport.Link, dialer internet.Dialer) error {
++	outbounds := session.OutboundsFromContext(ctx)
++	if len(outbounds) == 0 || !outbounds[len(outbounds)-1].Target.IsValid() {
++		return errors.New("AetherLink X target is not specified")
++	}
++	outbound := outbounds[len(outbounds)-1]
++	outbound.Name = "aetherlinkx"
++	outbound.CanSpliceCopy = 3
++	target := outbound.Target
++
++	var connection stat.Connection
++	if err := retry.ExponentialBackoff(5, 100).On(func() error {
++		conn, err := dialer.Dial(ctx, c.server.Destination)
++		if err == nil {
++			connection = conn
++		}
++		return err
++	}); err != nil {
++		return errors.New("failed to dial AetherLink X server").Base(err).AtWarning()
++	}
++	defer connection.Close()
++
++	user := c.server.User
++	account, ok := user.Account.(*MemoryAccount)
++	if !ok {
++		return errors.New("invalid AetherLink X user account")
++	}
++	sessionState, err := EncodeRequestHeader(connection, target, account, HandshakeOptions{Turbo: c.turbo, Security: c.security})
++	if err != nil {
++		return err
++	}
++	sessionPolicy := c.policyManager.ForLevel(user.Level)
++	if err := connection.SetReadDeadline(time.Now().Add(sessionPolicy.Timeouts.Handshake)); err != nil {
++		return errors.New("failed to set AetherLink X response deadline").Base(err)
++	}
++	if err := DecodeResponseHeader(connection, sessionState); err != nil {
++		return err
++	}
++	if err := connection.SetReadDeadline(time.Time{}); err != nil {
++		return errors.New("failed to clear AetherLink X response deadline").Base(err)
++	}
++	var payloadReader io.Reader = connection
++	var payloadWriter io.Writer = connection
++	if sessionState.InnerAEAD {
++		payloadReader, payloadWriter, err = newRecordLayer(connection, connection, sessionState, true, c.stealth)
++		if err != nil {
++			return err
++		}
++	}
++
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	timer := signal.CancelAfterInactivity(ctx, cancel, sessionPolicy.Timeouts.ConnectionIdle)
++	defer timer.SetTimeout(0)
++
++	uplink := func() error {
++		defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
++		var writer buf.Writer = buf.NewWriter(payloadWriter)
++		if target.Network == net.Network_UDP {
++			writer = &PacketWriter{Writer: payloadWriter, Target: target, Turbo: sessionState.Turbo, Epoch: sessionState.LocalEpoch}
++		}
++		if err := buf.Copy(link.Reader, writer, buf.UpdateActivity(timer)); err != nil {
++			return errors.New("failed to upload AetherLink X payload").Base(err)
++		}
++		return nil
++	}
++
++	downlink := func() error {
++		defer timer.SetTimeout(sessionPolicy.Timeouts.UplinkOnly)
++		var reader buf.Reader = buf.NewReader(payloadReader)
++		if target.Network == net.Network_UDP {
++			reader = &PacketReader{Reader: payloadReader, Turbo: sessionState.Turbo, Epoch: sessionState.PeerEpoch}
++		}
++		if err := buf.Copy(reader, link.Writer, buf.UpdateActivity(timer)); err != nil {
++			return errors.New("failed to download AetherLink X payload").Base(err)
++		}
++		return nil
++	}
++
++	if err := task.Run(ctx, uplink, task.OnSuccess(downlink, task.Close(link.Writer))); err != nil {
++		return errors.New("AetherLink X connection ended").Base(err)
++	}
++	return nil
++}
++
++func init() {
++	common.Must(common.RegisterConfig((*ClientConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
++		return NewClient(ctx, config.(*ClientConfig))
++	}))
++}
+diff --git a/proxy/aetherlinkx/config.pb.go b/proxy/aetherlinkx/config.pb.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..d658465d0e9feba4c652f3a7a70747d2fd627e32
+--- /dev/null
++++ b/proxy/aetherlinkx/config.pb.go
+@@ -0,0 +1,639 @@
++// Code generated by protoc-gen-go. DO NOT EDIT.
++// versions:
++// 	protoc-gen-go v1.36.11
++// 	protoc        v6.33.5
++// source: proxy/aetherlinkx/config.proto
++
++package aetherlinkx
++
++import (
++	protocol "github.com/xtls/xray-core/common/protocol"
++	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
++	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
++	reflect "reflect"
++	sync "sync"
++	unsafe "unsafe"
++)
++
++const (
++	// Verify that this generated code is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
++	// Verify that runtime/protoimpl is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
++)
++
++type Account struct {
++	state protoimpl.MessageState `protogen:"open.v1"`
++	// Public account identifier. It must be a canonical UUID.
++	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
++	// A 32-byte, independently generated secret encoded as Base64URL.
++	Secret        string `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *Account) Reset() {
++	*x = Account{}
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[0]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *Account) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*Account) ProtoMessage() {}
++
++func (x *Account) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[0]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use Account.ProtoReflect.Descriptor instead.
++func (*Account) Descriptor() ([]byte, []int) {
++	return file_proxy_aetherlinkx_config_proto_rawDescGZIP(), []int{0}
++}
++
++func (x *Account) GetId() string {
++	if x != nil {
++		return x.Id
++	}
++	return ""
++}
++
++func (x *Account) GetSecret() string {
++	if x != nil {
++		return x.Secret
++	}
++	return ""
++}
++
++type TurboConfig struct {
++	state   protoimpl.MessageState `protogen:"open.v1"`
++	Enabled bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
++	// Drop UDP datagrams whose extra queue/path delay exceeds this value. Zero
++	// disables deadline drops.
++	MaxDatagramAgeMs uint32 `protobuf:"varint,2,opt,name=max_datagram_age_ms,json=maxDatagramAgeMs,proto3" json:"max_datagram_age_ms,omitempty"`
++	// Per-direction destination dictionary entries. Zero disables compression.
++	DestinationCacheSize uint32 `protobuf:"varint,3,opt,name=destination_cache_size,json=destinationCacheSize,proto3" json:"destination_cache_size,omitempty"`
++	// Maximum accepted UDP payload. Valid range: 512..32768.
++	MaxUdpPayload uint32 `protobuf:"varint,4,opt,name=max_udp_payload,json=maxUdpPayload,proto3" json:"max_udp_payload,omitempty"`
++	// Optional transport tuning. Explicit stream sockopts always win.
++	TcpKeepAliveIdle     int32  `protobuf:"varint,5,opt,name=tcp_keep_alive_idle,json=tcpKeepAliveIdle,proto3" json:"tcp_keep_alive_idle,omitempty"`
++	TcpKeepAliveInterval int32  `protobuf:"varint,6,opt,name=tcp_keep_alive_interval,json=tcpKeepAliveInterval,proto3" json:"tcp_keep_alive_interval,omitempty"`
++	TcpUserTimeout       int32  `protobuf:"varint,7,opt,name=tcp_user_timeout,json=tcpUserTimeout,proto3" json:"tcp_user_timeout,omitempty"`
++	Congestion           string `protobuf:"bytes,8,opt,name=congestion,proto3" json:"congestion,omitempty"`
++	MultipathTcp         bool   `protobuf:"varint,9,opt,name=multipath_tcp,json=multipathTcp,proto3" json:"multipath_tcp,omitempty"`
++	MuxConcurrency       int32  `protobuf:"varint,10,opt,name=mux_concurrency,json=muxConcurrency,proto3" json:"mux_concurrency,omitempty"`
++	XudpConcurrency      int32  `protobuf:"varint,11,opt,name=xudp_concurrency,json=xudpConcurrency,proto3" json:"xudp_concurrency,omitempty"`
++	XudpProxyUdp443      string `protobuf:"bytes,12,opt,name=xudp_proxy_udp443,json=xudpProxyUdp443,proto3" json:"xudp_proxy_udp443,omitempty"`
++	unknownFields        protoimpl.UnknownFields
++	sizeCache            protoimpl.SizeCache
++}
++
++func (x *TurboConfig) Reset() {
++	*x = TurboConfig{}
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[1]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *TurboConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*TurboConfig) ProtoMessage() {}
++
++func (x *TurboConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[1]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use TurboConfig.ProtoReflect.Descriptor instead.
++func (*TurboConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_aetherlinkx_config_proto_rawDescGZIP(), []int{1}
++}
++
++func (x *TurboConfig) GetEnabled() bool {
++	if x != nil {
++		return x.Enabled
++	}
++	return false
++}
++
++func (x *TurboConfig) GetMaxDatagramAgeMs() uint32 {
++	if x != nil {
++		return x.MaxDatagramAgeMs
++	}
++	return 0
++}
++
++func (x *TurboConfig) GetDestinationCacheSize() uint32 {
++	if x != nil {
++		return x.DestinationCacheSize
++	}
++	return 0
++}
++
++func (x *TurboConfig) GetMaxUdpPayload() uint32 {
++	if x != nil {
++		return x.MaxUdpPayload
++	}
++	return 0
++}
++
++func (x *TurboConfig) GetTcpKeepAliveIdle() int32 {
++	if x != nil {
++		return x.TcpKeepAliveIdle
++	}
++	return 0
++}
++
++func (x *TurboConfig) GetTcpKeepAliveInterval() int32 {
++	if x != nil {
++		return x.TcpKeepAliveInterval
++	}
++	return 0
++}
++
++func (x *TurboConfig) GetTcpUserTimeout() int32 {
++	if x != nil {
++		return x.TcpUserTimeout
++	}
++	return 0
++}
++
++func (x *TurboConfig) GetCongestion() string {
++	if x != nil {
++		return x.Congestion
++	}
++	return ""
++}
++
++func (x *TurboConfig) GetMultipathTcp() bool {
++	if x != nil {
++		return x.MultipathTcp
++	}
++	return false
++}
++
++func (x *TurboConfig) GetMuxConcurrency() int32 {
++	if x != nil {
++		return x.MuxConcurrency
++	}
++	return 0
++}
++
++func (x *TurboConfig) GetXudpConcurrency() int32 {
++	if x != nil {
++		return x.XudpConcurrency
++	}
++	return 0
++}
++
++func (x *TurboConfig) GetXudpProxyUdp443() string {
++	if x != nil {
++		return x.XudpProxyUdp443
++	}
++	return ""
++}
++
++type SecurityConfig struct {
++	state protoimpl.MessageState `protogen:"open.v1"`
++	// off, prefer or required. Uses the standardized X-Wing hybrid KEM
++	// (X25519 + ML-KEM-768), not the obsolete Kyber draft identifier.
++	PqMode string `protobuf:"bytes,1,opt,name=pq_mode,json=pqMode,proto3" json:"pq_mode,omitempty"`
++	// Client-side X-Wing public key, 1216 bytes as Base64URL.
++	XwingPublicKey string `protobuf:"bytes,2,opt,name=xwing_public_key,json=xwingPublicKey,proto3" json:"xwing_public_key,omitempty"`
++	// Server-side X-Wing private seed, 32 bytes as Base64URL.
++	XwingPrivateKey string `protobuf:"bytes,3,opt,name=xwing_private_key,json=xwingPrivateKey,proto3" json:"xwing_private_key,omitempty"`
++	// Adds an authenticated ChaCha20-Poly1305 record layer inside TLS/REALITY.
++	InnerAead     bool `protobuf:"varint,4,opt,name=inner_aead,json=innerAead,proto3" json:"inner_aead,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *SecurityConfig) Reset() {
++	*x = SecurityConfig{}
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[2]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *SecurityConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*SecurityConfig) ProtoMessage() {}
++
++func (x *SecurityConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[2]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use SecurityConfig.ProtoReflect.Descriptor instead.
++func (*SecurityConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_aetherlinkx_config_proto_rawDescGZIP(), []int{2}
++}
++
++func (x *SecurityConfig) GetPqMode() string {
++	if x != nil {
++		return x.PqMode
++	}
++	return ""
++}
++
++func (x *SecurityConfig) GetXwingPublicKey() string {
++	if x != nil {
++		return x.XwingPublicKey
++	}
++	return ""
++}
++
++func (x *SecurityConfig) GetXwingPrivateKey() string {
++	if x != nil {
++		return x.XwingPrivateKey
++	}
++	return ""
++}
++
++func (x *SecurityConfig) GetInnerAead() bool {
++	if x != nil {
++		return x.InnerAead
++	}
++	return false
++}
++
++type StealthConfig struct {
++	state                     protoimpl.MessageState `protogen:"open.v1"`
++	Enabled                   bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
++	MinChunkSize              uint32                 `protobuf:"varint,2,opt,name=min_chunk_size,json=minChunkSize,proto3" json:"min_chunk_size,omitempty"`
++	MaxChunkSize              uint32                 `protobuf:"varint,3,opt,name=max_chunk_size,json=maxChunkSize,proto3" json:"max_chunk_size,omitempty"`
++	MaxPaddingBytes           uint32                 `protobuf:"varint,4,opt,name=max_padding_bytes,json=maxPaddingBytes,proto3" json:"max_padding_bytes,omitempty"`
++	PaddingProbabilityPercent uint32                 `protobuf:"varint,5,opt,name=padding_probability_percent,json=paddingProbabilityPercent,proto3" json:"padding_probability_percent,omitempty"`
++	unknownFields             protoimpl.UnknownFields
++	sizeCache                 protoimpl.SizeCache
++}
++
++func (x *StealthConfig) Reset() {
++	*x = StealthConfig{}
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[3]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *StealthConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*StealthConfig) ProtoMessage() {}
++
++func (x *StealthConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[3]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use StealthConfig.ProtoReflect.Descriptor instead.
++func (*StealthConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_aetherlinkx_config_proto_rawDescGZIP(), []int{3}
++}
++
++func (x *StealthConfig) GetEnabled() bool {
++	if x != nil {
++		return x.Enabled
++	}
++	return false
++}
++
++func (x *StealthConfig) GetMinChunkSize() uint32 {
++	if x != nil {
++		return x.MinChunkSize
++	}
++	return 0
++}
++
++func (x *StealthConfig) GetMaxChunkSize() uint32 {
++	if x != nil {
++		return x.MaxChunkSize
++	}
++	return 0
++}
++
++func (x *StealthConfig) GetMaxPaddingBytes() uint32 {
++	if x != nil {
++		return x.MaxPaddingBytes
++	}
++	return 0
++}
++
++func (x *StealthConfig) GetPaddingProbabilityPercent() uint32 {
++	if x != nil {
++		return x.PaddingProbabilityPercent
++	}
++	return 0
++}
++
++type ClientConfig struct {
++	state  protoimpl.MessageState   `protogen:"open.v1"`
++	Server *protocol.ServerEndpoint `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
++	// Intended only for private/testing deployments. Public endpoints must use
++	// TLS or REALITY at the Xray transport layer.
++	AllowInsecureTransport bool            `protobuf:"varint,2,opt,name=allow_insecure_transport,json=allowInsecureTransport,proto3" json:"allow_insecure_transport,omitempty"`
++	Turbo                  *TurboConfig    `protobuf:"bytes,3,opt,name=turbo,proto3" json:"turbo,omitempty"`
++	Security               *SecurityConfig `protobuf:"bytes,4,opt,name=security,proto3" json:"security,omitempty"`
++	Stealth                *StealthConfig  `protobuf:"bytes,5,opt,name=stealth,proto3" json:"stealth,omitempty"`
++	unknownFields          protoimpl.UnknownFields
++	sizeCache              protoimpl.SizeCache
++}
++
++func (x *ClientConfig) Reset() {
++	*x = ClientConfig{}
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[4]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *ClientConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*ClientConfig) ProtoMessage() {}
++
++func (x *ClientConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[4]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use ClientConfig.ProtoReflect.Descriptor instead.
++func (*ClientConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_aetherlinkx_config_proto_rawDescGZIP(), []int{4}
++}
++
++func (x *ClientConfig) GetServer() *protocol.ServerEndpoint {
++	if x != nil {
++		return x.Server
++	}
++	return nil
++}
++
++func (x *ClientConfig) GetAllowInsecureTransport() bool {
++	if x != nil {
++		return x.AllowInsecureTransport
++	}
++	return false
++}
++
++func (x *ClientConfig) GetTurbo() *TurboConfig {
++	if x != nil {
++		return x.Turbo
++	}
++	return nil
++}
++
++func (x *ClientConfig) GetSecurity() *SecurityConfig {
++	if x != nil {
++		return x.Security
++	}
++	return nil
++}
++
++func (x *ClientConfig) GetStealth() *StealthConfig {
++	if x != nil {
++		return x.Stealth
++	}
++	return nil
++}
++
++type ServerConfig struct {
++	state                   protoimpl.MessageState `protogen:"open.v1"`
++	Users                   []*protocol.User       `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
++	AllowInsecureTransport  bool                   `protobuf:"varint,2,opt,name=allow_insecure_transport,json=allowInsecureTransport,proto3" json:"allow_insecure_transport,omitempty"`
++	HandshakeTimeoutSeconds uint32                 `protobuf:"varint,3,opt,name=handshake_timeout_seconds,json=handshakeTimeoutSeconds,proto3" json:"handshake_timeout_seconds,omitempty"`
++	Turbo                   *TurboConfig           `protobuf:"bytes,4,opt,name=turbo,proto3" json:"turbo,omitempty"`
++	Security                *SecurityConfig        `protobuf:"bytes,5,opt,name=security,proto3" json:"security,omitempty"`
++	Stealth                 *StealthConfig         `protobuf:"bytes,6,opt,name=stealth,proto3" json:"stealth,omitempty"`
++	unknownFields           protoimpl.UnknownFields
++	sizeCache               protoimpl.SizeCache
++}
++
++func (x *ServerConfig) Reset() {
++	*x = ServerConfig{}
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[5]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *ServerConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*ServerConfig) ProtoMessage() {}
++
++func (x *ServerConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_aetherlinkx_config_proto_msgTypes[5]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use ServerConfig.ProtoReflect.Descriptor instead.
++func (*ServerConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_aetherlinkx_config_proto_rawDescGZIP(), []int{5}
++}
++
++func (x *ServerConfig) GetUsers() []*protocol.User {
++	if x != nil {
++		return x.Users
++	}
++	return nil
++}
++
++func (x *ServerConfig) GetAllowInsecureTransport() bool {
++	if x != nil {
++		return x.AllowInsecureTransport
++	}
++	return false
++}
++
++func (x *ServerConfig) GetHandshakeTimeoutSeconds() uint32 {
++	if x != nil {
++		return x.HandshakeTimeoutSeconds
++	}
++	return 0
++}
++
++func (x *ServerConfig) GetTurbo() *TurboConfig {
++	if x != nil {
++		return x.Turbo
++	}
++	return nil
++}
++
++func (x *ServerConfig) GetSecurity() *SecurityConfig {
++	if x != nil {
++		return x.Security
++	}
++	return nil
++}
++
++func (x *ServerConfig) GetStealth() *StealthConfig {
++	if x != nil {
++		return x.Stealth
++	}
++	return nil
++}
++
++var File_proxy_aetherlinkx_config_proto protoreflect.FileDescriptor
++
++const file_proxy_aetherlinkx_config_proto_rawDesc = "" +
++	"\n" +
++	"\x1eproxy/aetherlinkx/config.proto\x12\x16xray.proxy.aetherlinkx\x1a\x1acommon/protocol/user.proto\x1a!common/protocol/server_spec.proto\"1\n" +
++	"\aAccount\x12\x0e\n" +
++	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
++	"\x06secret\x18\x02 \x01(\tR\x06secret\"\x89\x04\n" +
++	"\vTurboConfig\x12\x18\n" +
++	"\aenabled\x18\x01 \x01(\bR\aenabled\x12-\n" +
++	"\x13max_datagram_age_ms\x18\x02 \x01(\rR\x10maxDatagramAgeMs\x124\n" +
++	"\x16destination_cache_size\x18\x03 \x01(\rR\x14destinationCacheSize\x12&\n" +
++	"\x0fmax_udp_payload\x18\x04 \x01(\rR\rmaxUdpPayload\x12-\n" +
++	"\x13tcp_keep_alive_idle\x18\x05 \x01(\x05R\x10tcpKeepAliveIdle\x125\n" +
++	"\x17tcp_keep_alive_interval\x18\x06 \x01(\x05R\x14tcpKeepAliveInterval\x12(\n" +
++	"\x10tcp_user_timeout\x18\a \x01(\x05R\x0etcpUserTimeout\x12\x1e\n" +
++	"\n" +
++	"congestion\x18\b \x01(\tR\n" +
++	"congestion\x12#\n" +
++	"\rmultipath_tcp\x18\t \x01(\bR\fmultipathTcp\x12'\n" +
++	"\x0fmux_concurrency\x18\n" +
++	" \x01(\x05R\x0emuxConcurrency\x12)\n" +
++	"\x10xudp_concurrency\x18\v \x01(\x05R\x0fxudpConcurrency\x12*\n" +
++	"\x11xudp_proxy_udp443\x18\f \x01(\tR\x0fxudpProxyUdp443\"\x9e\x01\n" +
++	"\x0eSecurityConfig\x12\x17\n" +
++	"\apq_mode\x18\x01 \x01(\tR\x06pqMode\x12(\n" +
++	"\x10xwing_public_key\x18\x02 \x01(\tR\x0exwingPublicKey\x12*\n" +
++	"\x11xwing_private_key\x18\x03 \x01(\tR\x0fxwingPrivateKey\x12\x1d\n" +
++	"\n" +
++	"inner_aead\x18\x04 \x01(\bR\tinnerAead\"\xe1\x01\n" +
++	"\rStealthConfig\x12\x18\n" +
++	"\aenabled\x18\x01 \x01(\bR\aenabled\x12$\n" +
++	"\x0emin_chunk_size\x18\x02 \x01(\rR\fminChunkSize\x12$\n" +
++	"\x0emax_chunk_size\x18\x03 \x01(\rR\fmaxChunkSize\x12*\n" +
++	"\x11max_padding_bytes\x18\x04 \x01(\rR\x0fmaxPaddingBytes\x12>\n" +
++	"\x1bpadding_probability_percent\x18\x05 \x01(\rR\x19paddingProbabilityPercent\"\xc6\x02\n" +
++	"\fClientConfig\x12<\n" +
++	"\x06server\x18\x01 \x01(\v2$.xray.common.protocol.ServerEndpointR\x06server\x128\n" +
++	"\x18allow_insecure_transport\x18\x02 \x01(\bR\x16allowInsecureTransport\x129\n" +
++	"\x05turbo\x18\x03 \x01(\v2#.xray.proxy.aetherlinkx.TurboConfigR\x05turbo\x12B\n" +
++	"\bsecurity\x18\x04 \x01(\v2&.xray.proxy.aetherlinkx.SecurityConfigR\bsecurity\x12?\n" +
++	"\astealth\x18\x05 \x01(\v2%.xray.proxy.aetherlinkx.StealthConfigR\astealth\"\xf6\x02\n" +
++	"\fServerConfig\x120\n" +
++	"\x05users\x18\x01 \x03(\v2\x1a.xray.common.protocol.UserR\x05users\x128\n" +
++	"\x18allow_insecure_transport\x18\x02 \x01(\bR\x16allowInsecureTransport\x12:\n" +
++	"\x19handshake_timeout_seconds\x18\x03 \x01(\rR\x17handshakeTimeoutSeconds\x129\n" +
++	"\x05turbo\x18\x04 \x01(\v2#.xray.proxy.aetherlinkx.TurboConfigR\x05turbo\x12B\n" +
++	"\bsecurity\x18\x05 \x01(\v2&.xray.proxy.aetherlinkx.SecurityConfigR\bsecurity\x12?\n" +
++	"\astealth\x18\x06 \x01(\v2%.xray.proxy.aetherlinkx.StealthConfigR\astealthBd\n" +
++	"\x1acom.xray.proxy.aetherlinkxP\x01Z+github.com/xtls/xray-core/proxy/aetherlinkx\xaa\x02\x16Xray.Proxy.AetherLinkXb\x06proto3"
++
++var (
++	file_proxy_aetherlinkx_config_proto_rawDescOnce sync.Once
++	file_proxy_aetherlinkx_config_proto_rawDescData []byte
++)
++
++func file_proxy_aetherlinkx_config_proto_rawDescGZIP() []byte {
++	file_proxy_aetherlinkx_config_proto_rawDescOnce.Do(func() {
++		file_proxy_aetherlinkx_config_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proxy_aetherlinkx_config_proto_rawDesc), len(file_proxy_aetherlinkx_config_proto_rawDesc)))
++	})
++	return file_proxy_aetherlinkx_config_proto_rawDescData
++}
++
++var file_proxy_aetherlinkx_config_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
++var file_proxy_aetherlinkx_config_proto_goTypes = []any{
++	(*Account)(nil),                 // 0: xray.proxy.aetherlinkx.Account
++	(*TurboConfig)(nil),             // 1: xray.proxy.aetherlinkx.TurboConfig
++	(*SecurityConfig)(nil),          // 2: xray.proxy.aetherlinkx.SecurityConfig
++	(*StealthConfig)(nil),           // 3: xray.proxy.aetherlinkx.StealthConfig
++	(*ClientConfig)(nil),            // 4: xray.proxy.aetherlinkx.ClientConfig
++	(*ServerConfig)(nil),            // 5: xray.proxy.aetherlinkx.ServerConfig
++	(*protocol.ServerEndpoint)(nil), // 6: xray.common.protocol.ServerEndpoint
++	(*protocol.User)(nil),           // 7: xray.common.protocol.User
++}
++var file_proxy_aetherlinkx_config_proto_depIdxs = []int32{
++	6, // 0: xray.proxy.aetherlinkx.ClientConfig.server:type_name -> xray.common.protocol.ServerEndpoint
++	1, // 1: xray.proxy.aetherlinkx.ClientConfig.turbo:type_name -> xray.proxy.aetherlinkx.TurboConfig
++	2, // 2: xray.proxy.aetherlinkx.ClientConfig.security:type_name -> xray.proxy.aetherlinkx.SecurityConfig
++	3, // 3: xray.proxy.aetherlinkx.ClientConfig.stealth:type_name -> xray.proxy.aetherlinkx.StealthConfig
++	7, // 4: xray.proxy.aetherlinkx.ServerConfig.users:type_name -> xray.common.protocol.User
++	1, // 5: xray.proxy.aetherlinkx.ServerConfig.turbo:type_name -> xray.proxy.aetherlinkx.TurboConfig
++	2, // 6: xray.proxy.aetherlinkx.ServerConfig.security:type_name -> xray.proxy.aetherlinkx.SecurityConfig
++	3, // 7: xray.proxy.aetherlinkx.ServerConfig.stealth:type_name -> xray.proxy.aetherlinkx.StealthConfig
++	8, // [8:8] is the sub-list for method output_type
++	8, // [8:8] is the sub-list for method input_type
++	8, // [8:8] is the sub-list for extension type_name
++	8, // [8:8] is the sub-list for extension extendee
++	0, // [0:8] is the sub-list for field type_name
++}
++
++func init() { file_proxy_aetherlinkx_config_proto_init() }
++func file_proxy_aetherlinkx_config_proto_init() {
++	if File_proxy_aetherlinkx_config_proto != nil {
++		return
++	}
++	type x struct{}
++	out := protoimpl.TypeBuilder{
++		File: protoimpl.DescBuilder{
++			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
++			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_aetherlinkx_config_proto_rawDesc), len(file_proxy_aetherlinkx_config_proto_rawDesc)),
++			NumEnums:      0,
++			NumMessages:   6,
++			NumExtensions: 0,
++			NumServices:   0,
++		},
++		GoTypes:           file_proxy_aetherlinkx_config_proto_goTypes,
++		DependencyIndexes: file_proxy_aetherlinkx_config_proto_depIdxs,
++		MessageInfos:      file_proxy_aetherlinkx_config_proto_msgTypes,
++	}.Build()
++	File_proxy_aetherlinkx_config_proto = out.File
++	file_proxy_aetherlinkx_config_proto_goTypes = nil
++	file_proxy_aetherlinkx_config_proto_depIdxs = nil
++}
+diff --git a/proxy/aetherlinkx/config.proto b/proxy/aetherlinkx/config.proto
+new file mode 100644
+index 0000000000000000000000000000000000000000..73474fb9525b4f534df69c3307c57b83a44f053e
+--- /dev/null
++++ b/proxy/aetherlinkx/config.proto
+@@ -0,0 +1,76 @@
++syntax = "proto3";
++
++package xray.proxy.aetherlinkx;
++option csharp_namespace = "Xray.Proxy.AetherLinkX";
++option go_package = "github.com/xtls/xray-core/proxy/aetherlinkx";
++option java_package = "com.xray.proxy.aetherlinkx";
++option java_multiple_files = true;
++
++import "common/protocol/user.proto";
++import "common/protocol/server_spec.proto";
++
++message Account {
++  // Public account identifier. It must be a canonical UUID.
++  string id = 1;
++  // A 32-byte, independently generated secret encoded as Base64URL.
++  string secret = 2;
++}
++
++message TurboConfig {
++  bool enabled = 1;
++  // Drop UDP datagrams whose extra queue/path delay exceeds this value. Zero
++  // disables deadline drops.
++  uint32 max_datagram_age_ms = 2;
++  // Per-direction destination dictionary entries. Zero disables compression.
++  uint32 destination_cache_size = 3;
++  // Maximum accepted UDP payload. Valid range: 512..32768.
++  uint32 max_udp_payload = 4;
++  // Optional transport tuning. Explicit stream sockopts always win.
++  int32 tcp_keep_alive_idle = 5;
++  int32 tcp_keep_alive_interval = 6;
++  int32 tcp_user_timeout = 7;
++  string congestion = 8;
++  bool multipath_tcp = 9;
++  int32 mux_concurrency = 10;
++  int32 xudp_concurrency = 11;
++  string xudp_proxy_udp443 = 12;
++}
++
++message SecurityConfig {
++  // off, prefer or required. Uses the standardized X-Wing hybrid KEM
++  // (X25519 + ML-KEM-768), not the obsolete Kyber draft identifier.
++  string pq_mode = 1;
++  // Client-side X-Wing public key, 1216 bytes as Base64URL.
++  string xwing_public_key = 2;
++  // Server-side X-Wing private seed, 32 bytes as Base64URL.
++  string xwing_private_key = 3;
++  // Adds an authenticated ChaCha20-Poly1305 record layer inside TLS/REALITY.
++  bool inner_aead = 4;
++}
++
++message StealthConfig {
++  bool enabled = 1;
++  uint32 min_chunk_size = 2;
++  uint32 max_chunk_size = 3;
++  uint32 max_padding_bytes = 4;
++  uint32 padding_probability_percent = 5;
++}
++
++message ClientConfig {
++  xray.common.protocol.ServerEndpoint server = 1;
++  // Intended only for private/testing deployments. Public endpoints must use
++  // TLS or REALITY at the Xray transport layer.
++  bool allow_insecure_transport = 2;
++  TurboConfig turbo = 3;
++  SecurityConfig security = 4;
++  StealthConfig stealth = 5;
++}
++
++message ServerConfig {
++  repeated xray.common.protocol.User users = 1;
++  bool allow_insecure_transport = 2;
++  uint32 handshake_timeout_seconds = 3;
++  TurboConfig turbo = 4;
++  SecurityConfig security = 5;
++  StealthConfig stealth = 6;
++}
+diff --git a/proxy/aetherlinkx/examples/client-reality.json b/proxy/aetherlinkx/examples/client-reality.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..23143a2dd50f364ce582a5ba537f7224e520462b
+--- /dev/null
++++ b/proxy/aetherlinkx/examples/client-reality.json
+@@ -0,0 +1,65 @@
++{
++  "log": {
++    "loglevel": "warning"
++  },
++  "inbounds": [
++    {
++      "tag": "local-socks",
++      "listen": "127.0.0.1",
++      "port": 10808,
++      "protocol": "socks",
++      "settings": {
++        "udp": true
++      }
++    }
++  ],
++  "outbounds": [
++    {
++      "tag": "aetherlinkx-out",
++      "protocol": "aetherlinkx",
++      "settings": {
++        "address": "alx.example.com",
++        "port": 443,
++        "id": "018f3f89-01be-7b44-8a7f-23e54f92ea00",
++        "secret": "REPLACE_WITH_32_RANDOM_BYTES_AS_BASE64URL",
++        "turbo": {
++          "enabled": true,
++          "maxDatagramAgeMs": 35,
++          "destinationCacheSize": 64,
++          "maxUdpPayload": 8192,
++          "tcpKeepAliveIdle": 15,
++          "tcpKeepAliveInterval": 5,
++          "tcpUserTimeout": 10000,
++          "congestion": "auto",
++          "multipathTcp": true,
++          "muxConcurrency": 8,
++          "xudpConcurrency": 4,
++          "xudpProxyUdp443": "allow"
++        },
++        "security": {
++          "pqMode": "required",
++          "xwingPublicKey": "REPLACE_WITH_1216_BYTE_XWING_PUBLIC_KEY_AS_BASE64URL",
++          "innerAead": true
++        },
++        "stealth": {
++          "enabled": true,
++          "minChunkSize": 256,
++          "maxChunkSize": 1200,
++          "maxPaddingBytes": 128,
++          "paddingProbabilityPercent": 25
++        }
++      },
++      "streamSettings": {
++        "method": "raw",
++        "security": "reality",
++        "realitySettings": {
++          "serverName": "www.example.com",
++          "fingerprint": "chrome",
++          "password": "REPLACE_WITH_REALITY_SERVER_PUBLIC_KEY",
++          "shortId": "0123456789abcdef",
++          "spiderX": "/"
++        }
++      }
++    }
++  ]
++}
+diff --git a/proxy/aetherlinkx/examples/client-warp-reality.json b/proxy/aetherlinkx/examples/client-warp-reality.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..cbde5197e366e6cd9fa4eea4c6cc7cfff22402dd
+--- /dev/null
++++ b/proxy/aetherlinkx/examples/client-warp-reality.json
+@@ -0,0 +1,98 @@
++{
++  "log": {
++    "loglevel": "warning"
++  },
++  "inbounds": [
++    {
++      "tag": "local-socks",
++      "listen": "127.0.0.1",
++      "port": 10808,
++      "protocol": "socks",
++      "settings": {
++        "udp": true
++      }
++    }
++  ],
++  "outbounds": [
++    {
++      "tag": "aetherlinkx-out",
++      "protocol": "aetherlinkx",
++      "settings": {
++        "address": "alx.example.com",
++        "port": 443,
++        "id": "018f3f89-01be-7b44-8a7f-23e54f92ea00",
++        "secret": "REPLACE_WITH_32_RANDOM_BYTES_AS_BASE64URL",
++        "turbo": {
++          "enabled": true,
++          "maxDatagramAgeMs": 35,
++          "destinationCacheSize": 64,
++          "maxUdpPayload": 8192,
++          "tcpKeepAliveIdle": 15,
++          "tcpKeepAliveInterval": 5,
++          "tcpUserTimeout": 10000,
++          "congestion": "auto",
++          "multipathTcp": false,
++          "muxConcurrency": 8,
++          "xudpConcurrency": 4,
++          "xudpProxyUdp443": "allow"
++        },
++        "security": {
++          "pqMode": "required",
++          "xwingPublicKey": "REPLACE_WITH_1216_BYTE_XWING_PUBLIC_KEY_AS_BASE64URL",
++          "innerAead": true
++        },
++        "stealth": {
++          "enabled": true,
++          "minChunkSize": 256,
++          "maxChunkSize": 1200,
++          "maxPaddingBytes": 128,
++          "paddingProbabilityPercent": 25
++        }
++      },
++      "streamSettings": {
++        "method": "raw",
++        "security": "reality",
++        "realitySettings": {
++          "serverName": "www.example.com",
++          "fingerprint": "chrome",
++          "password": "REPLACE_WITH_REALITY_SERVER_PUBLIC_KEY",
++          "shortId": "0123456789abcdef",
++          "spiderX": "/"
++        },
++        "sockopt": {
++          "dialerProxy": "warp"
++        }
++      }
++    },
++    {
++      "tag": "warp",
++      "protocol": "wireguard",
++      "settings": {
++        "secretKey": "REPLACE_WITH_WARP_WIREGUARD_PRIVATE_KEY",
++        "address": [
++          "REPLACE_WITH_WARP_IPV4_ADDRESS/32",
++          "REPLACE_WITH_WARP_IPV6_ADDRESS/128"
++        ],
++        "peers": [
++          {
++            "publicKey": "REPLACE_WITH_WARP_PEER_PUBLIC_KEY",
++            "endpoint": "engage.cloudflareclient.com:2408",
++            "keepAlive": 25,
++            "allowedIPs": [
++              "0.0.0.0/0",
++              "::/0"
++            ]
++          }
++        ],
++        "mtu": 1280,
++        "domainStrategy": "ForceIP",
++        "noKernelTun": false
++      }
++    },
++    {
++      "tag": "direct",
++      "protocol": "freedom",
++      "settings": {}
++    }
++  ]
++}
+diff --git a/proxy/aetherlinkx/examples/server-reality.json b/proxy/aetherlinkx/examples/server-reality.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..237163586a9426362cfcf5f9f7c46943837beb9c
+--- /dev/null
++++ b/proxy/aetherlinkx/examples/server-reality.json
+@@ -0,0 +1,70 @@
++{
++  "log": {
++    "loglevel": "warning"
++  },
++  "inbounds": [
++    {
++      "tag": "aetherlinkx-in",
++      "listen": "0.0.0.0",
++      "port": 443,
++      "protocol": "aetherlinkx",
++      "settings": {
++        "users": [
++          {
++            "id": "018f3f89-01be-7b44-8a7f-23e54f92ea00",
++            "secret": "REPLACE_WITH_THE_SAME_32_BYTE_BASE64URL_SECRET",
++            "email": "player@example.com",
++            "level": 0
++          }
++        ],
++        "handshakeTimeoutSeconds": 4,
++        "turbo": {
++          "enabled": true,
++          "maxDatagramAgeMs": 35,
++          "destinationCacheSize": 64,
++          "maxUdpPayload": 8192,
++          "tcpKeepAliveIdle": 15,
++          "tcpKeepAliveInterval": 5,
++          "tcpUserTimeout": 10000,
++          "congestion": "auto",
++          "multipathTcp": true
++        },
++        "security": {
++          "pqMode": "required",
++          "xwingPrivateKey": "REPLACE_WITH_32_BYTE_XWING_PRIVATE_KEY_AS_BASE64URL",
++          "innerAead": true
++        },
++        "stealth": {
++          "enabled": true,
++          "minChunkSize": 256,
++          "maxChunkSize": 1200,
++          "maxPaddingBytes": 128,
++          "paddingProbabilityPercent": 25
++        }
++      },
++      "streamSettings": {
++        "method": "raw",
++        "security": "reality",
++        "realitySettings": {
++          "show": false,
++          "target": "www.example.com:443",
++          "xver": 0,
++          "serverNames": [
++            "www.example.com"
++          ],
++          "privateKey": "REPLACE_WITH_REALITY_SERVER_PRIVATE_KEY",
++          "shortIds": [
++            "0123456789abcdef"
++          ]
++        }
++      }
++    }
++  ],
++  "outbounds": [
++    {
++      "tag": "direct",
++      "protocol": "freedom",
++      "settings": {}
++    }
++  ]
++}
+diff --git a/proxy/aetherlinkx/protocol.go b/proxy/aetherlinkx/protocol.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..18a462123f80a82e85eeee3998b071d1209eb692
+--- /dev/null
++++ b/proxy/aetherlinkx/protocol.go
+@@ -0,0 +1,639 @@
++package aetherlinkx
++
++import (
++	"bytes"
++	"crypto/hmac"
++	"crypto/rand"
++	"crypto/sha256"
++	"crypto/subtle"
++	"encoding/binary"
++	"io"
++	"math"
++	"sync"
++	"time"
++
++	"github.com/cloudflare/circl/kem/xwing"
++	"golang.org/x/crypto/hkdf"
++
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/protocol"
++)
++
++const (
++	versionMajor byte = 1
++	versionMinor byte = 1
++
++	commandTCP byte = 1
++	commandUDP byte = 2
++
++	maxHandshakeSize = 4096
++	authTagSize      = 32
++	turboFlag        = 1 << 0
++	pqFlag           = 1 << 1
++	innerAEADFlag    = 1 << 2
++)
++
++var (
++	clientMagic       = []byte{'A', 'L', 'X', '1'}
++	serverMagic       = []byte{'A', 'L', 'X', 'R'}
++	clientAuthContext = []byte("AetherLink X ClientInit binder v1")
++	serverAuthContext = []byte("AetherLink X ServerAccept binder v1")
++	clientKeyInfo     = []byte("AetherLink X client auth key v1")
++	serverKeyInfo     = []byte("AetherLink X server auth key v1")
++
++	addrParser = protocol.NewAddressParser(
++		protocol.PortThenAddress(),
++		protocol.AddressFamilyByte(0x01, net.AddressFamilyIPv4),
++		protocol.AddressFamilyByte(0x02, net.AddressFamilyDomain),
++		protocol.AddressFamilyByte(0x03, net.AddressFamilyIPv6),
++	)
++)
++
++type Session struct {
++	Secret       [secretSize]byte
++	ClientNonce  [16]byte
++	SessionID    [8]byte
++	ServerNonce  [16]byte
++	HybridSecret [xwing.SharedKeySize]byte
++	PQ           bool
++	InnerAEAD    bool
++	Turbo        TurboSettings
++	LocalEpoch   time.Time
++	PeerEpoch    time.Time
++}
++
++type Request struct {
++	Target  net.Destination
++	User    *protocol.MemoryUser
++	Session Session
++}
++
++func deriveKey(secret []byte, salt []byte, info []byte) ([32]byte, error) {
++	var key [32]byte
++	if _, err := io.ReadFull(hkdf.New(sha256.New, secret, salt, info), key[:]); err != nil {
++		return key, err
++	}
++	return key, nil
++}
++
++func calculateMAC(key [32]byte, context, message []byte) [authTagSize]byte {
++	mac := hmac.New(sha256.New, key[:])
++	_, _ = mac.Write(context)
++	_, _ = mac.Write(message)
++	var tag [authTagSize]byte
++	copy(tag[:], mac.Sum(nil))
++	return tag
++}
++
++func writeFrame(writer io.Writer, body []byte) error {
++	if len(body) > maxHandshakeSize {
++		return errors.New("AetherLink X handshake is too large")
++	}
++	var length [2]byte
++	binary.BigEndian.PutUint16(length[:], uint16(len(body)))
++	if err := writeAll(writer, length[:]); err != nil {
++		return err
++	}
++	return writeAll(writer, body)
++}
++
++func readFrame(reader io.Reader) ([]byte, error) {
++	var length [2]byte
++	if _, err := io.ReadFull(reader, length[:]); err != nil {
++		return nil, err
++	}
++	size := int(binary.BigEndian.Uint16(length[:]))
++	if size == 0 || size > maxHandshakeSize {
++		return nil, errors.New("invalid AetherLink X handshake length")
++	}
++	body := make([]byte, size)
++	if _, err := io.ReadFull(reader, body); err != nil {
++		return nil, err
++	}
++	return body, nil
++}
++
++// EncodeRequestHeader writes an authenticated ClientInit and returns the state
++// needed to authenticate ServerAccept.
++func EncodeRequestHeader(writer io.Writer, target net.Destination, account *MemoryAccount, option ...HandshakeOptions) (*Session, error) {
++	if !target.IsValid() || target.Address == nil || target.Address.String() == "" {
++		return nil, errors.New("invalid AetherLink X target")
++	}
++	command := commandTCP
++	if target.Network == net.Network_UDP {
++		command = commandUDP
++	} else if target.Network != net.Network_TCP {
++		return nil, errors.New("unsupported AetherLink X network: ", target.Network)
++	}
++	if command == commandTCP && target.Port == 0 {
++		return nil, errors.New("AetherLink X TCP target port must not be zero")
++	}
++
++	options := HandshakeOptions{Turbo: TurboSettings{MaxUDPPayload: defaultMaxUDPPayload}}
++	if len(option) > 0 {
++		options = option[0]
++	}
++	session := &Session{Secret: account.Secret, Turbo: options.Turbo, InnerAEAD: options.Security.InnerAEAD, LocalEpoch: time.Now()}
++	if _, err := io.ReadFull(rand.Reader, session.ClientNonce[:]); err != nil {
++		return nil, errors.New("failed to generate client nonce").Base(err)
++	}
++	if _, err := io.ReadFull(rand.Reader, session.SessionID[:]); err != nil {
++		return nil, errors.New("failed to generate session id").Base(err)
++	}
++
++	var body bytes.Buffer
++	_, _ = body.Write(clientMagic)
++	_ = body.WriteByte(versionMajor)
++	_ = body.WriteByte(versionMinor)
++	_ = body.WriteByte(command)
++	flags := byte(0)
++	if options.Turbo.Enabled {
++		flags |= turboFlag
++	}
++	var pqCiphertext []byte
++	if options.Security.PQMode != PQModeOff {
++		if len(options.Security.XWingPublic) != xwing.PublicKeySize {
++			return nil, errors.New("invalid AetherLink X X-Wing public key")
++		}
++		sharedSecret, ciphertext, err := xwing.Encapsulate(options.Security.XWingPublic, nil)
++		if err != nil {
++			return nil, errors.New("failed to encapsulate AetherLink X X-Wing secret").Base(err)
++		}
++		copy(session.HybridSecret[:], sharedSecret)
++		session.PQ = true
++		pqCiphertext = ciphertext
++		flags |= pqFlag
++	}
++	if session.InnerAEAD {
++		flags |= innerAEADFlag
++	}
++	_ = body.WriteByte(flags)
++	_, _ = body.Write(account.KeyID[:])
++	_, _ = body.Write(session.ClientNonce[:])
++	_, _ = body.Write(session.SessionID[:])
++	var clientTime [8]byte
++	binary.BigEndian.PutUint64(clientTime[:], uint64(session.LocalEpoch.Unix()))
++	_, _ = body.Write(clientTime[:])
++	var turboParameters [6]byte
++	if options.Turbo.Enabled {
++		binary.BigEndian.PutUint16(turboParameters[0:2], durationMillis16(options.Turbo.MaxDatagramAge))
++		binary.BigEndian.PutUint16(turboParameters[2:4], options.Turbo.DestinationCacheSize)
++		binary.BigEndian.PutUint16(turboParameters[4:6], options.Turbo.MaxUDPPayload)
++	}
++	_, _ = body.Write(turboParameters[:])
++	var pqLength [2]byte
++	binary.BigEndian.PutUint16(pqLength[:], uint16(len(pqCiphertext)))
++	_, _ = body.Write(pqLength[:])
++	_, _ = body.Write(pqCiphertext)
++	if err := addrParser.WriteAddressPort(&body, target.Address, target.Port); err != nil {
++		return nil, errors.New("failed to encode AetherLink X target").Base(err)
++	}
++
++	key, err := deriveKey(combinedSecret(account.Secret, session.HybridSecret, session.PQ), session.ClientNonce[:], clientKeyInfo)
++	if err != nil {
++		return nil, errors.New("failed to derive client authentication key").Base(err)
++	}
++	tag := calculateMAC(key, clientAuthContext, body.Bytes())
++	_, _ = body.Write(tag[:])
++	if err := writeFrame(writer, body.Bytes()); err != nil {
++		return nil, errors.New("failed to write AetherLink X ClientInit").Base(err)
++	}
++	return session, nil
++}
++
++// DecodeRequestHeader authenticates and parses one ClientInit. No target data
++// is returned until its binder has been verified.
++func DecodeRequestHeader(reader io.Reader, validator *Validator, option ...HandshakeOptions) (*Request, error) {
++	body, err := readFrame(reader)
++	if err != nil {
++		return nil, errors.New("failed to read AetherLink X ClientInit").Base(err)
++	}
++	const fixedPrefixSize = 64
++	if len(body) < fixedPrefixSize+authTagSize+3 {
++		return nil, errors.New("AetherLink X ClientInit is too short")
++	}
++	if !bytes.Equal(body[:4], clientMagic) || body[4] != versionMajor {
++		return nil, errors.New("unsupported AetherLink X version")
++	}
++	if body[5] != versionMinor || body[7]&^byte(turboFlag|pqFlag|innerAEADFlag) != 0 {
++		return nil, errors.New("unsupported AetherLink X ClientInit flags")
++	}
++	pqCiphertextSize := int(binary.BigEndian.Uint16(body[62:64]))
++	if len(body) < fixedPrefixSize+pqCiphertextSize+authTagSize+3 {
++		return nil, errors.New("invalid AetherLink X ClientInit extension length")
++	}
++	options := HandshakeOptions{Turbo: TurboSettings{MaxUDPPayload: defaultMaxUDPPayload}}
++	if len(option) > 0 {
++		options = option[0]
++	}
++
++	var keyID, clientNonce [16]byte
++	copy(keyID[:], body[8:24])
++	copy(clientNonce[:], body[24:40])
++	user := validator.Get(keyID)
++	if user == nil {
++		return nil, errors.New("unknown AetherLink X user")
++	}
++	account := user.Account.(*MemoryAccount)
++	var hybridSecret [xwing.SharedKeySize]byte
++	hybrid := body[7]&pqFlag != 0
++	if hybrid {
++		if pqCiphertextSize != xwing.CiphertextSize || len(options.Security.XWingPrivate) != xwing.PrivateKeySize || options.Security.PQMode == PQModeOff {
++			return nil, errors.New("unsupported AetherLink X X-Wing ClientInit")
++		}
++		sharedSecret := xwing.Decapsulate(body[fixedPrefixSize:fixedPrefixSize+pqCiphertextSize], options.Security.XWingPrivate)
++		copy(hybridSecret[:], sharedSecret)
++	} else if pqCiphertextSize != 0 {
++		return nil, errors.New("unexpected AetherLink X X-Wing ciphertext")
++	}
++	message := body[:len(body)-authTagSize]
++	receivedTag := body[len(body)-authTagSize:]
++	key, err := deriveKey(combinedSecret(account.Secret, hybridSecret, hybrid), clientNonce[:], clientKeyInfo)
++	if err != nil {
++		return nil, errors.New("failed to derive client authentication key").Base(err)
++	}
++	expectedTag := calculateMAC(key, clientAuthContext, message)
++	if subtle.ConstantTimeCompare(receivedTag, expectedTag[:]) != 1 {
++		return nil, errors.New("invalid AetherLink X ClientInit binder")
++	}
++	now := time.Now()
++	clientUnix := binary.BigEndian.Uint64(body[48:56])
++	if clientUnix > math.MaxInt64 {
++		return nil, errors.New("invalid AetherLink X client time")
++	}
++	clientTime := time.Unix(int64(clientUnix), 0)
++	if clientTime.Before(now.Add(-replayTTL)) || clientTime.After(now.Add(replayTTL)) {
++		return nil, errors.New("AetherLink X ClientInit is outside the accepted clock window")
++	}
++	if options.Security.PQMode == PQModeRequired && !hybrid {
++		return nil, errors.New("AetherLink X server requires X-Wing")
++	}
++	requestedInnerAEAD := body[7]&innerAEADFlag != 0
++	if requestedInnerAEAD != options.Security.InnerAEAD {
++		return nil, errors.New("AetherLink X inner AEAD policy mismatch")
++	}
++
++	var sessionID [8]byte
++	copy(sessionID[:], body[40:48])
++	requestedTurbo := TurboSettings{MaxUDPPayload: defaultMaxUDPPayload}
++	if body[7]&turboFlag != 0 {
++		requestedTurbo = TurboSettings{
++			Enabled:              true,
++			MaxDatagramAge:       time.Duration(binary.BigEndian.Uint16(body[56:58])) * time.Millisecond,
++			DestinationCacheSize: binary.BigEndian.Uint16(body[58:60]),
++			MaxUDPPayload:        binary.BigEndian.Uint16(body[60:62]),
++		}
++		if requestedTurbo.MaxUDPPayload < 512 || requestedTurbo.MaxUDPPayload > uint16(buf.Size) ||
++			requestedTurbo.DestinationCacheSize > maxDestinationCache {
++			return nil, errors.New("invalid AetherLink X Turbo parameters")
++		}
++	}
++	availableTurbo := options.Turbo
++	if requestedTurbo.Enabled && !availableTurbo.Enabled {
++		return nil, errors.New("AetherLink X Turbo is not available on the server")
++	}
++	selectedTurbo := negotiateTurbo(requestedTurbo, availableTurbo)
++	addressReader := bytes.NewReader(message[fixedPrefixSize+pqCiphertextSize:])
++	address, port, err := addrParser.ReadAddressPort(nil, addressReader)
++	if err != nil || addressReader.Len() != 0 {
++		return nil, errors.New("invalid AetherLink X target address").Base(err)
++	}
++
++	network := net.Network_TCP
++	switch body[6] {
++	case commandTCP:
++	case commandUDP:
++		network = net.Network_UDP
++	default:
++		return nil, errors.New("unsupported AetherLink X command")
++	}
++	if address == nil || address.String() == "" || (network == net.Network_TCP && port == 0) {
++		return nil, errors.New("invalid AetherLink X target")
++	}
++	if !validator.CheckAndMarkReplay(keyID, clientNonce, now) {
++		return nil, errors.New("replayed or saturated AetherLink X ClientInit")
++	}
++	return &Request{
++		Target: net.Destination{Network: network, Address: address, Port: port},
++		User:   user,
++		Session: Session{
++			Secret:       account.Secret,
++			ClientNonce:  clientNonce,
++			SessionID:    sessionID,
++			HybridSecret: hybridSecret,
++			PQ:           hybrid,
++			InnerAEAD:    requestedInnerAEAD,
++			Turbo:        selectedTurbo,
++			PeerEpoch:    now,
++		},
++	}, nil
++}
++
++func EncodeResponseHeader(writer io.Writer, session *Session, status byte) error {
++	var serverNonce [16]byte
++	if _, err := io.ReadFull(rand.Reader, serverNonce[:]); err != nil {
++		return errors.New("failed to generate server nonce").Base(err)
++	}
++	var body bytes.Buffer
++	_, _ = body.Write(serverMagic)
++	_ = body.WriteByte(versionMajor)
++	_ = body.WriteByte(versionMinor)
++	_ = body.WriteByte(status)
++	flags := byte(0)
++	if session.Turbo.Enabled {
++		flags |= turboFlag
++	}
++	if session.PQ {
++		flags |= pqFlag
++	}
++	if session.InnerAEAD {
++		flags |= innerAEADFlag
++	}
++	_ = body.WriteByte(flags)
++	_, _ = body.Write(serverNonce[:])
++	copy(session.ServerNonce[:], serverNonce[:])
++	_, _ = body.Write(session.SessionID[:])
++	var turboParameters [6]byte
++	if session.Turbo.Enabled {
++		binary.BigEndian.PutUint16(turboParameters[0:2], durationMillis16(session.Turbo.MaxDatagramAge))
++		binary.BigEndian.PutUint16(turboParameters[2:4], session.Turbo.DestinationCacheSize)
++		binary.BigEndian.PutUint16(turboParameters[4:6], session.Turbo.MaxUDPPayload)
++	}
++	_, _ = body.Write(turboParameters[:])
++	session.LocalEpoch = time.Now()
++
++	salt := make([]byte, 0, len(session.ClientNonce)+len(serverNonce))
++	salt = append(salt, session.ClientNonce[:]...)
++	salt = append(salt, serverNonce[:]...)
++	key, err := deriveKey(combinedSecret(session.Secret, session.HybridSecret, session.PQ), salt, serverKeyInfo)
++	if err != nil {
++		return errors.New("failed to derive server authentication key").Base(err)
++	}
++	tag := calculateMAC(key, serverAuthContext, body.Bytes())
++	_, _ = body.Write(tag[:])
++	return writeFrame(writer, body.Bytes())
++}
++
++func DecodeResponseHeader(reader io.Reader, session *Session) error {
++	body, err := readFrame(reader)
++	if err != nil {
++		return errors.New("failed to read AetherLink X ServerAccept").Base(err)
++	}
++	const responseMessageSize = 38
++	if len(body) != responseMessageSize+authTagSize || !bytes.Equal(body[:4], serverMagic) {
++		return errors.New("invalid AetherLink X ServerAccept")
++	}
++	if body[4] != versionMajor || body[5] != versionMinor || body[7]&^byte(turboFlag|pqFlag|innerAEADFlag) != 0 {
++		return errors.New("unsupported AetherLink X ServerAccept version or flags")
++	}
++	if subtle.ConstantTimeCompare(body[24:32], session.SessionID[:]) != 1 {
++		return errors.New("AetherLink X session id mismatch")
++	}
++	salt := make([]byte, 0, len(session.ClientNonce)+16)
++	salt = append(salt, session.ClientNonce[:]...)
++	salt = append(salt, body[8:24]...)
++	key, err := deriveKey(combinedSecret(session.Secret, session.HybridSecret, session.PQ), salt, serverKeyInfo)
++	if err != nil {
++		return errors.New("failed to derive server authentication key").Base(err)
++	}
++	expectedTag := calculateMAC(key, serverAuthContext, body[:responseMessageSize])
++	if subtle.ConstantTimeCompare(body[responseMessageSize:], expectedTag[:]) != 1 {
++		return errors.New("invalid AetherLink X ServerAccept binder")
++	}
++	if body[6] != 0 {
++		return errors.New("AetherLink X server rejected the request with status ", body[6])
++	}
++	if session.PQ != (body[7]&pqFlag != 0) {
++		return errors.New("AetherLink X X-Wing negotiation downgrade or mismatch")
++	}
++	if session.InnerAEAD != (body[7]&innerAEADFlag != 0) {
++		return errors.New("AetherLink X inner AEAD negotiation downgrade or mismatch")
++	}
++	serverTurbo := body[7]&turboFlag != 0
++	if session.Turbo.Enabled != serverTurbo {
++		return errors.New("AetherLink X Turbo negotiation downgrade or mismatch")
++	}
++	if serverTurbo {
++		selected := TurboSettings{
++			Enabled:              true,
++			MaxDatagramAge:       time.Duration(binary.BigEndian.Uint16(body[32:34])) * time.Millisecond,
++			DestinationCacheSize: binary.BigEndian.Uint16(body[34:36]),
++			MaxUDPPayload:        binary.BigEndian.Uint16(body[36:38]),
++		}
++		if selected.MaxUDPPayload < 512 || selected.MaxUDPPayload > session.Turbo.MaxUDPPayload ||
++			selected.DestinationCacheSize > session.Turbo.DestinationCacheSize || selected.DestinationCacheSize > maxDestinationCache {
++			return errors.New("invalid AetherLink X Turbo selection")
++		}
++		session.Turbo = selected
++	}
++	session.PeerEpoch = time.Now()
++	copy(session.ServerNonce[:], body[8:24])
++	return nil
++}
++
++// PacketWriter frames each UDP datagram with its own destination.
++type PacketWriter struct {
++	Writer io.Writer
++	Target net.Destination
++	Turbo  TurboSettings
++	Epoch  time.Time
++	mu     sync.Mutex
++	cache  *destinationCache
++	seq    uint32
++}
++
++func (w *PacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
++	defer buf.ReleaseMulti(mb)
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	for _, payload := range mb {
++		if payload == nil {
++			continue
++		}
++		target := w.Target
++		if payload.UDP != nil {
++			target = *payload.UDP
++		}
++		if target.Address == nil || target.Address.String() == "" || target.Port == 0 {
++			return errors.New("invalid AetherLink X UDP destination")
++		}
++		maxPayload := int32(w.Turbo.MaxUDPPayload)
++		if maxPayload == 0 {
++			maxPayload = defaultMaxUDPPayload
++		}
++		if payload.Len() > maxPayload {
++			return errors.New("AetherLink X UDP payload is too large")
++		}
++		if w.Turbo.Enabled {
++			if err := w.writeTurboPacket(payload.Bytes(), target); err != nil {
++				return err
++			}
++			continue
++		}
++		var frame bytes.Buffer
++		if err := addrParser.WriteAddressPort(&frame, target.Address, target.Port); err != nil {
++			return err
++		}
++		var length [2]byte
++		binary.BigEndian.PutUint16(length[:], uint16(payload.Len()))
++		_, _ = frame.Write(length[:])
++		_, _ = frame.Write(payload.Bytes())
++		if err := writeAll(w.Writer, frame.Bytes()); err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
++func (w *PacketWriter) writeTurboPacket(payload []byte, target net.Destination) error {
++	if w.cache == nil {
++		w.cache = newDestinationCache(w.Turbo.DestinationCacheSize)
++	}
++	if w.Epoch.IsZero() {
++		w.Epoch = time.Now()
++	}
++	id, cached := w.cache.lookup(target)
++	if !cached {
++		id = w.cache.reserve(target)
++	}
++	var frame bytes.Buffer
++	_ = frame.WriteByte(0xa1)
++	flags := byte(0)
++	if cached {
++		flags |= 1
++	}
++	_ = frame.WriteByte(flags)
++	w.seq++
++	var number [4]byte
++	binary.BigEndian.PutUint32(number[:], w.seq)
++	_, _ = frame.Write(number[:])
++	delta := time.Since(w.Epoch).Milliseconds()
++	if delta < 0 {
++		delta = 0
++	}
++	if delta > math.MaxUint32 {
++		delta = math.MaxUint32
++	}
++	binary.BigEndian.PutUint32(number[:], uint32(delta))
++	_, _ = frame.Write(number[:])
++	var short [2]byte
++	binary.BigEndian.PutUint16(short[:], id)
++	_, _ = frame.Write(short[:])
++	if !cached {
++		if err := addrParser.WriteAddressPort(&frame, target.Address, target.Port); err != nil {
++			return err
++		}
++	}
++	binary.BigEndian.PutUint16(short[:], uint16(len(payload)))
++	_, _ = frame.Write(short[:])
++	_, _ = frame.Write(payload)
++	return writeAll(w.Writer, frame.Bytes())
++}
++
++// PacketReader restores exactly one UDP datagram per ReadMultiBuffer call.
++type PacketReader struct {
++	Reader io.Reader
++	Turbo  TurboSettings
++	Epoch  time.Time
++	cache  *destinationCache
++	seq    uint32
++}
++
++func (r *PacketReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
++	if r.Turbo.Enabled {
++		return r.readTurboPacket()
++	}
++	address, port, err := addrParser.ReadAddressPort(nil, r.Reader)
++	if err != nil {
++		return nil, errors.New("failed to read AetherLink X UDP destination").Base(err)
++	}
++	var length [2]byte
++	if _, err := io.ReadFull(r.Reader, length[:]); err != nil {
++		return nil, errors.New("failed to read AetherLink X UDP length").Base(err)
++	}
++	size := int(binary.BigEndian.Uint16(length[:]))
++	if address == nil || address.String() == "" || port == 0 {
++		return nil, errors.New("invalid AetherLink X UDP destination")
++	}
++	maxPayload := int(r.Turbo.MaxUDPPayload)
++	if maxPayload == 0 {
++		maxPayload = defaultMaxUDPPayload
++	}
++	if size > maxPayload {
++		return nil, errors.New("AetherLink X UDP payload is too large")
++	}
++	payload := buf.New()
++	target := net.UDPDestination(address, port)
++	payload.UDP = &target
++	if _, err := payload.ReadFullFrom(r.Reader, int32(size)); err != nil {
++		payload.Release()
++		return nil, errors.New("failed to read AetherLink X UDP payload").Base(err)
++	}
++	return buf.MultiBuffer{payload}, nil
++}
++
++func (r *PacketReader) readTurboPacket() (buf.MultiBuffer, error) {
++	if r.cache == nil {
++		r.cache = newDestinationCache(r.Turbo.DestinationCacheSize)
++	}
++	if r.Epoch.IsZero() {
++		r.Epoch = time.Now()
++	}
++	for {
++		var fixed [12]byte
++		if _, err := io.ReadFull(r.Reader, fixed[:]); err != nil {
++			return nil, errors.New("failed to read AetherLink X Turbo UDP header").Base(err)
++		}
++		if fixed[0] != 0xa1 || fixed[1]&^byte(1) != 0 {
++			return nil, errors.New("invalid AetherLink X Turbo UDP header")
++		}
++		sequence := binary.BigEndian.Uint32(fixed[2:6])
++		if sequence != r.seq+1 {
++			return nil, errors.New("invalid AetherLink X Turbo UDP sequence")
++		}
++		r.seq = sequence
++		delta := time.Duration(binary.BigEndian.Uint32(fixed[6:10])) * time.Millisecond
++		cacheID := binary.BigEndian.Uint16(fixed[10:12])
++
++		var destination net.Destination
++		var found bool
++		if fixed[1]&1 != 0 {
++			destination, found = r.cache.get(cacheID)
++			if !found {
++				return nil, errors.New("unknown AetherLink X Turbo destination cache id")
++			}
++		} else {
++			address, port, err := addrParser.ReadAddressPort(nil, r.Reader)
++			if err != nil || address == nil || address.String() == "" || port == 0 {
++				return nil, errors.New("invalid AetherLink X Turbo UDP destination").Base(err)
++			}
++			destination = net.UDPDestination(address, port)
++			if cacheID != 0 && !r.cache.store(cacheID, destination) {
++				return nil, errors.New("invalid AetherLink X Turbo destination cache id")
++			}
++		}
++
++		var length [2]byte
++		if _, err := io.ReadFull(r.Reader, length[:]); err != nil {
++			return nil, errors.New("failed to read AetherLink X Turbo UDP length").Base(err)
++		}
++		size := int(binary.BigEndian.Uint16(length[:]))
++		if size > int(r.Turbo.MaxUDPPayload) {
++			return nil, errors.New("AetherLink X Turbo UDP payload is too large")
++		}
++		payload := buf.New()
++		payload.UDP = &destination
++		if _, err := payload.ReadFullFrom(r.Reader, int32(size)); err != nil {
++			payload.Release()
++			return nil, errors.New("failed to read AetherLink X Turbo UDP payload").Base(err)
++		}
++		extraDelay := time.Since(r.Epoch) - delta
++		if r.Turbo.MaxDatagramAge > 0 && extraDelay > r.Turbo.MaxDatagramAge {
++			payload.Release()
++			continue
++		}
++		return buf.MultiBuffer{payload}, nil
++	}
++}
+diff --git a/proxy/aetherlinkx/protocol_test.go b/proxy/aetherlinkx/protocol_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..65566f52c0fae7466d306f385ca29eb2cdbe4031
+--- /dev/null
++++ b/proxy/aetherlinkx/protocol_test.go
+@@ -0,0 +1,415 @@
++package aetherlinkx
++
++import (
++	"bytes"
++	"encoding/base64"
++	"encoding/binary"
++	"errors"
++	"io"
++	"testing"
++	"time"
++
++	"github.com/cloudflare/circl/kem/xwing"
++	"github.com/google/go-cmp/cmp"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/protocol"
++)
++
++type shortWriter struct {
++	writer io.Writer
++	limit  int
++}
++
++func (w shortWriter) Write(value []byte) (int, error) {
++	if len(value) > w.limit {
++		value = value[:w.limit]
++	}
++	return w.writer.Write(value)
++}
++
++type zeroWriter struct{}
++
++func (zeroWriter) Write([]byte) (int, error) { return 0, nil }
++
++func testAccount(t testing.TB) *MemoryAccount {
++	t.Helper()
++	secret := make([]byte, secretSize)
++	for i := range secret {
++		secret[i] = byte(i + 1)
++	}
++	account, err := (&Account{
++		Id:     "66ad4540-b58c-4ad2-9926-ea63445a9b57",
++		Secret: base64.RawURLEncoding.EncodeToString(secret),
++	}).AsAccount()
++	if err != nil {
++		t.Fatal(err)
++	}
++	return account.(*MemoryAccount)
++}
++
++func testValidator(t testing.TB, account *MemoryAccount) *Validator {
++	t.Helper()
++	validator := new(Validator)
++	if err := validator.Add(&protocol.MemoryUser{Email: "alx@example.com", Account: account}); err != nil {
++		t.Fatal(err)
++	}
++	return validator
++}
++
++func TestAuthenticatedHandshakeRoundTrip(t *testing.T) {
++	account := testAccount(t)
++	target := net.TCPDestination(net.DomainAddress("example.com"), 443)
++	var wire bytes.Buffer
++	clientSession, err := EncodeRequestHeader(&wire, target, account)
++	if err != nil {
++		t.Fatal(err)
++	}
++	request, err := DecodeRequestHeader(&wire, testValidator(t, account))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if diff := cmp.Diff(target, request.Target); diff != "" {
++		t.Fatalf("target mismatch (-want +got):\n%s", diff)
++	}
++	if err := EncodeResponseHeader(&wire, &request.Session, 0); err != nil {
++		t.Fatal(err)
++	}
++	if err := DecodeResponseHeader(&wire, clientSession); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestFramingHandlesShortWrites(t *testing.T) {
++	account := testAccount(t)
++	var wire bytes.Buffer
++	if _, err := EncodeRequestHeader(shortWriter{writer: &wire, limit: 3}, net.TCPDestination(net.LocalHostIP, 443), account); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := DecodeRequestHeader(&wire, testValidator(t, account)); err != nil {
++		t.Fatal(err)
++	}
++	if err := writeFrame(zeroWriter{}, []byte("value")); !errors.Is(err, io.ErrShortWrite) {
++		t.Fatalf("writeFrame returned %v, want io.ErrShortWrite", err)
++	}
++}
++
++func TestSecurityConfigurationRejectsWrongSideAndWeakKeys(t *testing.T) {
++	privateKey, publicKey, err := xwing.GenerateKeyPairPacked(nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	encodedPublic := base64.RawURLEncoding.EncodeToString(publicKey)
++	encodedPrivate := base64.RawURLEncoding.EncodeToString(privateKey)
++	if _, err := ParseClientSecurity(&SecurityConfig{PqMode: "required", XwingPrivateKey: encodedPrivate}); err == nil {
++		t.Fatal("client accepted a server private key")
++	}
++	if _, err := ParseServerSecurity(&SecurityConfig{PqMode: "required", XwingPublicKey: encodedPublic}); err == nil {
++		t.Fatal("server accepted a client public key field")
++	}
++	if _, err := ParseClientSecurity(&SecurityConfig{PqMode: "off", XwingPublicKey: encodedPublic}); err == nil {
++		t.Fatal("client accepted a key while PQ was disabled")
++	}
++	zeroKey := base64.RawURLEncoding.EncodeToString(make([]byte, xwing.PrivateKeySize))
++	if _, err := ParseServerSecurity(&SecurityConfig{PqMode: "required", XwingPrivateKey: zeroKey}); err == nil {
++		t.Fatal("server accepted an all-zero private key")
++	}
++}
++
++func TestTurboNegotiation(t *testing.T) {
++	account := testAccount(t)
++	requested := TurboSettings{
++		Enabled:              true,
++		MaxDatagramAge:       35 * time.Millisecond,
++		DestinationCacheSize: 64,
++		MaxUDPPayload:        8192,
++	}
++	available := TurboSettings{
++		Enabled:              true,
++		MaxDatagramAge:       50 * time.Millisecond,
++		DestinationCacheSize: 32,
++		MaxUDPPayload:        4096,
++	}
++	var wire bytes.Buffer
++	clientSession, err := EncodeRequestHeader(&wire, net.UDPDestination(net.LocalHostIP, 53), account, HandshakeOptions{Turbo: requested})
++	if err != nil {
++		t.Fatal(err)
++	}
++	request, err := DecodeRequestHeader(&wire, testValidator(t, account), HandshakeOptions{Turbo: available})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !request.Session.Turbo.Enabled || request.Session.Turbo.DestinationCacheSize != 32 || request.Session.Turbo.MaxUDPPayload != 4096 {
++		t.Fatalf("unexpected Turbo selection: %+v", request.Session.Turbo)
++	}
++	if err := EncodeResponseHeader(&wire, &request.Session, 0); err != nil {
++		t.Fatal(err)
++	}
++	if err := DecodeResponseHeader(&wire, clientSession); err != nil {
++		t.Fatal(err)
++	}
++	if diff := cmp.Diff(request.Session.Turbo, clientSession.Turbo); diff != "" {
++		t.Fatalf("Turbo selection mismatch (-server +client):\n%s", diff)
++	}
++}
++
++func TestTurboDowngradeIsRejected(t *testing.T) {
++	account := testAccount(t)
++	requested := TurboSettings{Enabled: true, MaxDatagramAge: 35 * time.Millisecond, DestinationCacheSize: 8, MaxUDPPayload: 1024}
++	var wire bytes.Buffer
++	if _, err := EncodeRequestHeader(&wire, net.UDPDestination(net.LocalHostIP, 53), account, HandshakeOptions{Turbo: requested}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := DecodeRequestHeader(&wire, testValidator(t, account)); err == nil {
++		t.Fatal("server accepted a Turbo request while Turbo was unavailable")
++	}
++}
++
++func TestInnerAEADPolicyMismatchIsRejectedBeforeReplayMark(t *testing.T) {
++	account := testAccount(t)
++	validator := testValidator(t, account)
++	var wire bytes.Buffer
++	if _, err := EncodeRequestHeader(&wire, net.TCPDestination(net.LocalHostIP, 443), account, HandshakeOptions{
++		Security: SecuritySettings{InnerAEAD: true},
++	}); err != nil {
++		t.Fatal(err)
++	}
++	encoded := append([]byte(nil), wire.Bytes()...)
++	if _, err := DecodeRequestHeader(bytes.NewReader(encoded), validator); err == nil {
++		t.Fatal("server accepted an inner AEAD policy mismatch")
++	}
++	if _, err := DecodeRequestHeader(bytes.NewReader(encoded), validator, HandshakeOptions{
++		Security: SecuritySettings{InnerAEAD: true},
++	}); err != nil {
++		t.Fatalf("policy rejection polluted the replay cache: %v", err)
++	}
++}
++
++func TestXWingAndInnerAEADRoundTrip(t *testing.T) {
++	privateKey, publicKey, err := xwing.GenerateKeyPairPacked(nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	clientSecurity := SecuritySettings{PQMode: PQModeRequired, XWingPublic: publicKey, InnerAEAD: true}
++	serverSecurity := SecuritySettings{PQMode: PQModeRequired, XWingPrivate: privateKey, InnerAEAD: true}
++	account := testAccount(t)
++	var handshake bytes.Buffer
++	clientSession, err := EncodeRequestHeader(&handshake, net.TCPDestination(net.LocalHostIP, 443), account, HandshakeOptions{Security: clientSecurity})
++	if err != nil {
++		t.Fatal(err)
++	}
++	request, err := DecodeRequestHeader(&handshake, testValidator(t, account), HandshakeOptions{Security: serverSecurity})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !request.Session.PQ || !request.Session.InnerAEAD {
++		t.Fatalf("security profile was not selected: %+v", request.Session)
++	}
++	if err := EncodeResponseHeader(&handshake, &request.Session, 0); err != nil {
++		t.Fatal(err)
++	}
++	if err := DecodeResponseHeader(&handshake, clientSession); err != nil {
++		t.Fatal(err)
++	}
++
++	payload := make([]byte, int(buf.Size)+1234)
++	for index := range payload {
++		payload[index] = byte(index)
++	}
++	var encrypted bytes.Buffer
++	_, clientWriter, err := newRecordLayer(&encrypted, &encrypted, clientSession, true, StealthSettings{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	serverReader, _, err := newRecordLayer(&encrypted, &encrypted, &request.Session, false, StealthSettings{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := clientWriter.Write(payload); err != nil {
++		t.Fatal(err)
++	}
++	decoded := make([]byte, len(payload))
++	if _, err := io.ReadFull(serverReader, decoded); err != nil {
++		t.Fatal(err)
++	}
++	if diff := cmp.Diff(payload, decoded); diff != "" {
++		t.Fatalf("inner AEAD payload mismatch (-want +got):\n%s", diff)
++	}
++}
++
++func TestInnerAEADTamperIsRejected(t *testing.T) {
++	session := &Session{InnerAEAD: true}
++	for index := range session.Secret {
++		session.Secret[index] = byte(index + 1)
++	}
++	for index := range session.ClientNonce {
++		session.ClientNonce[index] = byte(index + 2)
++		session.ServerNonce[index] = byte(index + 3)
++	}
++	for index := range session.SessionID {
++		session.SessionID[index] = byte(index + 4)
++	}
++	var encrypted bytes.Buffer
++	_, clientWriter, err := newRecordLayer(&encrypted, &encrypted, session, true, StealthSettings{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := clientWriter.Write([]byte("authenticated")); err != nil {
++		t.Fatal(err)
++	}
++	wire := encrypted.Bytes()
++	wire[len(wire)-1] ^= 1
++	serverReader, _, err := newRecordLayer(bytes.NewReader(wire), io.Discard, session, false, StealthSettings{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := io.ReadAll(serverReader); err == nil {
++		t.Fatal("tampered inner AEAD record was accepted")
++	}
++}
++
++func TestClientInitTamperAndReplayAreRejected(t *testing.T) {
++	account := testAccount(t)
++	target := net.TCPDestination(net.LocalHostIP, 80)
++	var original bytes.Buffer
++	if _, err := EncodeRequestHeader(&original, target, account); err != nil {
++		t.Fatal(err)
++	}
++	wire := append([]byte(nil), original.Bytes()...)
++	wire[len(wire)-1] ^= 0x01
++	if _, err := DecodeRequestHeader(bytes.NewReader(wire), testValidator(t, account)); err == nil {
++		t.Fatal("tampered ClientInit was accepted")
++	}
++
++	validator := testValidator(t, account)
++	if _, err := DecodeRequestHeader(bytes.NewReader(original.Bytes()), validator); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := DecodeRequestHeader(bytes.NewReader(original.Bytes()), validator); err == nil {
++		t.Fatal("replayed ClientInit was accepted")
++	}
++}
++
++func TestStaleAuthenticatedClientInitIsRejected(t *testing.T) {
++	account := testAccount(t)
++	var wire bytes.Buffer
++	if _, err := EncodeRequestHeader(&wire, net.TCPDestination(net.LocalHostIP, 80), account); err != nil {
++		t.Fatal(err)
++	}
++	encoded := append([]byte(nil), wire.Bytes()...)
++	body := encoded[2:]
++	binary.BigEndian.PutUint64(body[48:56], uint64(time.Now().Add(-3*replayTTL).Unix()))
++	var nonce [16]byte
++	copy(nonce[:], body[24:40])
++	key, err := deriveKey(account.Secret[:], nonce[:], clientKeyInfo)
++	if err != nil {
++		t.Fatal(err)
++	}
++	message := body[:len(body)-authTagSize]
++	tag := calculateMAC(key, clientAuthContext, message)
++	copy(body[len(body)-authTagSize:], tag[:])
++	if _, err := DecodeRequestHeader(bytes.NewReader(encoded), testValidator(t, account)); err == nil {
++		t.Fatal("stale authenticated ClientInit was accepted")
++	}
++}
++
++func TestUDPPacketRoundTrip(t *testing.T) {
++	target := net.UDPDestination(net.DomainAddress("game.example"), 27015)
++	payload := buf.FromBytes([]byte("game-packet"))
++	payload.UDP = &target
++	var wire bytes.Buffer
++	if err := (&PacketWriter{Writer: &wire, Target: target}).WriteMultiBuffer(buf.MultiBuffer{payload}); err != nil {
++		t.Fatal(err)
++	}
++	decoded, err := (&PacketReader{Reader: &wire}).ReadMultiBuffer()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer buf.ReleaseMulti(decoded)
++	if len(decoded) != 1 || decoded[0].UDP == nil {
++		t.Fatal("invalid decoded UDP packet")
++	}
++	if diff := cmp.Diff(target, *decoded[0].UDP); diff != "" {
++		t.Fatalf("UDP target mismatch (-want +got):\n%s", diff)
++	}
++	if got := string(decoded[0].Bytes()); got != "game-packet" {
++		t.Fatalf("UDP payload mismatch: %q", got)
++	}
++}
++
++func TestTurboUDPDestinationCompressionAndDeadlineDrop(t *testing.T) {
++	turbo := TurboSettings{Enabled: true, MaxDatagramAge: 5 * time.Millisecond, DestinationCacheSize: 8, MaxUDPPayload: 2048}
++	target := net.UDPDestination(net.DomainAddress("game.example"), 27015)
++	epoch := time.Now()
++	var wire bytes.Buffer
++	writer := &PacketWriter{Writer: &wire, Target: target, Turbo: turbo, Epoch: epoch}
++	first := buf.FromBytes([]byte("stale"))
++	first.UDP = &target
++	if err := writer.WriteMultiBuffer(buf.MultiBuffer{first}); err != nil {
++		t.Fatal(err)
++	}
++	firstFrameSize := wire.Len()
++	time.Sleep(20 * time.Millisecond)
++	second := buf.FromBytes([]byte("fresh"))
++	second.UDP = &target
++	if err := writer.WriteMultiBuffer(buf.MultiBuffer{second}); err != nil {
++		t.Fatal(err)
++	}
++	secondFrameSize := wire.Len() - firstFrameSize
++	if secondFrameSize >= firstFrameSize {
++		t.Fatalf("cached destination did not reduce frame size: first=%d second=%d", firstFrameSize, secondFrameSize)
++	}
++
++	reader := &PacketReader{Reader: &wire, Turbo: turbo, Epoch: epoch}
++	decoded, err := reader.ReadMultiBuffer()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer buf.ReleaseMulti(decoded)
++	if got := string(decoded[0].Bytes()); got != "fresh" {
++		t.Fatalf("deadline-aware reader returned %q, want fresh packet", got)
++	}
++}
++
++func FuzzDecodeRequestHeader(f *testing.F) {
++	account := testAccount(f)
++	var valid bytes.Buffer
++	_, _ = EncodeRequestHeader(&valid, net.TCPDestination(net.LocalHostIP, 443), account)
++	f.Add([]byte{})
++	f.Add([]byte{0, 1, 0})
++	f.Add(valid.Bytes())
++	f.Fuzz(func(t *testing.T, data []byte) {
++		validator := testValidator(t, account)
++		_, _ = DecodeRequestHeader(bytes.NewReader(data), validator)
++	})
++}
++
++func FuzzRecordReader(f *testing.F) {
++	session := &Session{InnerAEAD: true}
++	for index := range session.Secret {
++		session.Secret[index] = byte(index + 1)
++	}
++	for index := range session.ClientNonce {
++		session.ClientNonce[index] = byte(index + 2)
++		session.ServerNonce[index] = byte(index + 3)
++	}
++	for index := range session.SessionID {
++		session.SessionID[index] = byte(index + 4)
++	}
++	var valid bytes.Buffer
++	_, writer, err := newRecordLayer(bytes.NewReader(nil), &valid, session, true, StealthSettings{})
++	if err != nil {
++		f.Fatal(err)
++	}
++	_, _ = writer.Write([]byte("valid record"))
++	f.Add([]byte{})
++	f.Add([]byte{0xff, 0xff})
++	f.Add(valid.Bytes())
++	f.Fuzz(func(t *testing.T, data []byte) {
++		reader, _, err := newRecordLayer(bytes.NewReader(data), io.Discard, session, false, StealthSettings{})
++		if err != nil {
++			t.Fatal(err)
++		}
++		_, _ = io.ReadAll(reader)
++	})
++}
+diff --git a/proxy/aetherlinkx/record.go b/proxy/aetherlinkx/record.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..9b171667aac6e5c90a909f05a4bce676e61d13da
+--- /dev/null
++++ b/proxy/aetherlinkx/record.go
+@@ -0,0 +1,170 @@
++package aetherlinkx
++
++import (
++	"crypto/cipher"
++	"crypto/rand"
++	"encoding/binary"
++	"io"
++	"math"
++	"sync"
++
++	"golang.org/x/crypto/chacha20poly1305"
++
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/errors"
++)
++
++var (
++	clientToServerRecordInfo = []byte("AetherLink X client-to-server record key v1")
++	serverToClientRecordInfo = []byte("AetherLink X server-to-client record key v1")
++)
++
++type recordReader struct {
++	reader  io.Reader
++	aead    cipher.AEAD
++	counter uint64
++	pending []byte
++}
++
++type recordWriter struct {
++	writer  io.Writer
++	aead    cipher.AEAD
++	stealth StealthSettings
++	counter uint64
++	mu      sync.Mutex
++}
++
++func newRecordLayer(reader io.Reader, writer io.Writer, session *Session, client bool, stealth StealthSettings) (io.Reader, io.Writer, error) {
++	salt := make([]byte, 0, len(session.ClientNonce)+len(session.ServerNonce)+len(session.SessionID))
++	salt = append(salt, session.ClientNonce[:]...)
++	salt = append(salt, session.ServerNonce[:]...)
++	salt = append(salt, session.SessionID[:]...)
++	secret := combinedSecret(session.Secret, session.HybridSecret, session.PQ)
++	c2sKey, err := deriveKey(secret, salt, clientToServerRecordInfo)
++	if err != nil {
++		return nil, nil, errors.New("failed to derive AetherLink X uplink record key").Base(err)
++	}
++	s2cKey, err := deriveKey(secret, salt, serverToClientRecordInfo)
++	if err != nil {
++		return nil, nil, errors.New("failed to derive AetherLink X downlink record key").Base(err)
++	}
++	readKey, writeKey := s2cKey, c2sKey
++	if !client {
++		readKey, writeKey = c2sKey, s2cKey
++	}
++	readAEAD, err := chacha20poly1305.New(readKey[:])
++	if err != nil {
++		return nil, nil, err
++	}
++	writeAEAD, err := chacha20poly1305.New(writeKey[:])
++	if err != nil {
++		return nil, nil, err
++	}
++	if stealth.MaxChunkSize == 0 {
++		stealth.MaxChunkSize = int(buf.Size) - recordContentHeaderSize
++	}
++	return &recordReader{reader: reader, aead: readAEAD}, &recordWriter{writer: writer, aead: writeAEAD, stealth: stealth}, nil
++}
++
++func recordNonce(counter uint64) [chacha20poly1305.NonceSize]byte {
++	var nonce [chacha20poly1305.NonceSize]byte
++	binary.BigEndian.PutUint64(nonce[4:], counter)
++	return nonce
++}
++
++func (r *recordReader) Read(target []byte) (int, error) {
++	if len(target) == 0 {
++		return 0, nil
++	}
++	if len(r.pending) == 0 {
++		if r.counter == math.MaxUint64 {
++			return 0, errors.New("AetherLink X record nonce exhausted")
++		}
++		var header [2]byte
++		if _, err := io.ReadFull(r.reader, header[:]); err != nil {
++			return 0, err
++		}
++		length := int(binary.BigEndian.Uint16(header[:]))
++		if length < recordContentHeaderSize || length > int(buf.Size) {
++			return 0, errors.New("invalid AetherLink X record length")
++		}
++		ciphertext := make([]byte, length+r.aead.Overhead())
++		if _, err := io.ReadFull(r.reader, ciphertext); err != nil {
++			return 0, err
++		}
++		nonce := recordNonce(r.counter)
++		plaintext, err := r.aead.Open(nil, nonce[:], ciphertext, header[:])
++		if err != nil {
++			return 0, errors.New("invalid AetherLink X encrypted record").Base(err)
++		}
++		if len(plaintext) < recordContentHeaderSize {
++			return 0, errors.New("invalid AetherLink X record content header")
++		}
++		contentLength := int(binary.BigEndian.Uint16(plaintext[0:2]))
++		paddingLength := int(binary.BigEndian.Uint16(plaintext[2:4]))
++		if recordContentHeaderSize+contentLength+paddingLength != len(plaintext) || contentLength == 0 {
++			return 0, errors.New("invalid AetherLink X record content lengths")
++		}
++		r.counter++
++		r.pending = plaintext[recordContentHeaderSize : recordContentHeaderSize+contentLength]
++	}
++	written := copy(target, r.pending)
++	r.pending = r.pending[written:]
++	return written, nil
++}
++
++func (w *recordWriter) Write(payload []byte) (int, error) {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	total := 0
++	for len(payload) > 0 {
++		if w.counter == math.MaxUint64 {
++			return total, errors.New("AetherLink X record nonce exhausted")
++		}
++		contentLength, err := w.stealth.chunkSize(len(payload))
++		if err != nil {
++			return total, errors.New("failed to select AetherLink X record chunk size").Base(err)
++		}
++		paddingLength, err := w.stealth.paddingSize()
++		if err != nil {
++			return total, errors.New("failed to select AetherLink X record padding").Base(err)
++		}
++		plaintext := make([]byte, recordContentHeaderSize+contentLength+paddingLength)
++		binary.BigEndian.PutUint16(plaintext[0:2], uint16(contentLength))
++		binary.BigEndian.PutUint16(plaintext[2:4], uint16(paddingLength))
++		copy(plaintext[recordContentHeaderSize:], payload[:contentLength])
++		if paddingLength > 0 {
++			if _, err := io.ReadFull(rand.Reader, plaintext[recordContentHeaderSize+contentLength:]); err != nil {
++				return total, errors.New("failed to generate AetherLink X record padding").Base(err)
++			}
++		}
++		var header [2]byte
++		binary.BigEndian.PutUint16(header[:], uint16(len(plaintext)))
++		nonce := recordNonce(w.counter)
++		ciphertext := w.aead.Seal(nil, nonce[:], plaintext, header[:])
++		if err := writeAll(w.writer, header[:]); err != nil {
++			return total, err
++		}
++		if err := writeAll(w.writer, ciphertext); err != nil {
++			return total, err
++		}
++		w.counter++
++		total += contentLength
++		payload = payload[contentLength:]
++	}
++	return total, nil
++}
++
++func writeAll(writer io.Writer, value []byte) error {
++	for len(value) > 0 {
++		written, err := writer.Write(value)
++		if err != nil {
++			return err
++		}
++		if written <= 0 {
++			return io.ErrShortWrite
++		}
++		value = value[written:]
++	}
++	return nil
++}
+diff --git a/proxy/aetherlinkx/security.go b/proxy/aetherlinkx/security.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..740dc7b3eda8bc32e1bf437b7f9881e5ccea6b4d
+--- /dev/null
++++ b/proxy/aetherlinkx/security.go
+@@ -0,0 +1,136 @@
++package aetherlinkx
++
++import (
++	"encoding/base64"
++	"strings"
++
++	"github.com/cloudflare/circl/kem/xwing"
++	"github.com/xtls/xray-core/common/errors"
++)
++
++type PQMode byte
++
++const (
++	PQModeOff PQMode = iota
++	PQModePrefer
++	PQModeRequired
++)
++
++type SecuritySettings struct {
++	PQMode       PQMode
++	XWingPublic  []byte
++	XWingPrivate []byte
++	InnerAEAD    bool
++}
++
++type HandshakeOptions struct {
++	Turbo    TurboSettings
++	Security SecuritySettings
++}
++
++func parsePQMode(value string) (PQMode, error) {
++	switch strings.ToLower(strings.TrimSpace(value)) {
++	case "", "off":
++		return PQModeOff, nil
++	case "prefer":
++		return PQModePrefer, nil
++	case "required":
++		return PQModeRequired, nil
++	default:
++		return PQModeOff, errors.New("unknown AetherLink X pqMode: ", value)
++	}
++}
++
++func decodeBase64URL(value string, expected int, field string) ([]byte, error) {
++	if value == "" {
++		return nil, nil
++	}
++	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(value))
++	if err != nil {
++		decoded, err = base64.URLEncoding.DecodeString(strings.TrimSpace(value))
++	}
++	if err != nil || len(decoded) != expected {
++		return nil, errors.New("AetherLink X ", field, " must contain exactly ", expected, " bytes as Base64URL")
++	}
++	return decoded, nil
++}
++
++func ParseClientSecurity(config *SecurityConfig) (SecuritySettings, error) {
++	if config == nil {
++		return SecuritySettings{}, nil
++	}
++	mode, err := parsePQMode(config.PqMode)
++	if err != nil {
++		return SecuritySettings{}, err
++	}
++	if config.XwingPrivateKey != "" {
++		return SecuritySettings{}, errors.New("AetherLink X client config must not contain xwingPrivateKey")
++	}
++	publicKey, err := decodeBase64URL(config.XwingPublicKey, xwing.PublicKeySize, "xwingPublicKey")
++	if err != nil {
++		return SecuritySettings{}, err
++	}
++	if mode == PQModeOff && len(publicKey) != 0 {
++		return SecuritySettings{}, errors.New("AetherLink X xwingPublicKey requires pqMode prefer or required")
++	}
++	if len(publicKey) != 0 {
++		var parsed xwing.PublicKey
++		if err := parsed.Unpack(publicKey); err != nil {
++			return SecuritySettings{}, errors.New("invalid AetherLink X X-Wing public key").Base(err)
++		}
++	}
++	if mode == PQModeRequired && len(publicKey) == 0 {
++		return SecuritySettings{}, errors.New("AetherLink X pqMode required needs xwingPublicKey")
++	}
++	if mode == PQModePrefer && len(publicKey) == 0 {
++		mode = PQModeOff
++	}
++	return SecuritySettings{PQMode: mode, XWingPublic: publicKey, InnerAEAD: config.InnerAead}, nil
++}
++
++func ParseServerSecurity(config *SecurityConfig) (SecuritySettings, error) {
++	if config == nil {
++		return SecuritySettings{}, nil
++	}
++	mode, err := parsePQMode(config.PqMode)
++	if err != nil {
++		return SecuritySettings{}, err
++	}
++	if config.XwingPublicKey != "" {
++		return SecuritySettings{}, errors.New("AetherLink X server config must not contain xwingPublicKey")
++	}
++	privateKey, err := decodeBase64URL(config.XwingPrivateKey, xwing.PrivateKeySize, "xwingPrivateKey")
++	if err != nil {
++		return SecuritySettings{}, err
++	}
++	if mode == PQModeOff && len(privateKey) != 0 {
++		return SecuritySettings{}, errors.New("AetherLink X xwingPrivateKey requires pqMode prefer or required")
++	}
++	if len(privateKey) != 0 && isAllZero(privateKey) {
++		return SecuritySettings{}, errors.New("AetherLink X xwingPrivateKey must not be all zero")
++	}
++	if mode == PQModeRequired && len(privateKey) == 0 {
++		return SecuritySettings{}, errors.New("AetherLink X pqMode required needs xwingPrivateKey")
++	}
++	if mode == PQModePrefer && len(privateKey) == 0 {
++		mode = PQModeOff
++	}
++	return SecuritySettings{PQMode: mode, XWingPrivate: privateKey, InnerAEAD: config.InnerAead}, nil
++}
++
++func isAllZero(value []byte) bool {
++	var combined byte
++	for _, item := range value {
++		combined |= item
++	}
++	return combined == 0
++}
++
++func combinedSecret(accountSecret [secretSize]byte, hybridSecret [xwing.SharedKeySize]byte, hybrid bool) []byte {
++	combined := make([]byte, 0, secretSize+xwing.SharedKeySize)
++	combined = append(combined, accountSecret[:]...)
++	if hybrid {
++		combined = append(combined, hybridSecret[:]...)
++	}
++	return combined
++}
+diff --git a/proxy/aetherlinkx/server.go b/proxy/aetherlinkx/server.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..b3cb2131ae8e55196d3cd520d7946d9f29e1ba9b
+--- /dev/null
++++ b/proxy/aetherlinkx/server.go
+@@ -0,0 +1,232 @@
++package aetherlinkx
++
++import (
++	"context"
++	"io"
++	"time"
++
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/log"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/protocol"
++	udpProtocol "github.com/xtls/xray-core/common/protocol/udp"
++	"github.com/xtls/xray-core/common/session"
++	"github.com/xtls/xray-core/common/signal"
++	"github.com/xtls/xray-core/common/task"
++	core "github.com/xtls/xray-core/core"
++	"github.com/xtls/xray-core/features/policy"
++	"github.com/xtls/xray-core/features/routing"
++	"github.com/xtls/xray-core/transport/internet/stat"
++	"github.com/xtls/xray-core/transport/internet/udp"
++)
++
++// Server implements the AetherLink X inbound proxy.
++type Server struct {
++	policyManager    policy.Manager
++	validator        *Validator
++	handshakeTimeout time.Duration
++	turbo            TurboSettings
++	security         SecuritySettings
++	stealth          StealthSettings
++}
++
++func NewServer(ctx context.Context, config *ServerConfig) (*Server, error) {
++	validator := new(Validator)
++	for _, rawUser := range config.Users {
++		user, err := rawUser.ToMemoryUser()
++		if err != nil {
++			return nil, errors.New("failed to parse AetherLink X user").Base(err)
++		}
++		if err := validator.Add(user); err != nil {
++			return nil, errors.New("failed to add AetherLink X user").Base(err)
++		}
++	}
++	if validator.GetCount() == 0 {
++		return nil, errors.New("AetherLink X requires at least one user")
++	}
++	timeout := time.Duration(config.HandshakeTimeoutSeconds) * time.Second
++	security, err := ParseServerSecurity(config.Security)
++	if err != nil {
++		return nil, err
++	}
++	stealth, err := ParseStealthConfig(config.Stealth)
++	if err != nil {
++		return nil, err
++	}
++	if stealth.Enabled && !security.InnerAEAD {
++		return nil, errors.New("AetherLink X Stealth requires innerAead")
++	}
++	v := core.MustFromContext(ctx)
++	return &Server{
++		policyManager:    v.GetFeature(policy.ManagerType()).(policy.Manager),
++		validator:        validator,
++		handshakeTimeout: timeout,
++		turbo:            normalizeTurbo(config.Turbo),
++		security:         security,
++		stealth:          stealth,
++	}, nil
++}
++
++func (s *Server) AddUser(_ context.Context, user *protocol.MemoryUser) error {
++	return s.validator.Add(user)
++}
++
++func (s *Server) RemoveUser(_ context.Context, email string) error {
++	return s.validator.Del(email)
++}
++
++func (s *Server) GetUser(_ context.Context, email string) *protocol.MemoryUser {
++	return s.validator.GetByEmail(email)
++}
++
++func (s *Server) GetUsers(context.Context) []*protocol.MemoryUser {
++	return s.validator.GetAll()
++}
++
++func (s *Server) GetUsersCount(context.Context) int64 {
++	return s.validator.GetCount()
++}
++
++func (s *Server) Network() []net.Network {
++	return []net.Network{net.Network_TCP, net.Network_UNIX}
++}
++
++// Process implements proxy.Inbound.
++func (s *Server) Process(ctx context.Context, _ net.Network, connection stat.Connection, dispatcher routing.Dispatcher) error {
++	basePolicy := s.policyManager.ForLevel(0)
++	handshakeTimeout := s.handshakeTimeout
++	if handshakeTimeout <= 0 {
++		handshakeTimeout = basePolicy.Timeouts.Handshake
++	}
++	if err := connection.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
++		return errors.New("failed to set AetherLink X handshake deadline").Base(err)
++	}
++	request, err := DecodeRequestHeader(connection, s.validator, HandshakeOptions{Turbo: s.turbo, Security: s.security})
++	if err != nil {
++		log.Record(&log.AccessMessage{
++			From:   connection.RemoteAddr(),
++			Status: log.AccessRejected,
++			Reason: err,
++		})
++		return err
++	}
++	if !request.Target.IsValid() {
++		return errors.New("invalid AetherLink X destination")
++	}
++	if err := EncodeResponseHeader(connection, &request.Session, 0); err != nil {
++		return err
++	}
++	if err := connection.SetReadDeadline(time.Time{}); err != nil {
++		return errors.New("failed to clear AetherLink X handshake deadline").Base(err)
++	}
++	var payloadReader io.Reader = connection
++	var payloadWriter io.Writer = connection
++	if request.Session.InnerAEAD {
++		payloadReader, payloadWriter, err = newRecordLayer(connection, connection, &request.Session, false, s.stealth)
++		if err != nil {
++			return err
++		}
++	}
++
++	inbound := session.InboundFromContext(ctx)
++	inbound.Name = "aetherlinkx"
++	inbound.CanSpliceCopy = 3
++	inbound.User = request.User
++	ctx = log.ContextWithAccessMessage(ctx, &log.AccessMessage{
++		From:   connection.RemoteAddr(),
++		To:     request.Target,
++		Status: log.AccessAccepted,
++		Email:  request.User.Email,
++	})
++	errors.LogInfo(ctx, "AetherLink X request for ", request.Target)
++
++	sessionPolicy := s.policyManager.ForLevel(request.User.Level)
++	if request.Target.Network == net.Network_UDP {
++		return s.handleUDP(ctx, sessionPolicy, payloadReader, payloadWriter, request.Target, &request.Session, dispatcher)
++	}
++	return s.handleTCP(ctx, sessionPolicy, payloadReader, payloadWriter, request.Target, dispatcher)
++}
++
++func (s *Server) handleTCP(ctx context.Context, sessionPolicy policy.Session, payloadReader io.Reader, payloadWriter io.Writer, destination net.Destination, dispatcher routing.Dispatcher) error {
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	timer := signal.CancelAfterInactivity(ctx, cancel, sessionPolicy.Timeouts.ConnectionIdle)
++	defer timer.SetTimeout(0)
++	ctx = policy.ContextWithBufferPolicy(ctx, sessionPolicy.Buffer)
++
++	link, err := dispatcher.Dispatch(ctx, destination)
++	if err != nil {
++		return errors.New("failed to dispatch AetherLink X request").Base(err)
++	}
++	uplink := func() error {
++		defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
++		if err := buf.Copy(buf.NewReader(payloadReader), link.Writer, buf.UpdateActivity(timer)); err != nil {
++			return errors.New("failed to read AetherLink X request payload").Base(err)
++		}
++		return nil
++	}
++	downlink := func() error {
++		defer timer.SetTimeout(sessionPolicy.Timeouts.UplinkOnly)
++		if err := buf.Copy(link.Reader, buf.NewWriter(payloadWriter), buf.UpdateActivity(timer)); err != nil {
++			return errors.New("failed to write AetherLink X response payload").Base(err)
++		}
++		return nil
++	}
++	if err := task.Run(ctx, task.OnSuccess(uplink, task.Close(link.Writer)), downlink); err != nil {
++		common.Must(common.Interrupt(link.Reader))
++		common.Must(common.Interrupt(link.Writer))
++		return errors.New("AetherLink X TCP connection ended").Base(err)
++	}
++	return nil
++}
++
++func (s *Server) handleUDP(ctx context.Context, sessionPolicy policy.Session, payloadReader io.Reader, payloadWriter io.Writer, initialTarget net.Destination, alxSession *Session, dispatcher routing.Dispatcher) error {
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	timer := signal.CancelAfterInactivity(ctx, cancel, sessionPolicy.Timeouts.ConnectionIdle)
++	defer timer.SetTimeout(0)
++	reader := &PacketReader{Reader: payloadReader, Turbo: alxSession.Turbo, Epoch: alxSession.PeerEpoch}
++	writer := &PacketWriter{Writer: payloadWriter, Target: initialTarget, Turbo: alxSession.Turbo, Epoch: alxSession.LocalEpoch}
++
++	udpServer := udp.NewDispatcher(dispatcher, func(_ context.Context, packet *udpProtocol.Packet) {
++		payload := packet.Payload
++		if payload.UDP == nil {
++			payload.UDP = &packet.Source
++		}
++		if err := writer.WriteMultiBuffer(buf.MultiBuffer{payload}); err != nil {
++			errors.LogWarningInner(ctx, err, "failed to write AetherLink X UDP response")
++			cancel()
++			return
++		}
++		timer.Update()
++	})
++	defer udpServer.RemoveRay()
++
++	for {
++		mb, err := reader.ReadMultiBuffer()
++		if err != nil {
++			if errors.Cause(err) == io.EOF {
++				return nil
++			}
++			return err
++		}
++		_, payload := buf.SplitFirst(mb)
++		if payload == nil {
++			continue
++		}
++		timer.Update()
++		destination := initialTarget
++		if payload.UDP != nil {
++			destination = *payload.UDP
++		}
++		udpServer.Dispatch(ctx, destination, payload)
++	}
++}
++
++func init() {
++	common.Must(common.RegisterConfig((*ServerConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
++		return NewServer(ctx, config.(*ServerConfig))
++	}))
++}
+diff --git a/proxy/aetherlinkx/stealth.go b/proxy/aetherlinkx/stealth.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..be95ed1b7e08a699df94f1d8874730aecb5a6e29
+--- /dev/null
++++ b/proxy/aetherlinkx/stealth.go
+@@ -0,0 +1,101 @@
++package aetherlinkx
++
++import (
++	"crypto/rand"
++	"encoding/binary"
++
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/errors"
++)
++
++const recordContentHeaderSize = 4
++
++type StealthSettings struct {
++	Enabled                   bool
++	MinChunkSize              int
++	MaxChunkSize              int
++	MaxPaddingBytes           int
++	PaddingProbabilityPercent uint32
++}
++
++func ParseStealthConfig(config *StealthConfig) (StealthSettings, error) {
++	if config == nil || !config.Enabled {
++		return StealthSettings{MaxChunkSize: int(buf.Size) - recordContentHeaderSize}, nil
++	}
++	minChunk := int(config.MinChunkSize)
++	maxChunk := int(config.MaxChunkSize)
++	maxPadding := int(config.MaxPaddingBytes)
++	probability := config.PaddingProbabilityPercent
++	if minChunk == 0 {
++		minChunk = 256
++	}
++	if maxChunk == 0 {
++		maxChunk = 1200
++	}
++	if maxPadding == 0 {
++		maxPadding = 64
++	}
++	if probability == 0 {
++		probability = 25
++	}
++	if minChunk < 64 || maxChunk < minChunk || maxChunk > int(buf.Size)-recordContentHeaderSize {
++		return StealthSettings{}, errors.New("invalid AetherLink X Stealth chunk range")
++	}
++	if maxPadding > 4096 || maxChunk+maxPadding+recordContentHeaderSize > int(buf.Size) {
++		return StealthSettings{}, errors.New("AetherLink X Stealth padding exceeds record capacity")
++	}
++	if probability > 100 {
++		return StealthSettings{}, errors.New("AetherLink X Stealth padding probability must not exceed 100")
++	}
++	return StealthSettings{
++		Enabled:                   true,
++		MinChunkSize:              minChunk,
++		MaxChunkSize:              maxChunk,
++		MaxPaddingBytes:           maxPadding,
++		PaddingProbabilityPercent: probability,
++	}, nil
++}
++
++func randomBounded(maxInclusive int) (int, error) {
++	if maxInclusive <= 0 {
++		return 0, nil
++	}
++	var value [4]byte
++	if _, err := rand.Read(value[:]); err != nil {
++		return 0, err
++	}
++	return int(binary.BigEndian.Uint32(value[:]) % uint32(maxInclusive+1)), nil
++}
++
++func (s StealthSettings) chunkSize(remaining int) (int, error) {
++	if !s.Enabled {
++		if remaining > s.MaxChunkSize {
++			return s.MaxChunkSize, nil
++		}
++		return remaining, nil
++	}
++	span := s.MaxChunkSize - s.MinChunkSize
++	offset, err := randomBounded(span)
++	if err != nil {
++		return 0, err
++	}
++	size := s.MinChunkSize + offset
++	if remaining < size {
++		size = remaining
++	}
++	return size, nil
++}
++
++func (s StealthSettings) paddingSize() (int, error) {
++	if !s.Enabled || s.MaxPaddingBytes == 0 || s.PaddingProbabilityPercent == 0 {
++		return 0, nil
++	}
++	roll, err := randomBounded(99)
++	if err != nil {
++		return 0, err
++	}
++	if uint32(roll) >= s.PaddingProbabilityPercent {
++		return 0, nil
++	}
++	return randomBounded(s.MaxPaddingBytes)
++}
+diff --git a/proxy/aetherlinkx/turbo.go b/proxy/aetherlinkx/turbo.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..781adecca3e132bd599c57e415a912b1553e426b
+--- /dev/null
++++ b/proxy/aetherlinkx/turbo.go
+@@ -0,0 +1,146 @@
++package aetherlinkx
++
++import (
++	"math"
++	"time"
++
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/net"
++)
++
++const (
++	defaultTurboMaxDatagramAge = 35 * time.Millisecond
++	defaultDestinationCache    = 64
++	defaultMaxUDPPayload       = 8192
++	maxDestinationCache        = 1024
++)
++
++// TurboSettings is the negotiated per-connection data-plane configuration.
++// Transport sockopts are applied by infra/conf and are intentionally not part
++// of this structure.
++type TurboSettings struct {
++	Enabled              bool
++	MaxDatagramAge       time.Duration
++	DestinationCacheSize uint16
++	MaxUDPPayload        uint16
++}
++
++type destinationCache struct {
++	entries []net.Destination
++	keys    map[string]uint16
++	next    uint16
++}
++
++func newDestinationCache(size uint16) *destinationCache {
++	return &destinationCache{
++		entries: make([]net.Destination, int(size)+1),
++		keys:    make(map[string]uint16, size),
++		next:    1,
++	}
++}
++
++func (c *destinationCache) lookup(destination net.Destination) (uint16, bool) {
++	if len(c.entries) <= 1 {
++		return 0, false
++	}
++	id, found := c.keys[destination.String()]
++	return id, found
++}
++
++func (c *destinationCache) reserve(destination net.Destination) uint16 {
++	if len(c.entries) <= 1 {
++		return 0
++	}
++	id := c.next
++	if previous := c.entries[id]; previous.IsValid() && previous.Address != nil {
++		delete(c.keys, previous.String())
++	}
++	c.entries[id] = destination
++	c.keys[destination.String()] = id
++	c.next++
++	if int(c.next) >= len(c.entries) {
++		c.next = 1
++	}
++	return id
++}
++
++func (c *destinationCache) store(id uint16, destination net.Destination) bool {
++	if id == 0 || int(id) >= len(c.entries) {
++		return false
++	}
++	if previous := c.entries[id]; previous.IsValid() && previous.Address != nil {
++		delete(c.keys, previous.String())
++	}
++	c.entries[id] = destination
++	c.keys[destination.String()] = id
++	return true
++}
++
++func (c *destinationCache) get(id uint16) (net.Destination, bool) {
++	if id == 0 || int(id) >= len(c.entries) {
++		return net.Destination{}, false
++	}
++	destination := c.entries[id]
++	return destination, destination.IsValid() && destination.Address != nil
++}
++
++func normalizeTurbo(config *TurboConfig) TurboSettings {
++	if config == nil || !config.Enabled {
++		return TurboSettings{MaxUDPPayload: defaultMaxUDPPayload}
++	}
++	age := time.Duration(config.MaxDatagramAgeMs) * time.Millisecond
++	if config.MaxDatagramAgeMs == 0 {
++		age = defaultTurboMaxDatagramAge
++	}
++	cacheSize := config.DestinationCacheSize
++	if cacheSize == 0 {
++		cacheSize = defaultDestinationCache
++	}
++	if cacheSize > maxDestinationCache {
++		cacheSize = maxDestinationCache
++	}
++	maxPayload := config.MaxUdpPayload
++	if maxPayload == 0 {
++		maxPayload = defaultMaxUDPPayload
++	}
++	if maxPayload < 512 {
++		maxPayload = 512
++	}
++	if maxPayload > uint32(buf.Size) {
++		maxPayload = uint32(buf.Size)
++	}
++	return TurboSettings{
++		Enabled:              true,
++		MaxDatagramAge:       age,
++		DestinationCacheSize: uint16(cacheSize),
++		MaxUDPPayload:        uint16(maxPayload),
++	}
++}
++
++func negotiateTurbo(requested, available TurboSettings) TurboSettings {
++	if !requested.Enabled || !available.Enabled {
++		return TurboSettings{MaxUDPPayload: defaultMaxUDPPayload}
++	}
++	selected := requested
++	if available.MaxDatagramAge > 0 && (selected.MaxDatagramAge == 0 || available.MaxDatagramAge < selected.MaxDatagramAge) {
++		selected.MaxDatagramAge = available.MaxDatagramAge
++	}
++	if available.DestinationCacheSize < selected.DestinationCacheSize {
++		selected.DestinationCacheSize = available.DestinationCacheSize
++	}
++	if available.MaxUDPPayload < selected.MaxUDPPayload {
++		selected.MaxUDPPayload = available.MaxUDPPayload
++	}
++	return selected
++}
++
++func durationMillis16(value time.Duration) uint16 {
++	millis := value.Milliseconds()
++	if millis < 0 {
++		return 0
++	}
++	if millis > math.MaxUint16 {
++		return math.MaxUint16
++	}
++	return uint16(millis)
++}
+diff --git a/proxy/aetherlinkx/validator.go b/proxy/aetherlinkx/validator.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..15a97896f789277851230f57a6293083dd254975
+--- /dev/null
++++ b/proxy/aetherlinkx/validator.go
+@@ -0,0 +1,126 @@
++package aetherlinkx
++
++import (
++	"strings"
++	"sync"
++	"time"
++
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/protocol"
++)
++
++const (
++	replayTTL        = 2 * time.Minute
++	maxReplayEntries = 65536
++)
++
++// Validator stores ALX users and the bounded replay window for authenticated
++// ClientInit messages.
++type Validator struct {
++	email sync.Map
++	users sync.Map
++
++	replayMu     sync.Mutex
++	replays      map[[32]byte]time.Time
++	lastReplayGC time.Time
++}
++
++func (v *Validator) Add(user *protocol.MemoryUser) error {
++	account, ok := user.Account.(*MemoryAccount)
++	if !ok {
++		return errors.New("invalid AetherLink X account type")
++	}
++
++	email := strings.ToLower(user.Email)
++	if email != "" {
++		if _, loaded := v.email.LoadOrStore(email, user); loaded {
++			return errors.New("user ", user.Email, " already exists")
++		}
++	}
++	if _, loaded := v.users.LoadOrStore(account.KeyID, user); loaded {
++		if email != "" {
++			v.email.Delete(email)
++		}
++		return errors.New("AetherLink X key id already exists")
++	}
++	return nil
++}
++
++func (v *Validator) Del(email string) error {
++	if email == "" {
++		return errors.New("email must not be empty")
++	}
++	key := strings.ToLower(email)
++	value, ok := v.email.Load(key)
++	if !ok {
++		return errors.New("user ", email, " not found")
++	}
++	user := value.(*protocol.MemoryUser)
++	v.email.Delete(key)
++	v.users.Delete(user.Account.(*MemoryAccount).KeyID)
++	return nil
++}
++
++func (v *Validator) Get(keyID [16]byte) *protocol.MemoryUser {
++	value, ok := v.users.Load(keyID)
++	if !ok {
++		return nil
++	}
++	return value.(*protocol.MemoryUser)
++}
++
++func (v *Validator) GetByEmail(email string) *protocol.MemoryUser {
++	value, ok := v.email.Load(strings.ToLower(email))
++	if !ok {
++		return nil
++	}
++	return value.(*protocol.MemoryUser)
++}
++
++func (v *Validator) GetAll() []*protocol.MemoryUser {
++	users := make([]*protocol.MemoryUser, 0)
++	v.users.Range(func(_, value any) bool {
++		users = append(users, value.(*protocol.MemoryUser))
++		return true
++	})
++	return users
++}
++
++func (v *Validator) GetCount() int64 {
++	var count int64
++	v.users.Range(func(_, _ any) bool {
++		count++
++		return true
++	})
++	return count
++}
++
++// CheckAndMarkReplay returns false when the same authenticated key-id/nonce
++// tuple is still inside the replay window or the cache is saturated.
++func (v *Validator) CheckAndMarkReplay(keyID, nonce [16]byte, now time.Time) bool {
++	var replayKey [32]byte
++	copy(replayKey[:16], keyID[:])
++	copy(replayKey[16:], nonce[:])
++
++	v.replayMu.Lock()
++	defer v.replayMu.Unlock()
++	if v.replays == nil {
++		v.replays = make(map[[32]byte]time.Time)
++	}
++	if expiry, found := v.replays[replayKey]; found && now.Before(expiry) {
++		return false
++	}
++	if len(v.replays) >= maxReplayEntries || now.Sub(v.lastReplayGC) >= replayTTL {
++		for key, expiry := range v.replays {
++			if !now.Before(expiry) {
++				delete(v.replays, key)
++			}
++		}
++		v.lastReplayGC = now
++	}
++	if len(v.replays) >= maxReplayEntries {
++		return false
++	}
++	v.replays[replayKey] = now.Add(replayTTL)
++	return true
++}
+diff --git a/testing/scenarios/aetherlinkx_test.go b/testing/scenarios/aetherlinkx_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..4b9a230a929da89bc854d6177d474ea3a300d1e4
+--- /dev/null
++++ b/testing/scenarios/aetherlinkx_test.go
+@@ -0,0 +1,222 @@
++package scenarios
++
++import (
++	"encoding/base64"
++	"testing"
++	"time"
++
++	"github.com/cloudflare/circl/kem/xwing"
++	"golang.org/x/sync/errgroup"
++
++	"github.com/xtls/xray-core/app/proxyman"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/protocol"
++	"github.com/xtls/xray-core/common/protocol/tls/cert"
++	"github.com/xtls/xray-core/common/serial"
++	"github.com/xtls/xray-core/common/uuid"
++	core "github.com/xtls/xray-core/core"
++	"github.com/xtls/xray-core/proxy/aetherlinkx"
++	"github.com/xtls/xray-core/proxy/dokodemo"
++	"github.com/xtls/xray-core/proxy/freedom"
++	"github.com/xtls/xray-core/testing/servers/tcp"
++	udpServer "github.com/xtls/xray-core/testing/servers/udp"
++	"github.com/xtls/xray-core/transport/internet"
++	transportTCP "github.com/xtls/xray-core/transport/internet/tcp"
++	"github.com/xtls/xray-core/transport/internet/tls"
++)
++
++func TestAetherLinkXTLS(t *testing.T) {
++	echoServer := tcp.Server{MsgProcessor: xor}
++	destination, err := echoServer.Start()
++	common.Must(err)
++	defer echoServer.Close()
++
++	certificate, certificateHash := cert.MustGenerate(nil, cert.CommonName("localhost"))
++	secretBytes := make([]byte, 32)
++	for index := range secretBytes {
++		secretBytes[index] = byte(index + 1)
++	}
++	userID := uuid.New()
++	account := &aetherlinkx.Account{
++		Id:     userID.String(),
++		Secret: base64.RawURLEncoding.EncodeToString(secretBytes),
++	}
++	xwingPrivate, xwingPublic, err := xwing.GenerateKeyPairPacked(nil)
++	common.Must(err)
++	serverSecurity := &aetherlinkx.SecurityConfig{PqMode: "required", XwingPrivateKey: base64.RawURLEncoding.EncodeToString(xwingPrivate), InnerAead: true}
++	clientSecurity := &aetherlinkx.SecurityConfig{PqMode: "required", XwingPublicKey: base64.RawURLEncoding.EncodeToString(xwingPublic), InnerAead: true}
++	stealth := &aetherlinkx.StealthConfig{Enabled: true, MinChunkSize: 256, MaxChunkSize: 1200, MaxPaddingBytes: 128, PaddingProbabilityPercent: 50}
++
++	serverPort := tcp.PickPort()
++	serverConfig := &core.Config{
++		Inbound: []*core.InboundHandlerConfig{{
++			ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
++				PortList: &net.PortList{Range: []*net.PortRange{net.SinglePortRange(serverPort)}},
++				Listen:   net.NewIPOrDomain(net.LocalHostIP),
++				StreamSettings: &internet.StreamConfig{
++					ProtocolName: "tcp",
++					TransportSettings: []*internet.TransportConfig{{
++						ProtocolName: "tcp",
++						Settings:     serial.ToTypedMessage(&transportTCP.Config{}),
++					}},
++					SecurityType: serial.GetMessageType(&tls.Config{}),
++					SecuritySettings: []*serial.TypedMessage{serial.ToTypedMessage(&tls.Config{
++						Certificate: []*tls.Certificate{tls.ParseCertificate(certificate)},
++					})},
++				},
++			}),
++			ProxySettings: serial.ToTypedMessage(&aetherlinkx.ServerConfig{
++				Users:    []*protocol.User{{Account: serial.ToTypedMessage(account)}},
++				Turbo:    &aetherlinkx.TurboConfig{Enabled: true, DestinationCacheSize: 64, MaxUdpPayload: 8192},
++				Security: serverSecurity,
++				Stealth:  stealth,
++			}),
++		}},
++		Outbound: []*core.OutboundHandlerConfig{{
++			ProxySettings: serial.ToTypedMessage(&freedom.Config{
++				FinalRules: []*freedom.FinalRuleConfig{{Action: freedom.RuleAction_Allow}},
++			}),
++		}},
++	}
++
++	clientPort := tcp.PickPort()
++	clientConfig := &core.Config{
++		Inbound: []*core.InboundHandlerConfig{{
++			ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
++				PortList: &net.PortList{Range: []*net.PortRange{net.SinglePortRange(clientPort)}},
++				Listen:   net.NewIPOrDomain(net.LocalHostIP),
++			}),
++			ProxySettings: serial.ToTypedMessage(&dokodemo.Config{
++				RewriteAddress:  net.NewIPOrDomain(destination.Address),
++				RewritePort:     uint32(destination.Port),
++				AllowedNetworks: []net.Network{net.Network_TCP},
++			}),
++		}},
++		Outbound: []*core.OutboundHandlerConfig{{
++			ProxySettings: serial.ToTypedMessage(&aetherlinkx.ClientConfig{
++				Server: &protocol.ServerEndpoint{
++					Address: net.NewIPOrDomain(net.LocalHostIP),
++					Port:    uint32(serverPort),
++					User:    &protocol.User{Account: serial.ToTypedMessage(account)},
++				},
++				Turbo:    &aetherlinkx.TurboConfig{Enabled: true, DestinationCacheSize: 64, MaxUdpPayload: 8192},
++				Security: clientSecurity,
++				Stealth:  stealth,
++			}),
++			SenderSettings: serial.ToTypedMessage(&proxyman.SenderConfig{
++				StreamSettings: &internet.StreamConfig{
++					ProtocolName: "tcp",
++					TransportSettings: []*internet.TransportConfig{{
++						ProtocolName: "tcp",
++						Settings:     serial.ToTypedMessage(&transportTCP.Config{}),
++					}},
++					SecurityType: serial.GetMessageType(&tls.Config{}),
++					SecuritySettings: []*serial.TypedMessage{serial.ToTypedMessage(&tls.Config{
++						PinnedPeerCertSha256: [][]byte{certificateHash[:]},
++					})},
++				},
++			}),
++		}},
++	}
++
++	servers, err := InitializeServerConfigs(serverConfig, clientConfig)
++	common.Must(err)
++	defer CloseAllServers(servers)
++
++	var group errgroup.Group
++	for range 3 {
++		group.Go(testTCPConn(clientPort, 256*1024, 30*time.Second))
++	}
++	if err := group.Wait(); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestAetherLinkXTurboUDP(t *testing.T) {
++	echoServer := udpServer.Server{MsgProcessor: xor}
++	destination, err := echoServer.Start()
++	common.Must(err)
++	defer echoServer.Close()
++
++	secretBytes := make([]byte, 32)
++	for index := range secretBytes {
++		secretBytes[index] = byte(255 - index)
++	}
++	userID := uuid.New()
++	account := &aetherlinkx.Account{
++		Id:     userID.String(),
++		Secret: base64.RawURLEncoding.EncodeToString(secretBytes),
++	}
++	xwingPrivate, xwingPublic, err := xwing.GenerateKeyPairPacked(nil)
++	common.Must(err)
++	serverSecurity := &aetherlinkx.SecurityConfig{PqMode: "required", XwingPrivateKey: base64.RawURLEncoding.EncodeToString(xwingPrivate), InnerAead: true}
++	clientSecurity := &aetherlinkx.SecurityConfig{PqMode: "required", XwingPublicKey: base64.RawURLEncoding.EncodeToString(xwingPublic), InnerAead: true}
++	stealth := &aetherlinkx.StealthConfig{Enabled: true, MinChunkSize: 128, MaxChunkSize: 900, MaxPaddingBytes: 64, PaddingProbabilityPercent: 25}
++	turbo := &aetherlinkx.TurboConfig{
++		Enabled:              true,
++		MaxDatagramAgeMs:     1000,
++		DestinationCacheSize: 64,
++		MaxUdpPayload:        8192,
++	}
++
++	serverPort := tcp.PickPort()
++	serverConfig := &core.Config{
++		Inbound: []*core.InboundHandlerConfig{{
++			ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
++				PortList: &net.PortList{Range: []*net.PortRange{net.SinglePortRange(serverPort)}},
++				Listen:   net.NewIPOrDomain(net.LocalHostIP),
++			}),
++			ProxySettings: serial.ToTypedMessage(&aetherlinkx.ServerConfig{
++				Users:    []*protocol.User{{Account: serial.ToTypedMessage(account)}},
++				Turbo:    turbo,
++				Security: serverSecurity,
++				Stealth:  stealth,
++			}),
++		}},
++		Outbound: []*core.OutboundHandlerConfig{{
++			ProxySettings: serial.ToTypedMessage(&freedom.Config{
++				FinalRules: []*freedom.FinalRuleConfig{{Action: freedom.RuleAction_Allow}},
++			}),
++		}},
++	}
++
++	clientPort := udpServer.PickPort()
++	clientConfig := &core.Config{
++		Inbound: []*core.InboundHandlerConfig{{
++			ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
++				PortList: &net.PortList{Range: []*net.PortRange{net.SinglePortRange(clientPort)}},
++				Listen:   net.NewIPOrDomain(net.LocalHostIP),
++			}),
++			ProxySettings: serial.ToTypedMessage(&dokodemo.Config{
++				RewriteAddress:  net.NewIPOrDomain(destination.Address),
++				RewritePort:     uint32(destination.Port),
++				AllowedNetworks: []net.Network{net.Network_UDP},
++			}),
++		}},
++		Outbound: []*core.OutboundHandlerConfig{{
++			ProxySettings: serial.ToTypedMessage(&aetherlinkx.ClientConfig{
++				Server: &protocol.ServerEndpoint{
++					Address: net.NewIPOrDomain(net.LocalHostIP),
++					Port:    uint32(serverPort),
++					User:    &protocol.User{Account: serial.ToTypedMessage(account)},
++				},
++				Turbo:    turbo,
++				Security: clientSecurity,
++				Stealth:  stealth,
++			}),
++		}},
++	}
++
++	servers, err := InitializeServerConfigs(serverConfig, clientConfig)
++	common.Must(err)
++	defer CloseAllServers(servers)
++
++	var group errgroup.Group
++	for range 3 {
++		group.Go(testUDPConn(clientPort, 8*1024, 10*time.Second))
++	}
++	if err := group.Wait(); err != nil {
++		t.Fatal(err)
++	}
++}

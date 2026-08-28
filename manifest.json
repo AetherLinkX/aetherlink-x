@@ -1,0 +1,69 @@
+{
+  "name": "AetherLink X",
+  "packageVersion": "0.4.0-experimental",
+  "wireVersion": "1.1",
+  "status": "experimental",
+  "createdAt": "2026-08-28",
+  "updatedAt": "2026-08-29",
+  "xrayCompatibility": {
+    "testedVersion": "26.7.28",
+    "sourceBaseline": "XTLS/Xray-core@c1958dba04ba065cd82a05b65bfe877e2323f0cc",
+    "remnawaveSourceBaseline": "XTLS/Xray-core@5ca6f4b7d4dc20a881d4330e498892697627ec0c",
+    "goVersion": "1.26.0",
+    "platforms": [
+      "windows/amd64",
+      "linux/amd64",
+      "linux/arm64"
+    ]
+  },
+  "entryPoints": {
+    "proxyPackage": "source/proxy/aetherlinkx",
+    "installPatch": "patches/aetherlinkx-xray-core.patch",
+    "installer": "tools/install.ps1",
+    "builder": "tools/build.ps1",
+    "configGenerator": "tools/generate-configs.ps1",
+    "windowsBinary": "dist/windows-amd64/xray-aetherlinkx.exe",
+    "linuxAmd64Binary": "dist/linux-amd64/xray-aetherlinkx",
+    "linuxArm64Binary": "dist/linux-arm64/xray-aetherlinkx",
+    "remnawaveDockerfile": "remnawave/Dockerfile",
+    "remnawaveBackendDockerfile": "remnawave/Dockerfile.backend",
+    "remnawaveWorkflow": ".github/workflows/build-remnawave-images.yml"
+  },
+  "artifacts": {
+    "binarySha256": "DF64291E04B58185FCE7ADBA9FC71D0A6A06DF83CBB70891146EAF9E606B51C3",
+    "binarySize": 47567360,
+    "linuxAmd64Sha256": "A4917934C69C7712B52F08B62FE098EBD47BCE6C5B26A40696A96413C33748BB",
+    "linuxAmd64Size": 33935486,
+    "linuxArm64Sha256": "20CCE3B0FD4F9099A57A73472406199E5B371B5E8CD7257EB0A64E93F87D5E9E",
+    "linuxArm64Size": 31719550,
+    "patchSha256": "6022E3FA6B813ED025D43E7F26FA710F46E3F0B9ACFF51F50A1754FE9D495158",
+    "patchSize": 156209,
+    "remnawaveXrayPatchSha256": "F131F681EE3B6E00B4BED34897703A712D6B38011B1EEEF51668726097175430",
+    "remnawaveXrayPatchSize": 156528,
+    "remnawaveBackendPatchSha256": "AA3DF345A8DFB688E60B9585B199C43F64E0C5C805057F06AA9787225C344D0B",
+    "remnawaveBackendPatchSize": 8181,
+    "remnawaveWasmPatchSha256": "4FD7D3784C8DEFBDB787A76613799397C52DE3885850B18E69CB29BFA8A59387",
+    "remnawaveWasmPatchSize": 22526
+  },
+  "validation": {
+    "unitTests": "passed",
+    "configurationTests": "passed",
+    "tlsTcpEndToEnd": "passed",
+    "turboUdpEndToEnd": "passed",
+    "handshakeFuzzExecutions": 122228,
+    "recordFuzzExecutions": 65403,
+    "goVetProxyPackage": "passed",
+    "cleanPatchInstall": "passed",
+    "idempotentInstall": "passed",
+    "generatedRealityConfigs": "configuration OK",
+    "officialPinnedCommitPatchCheck": "passed",
+    "officialV26_7_28TagPatchCheck": "passed",
+    "remnawaveBackendPatchCheck": "passed on 3.3.2",
+    "remnawaveBackendTypeScriptBuild": "passed",
+    "remnawaveBrowserWasmBuild": "passed",
+    "linuxCrossBuilds": "passed",
+    "remnawaveDockerBuild": "not run locally: Docker is not installed; GitHub Actions workflow provided",
+    "raceDetector": "not run: portable Windows toolchain has no CGO C compiler"
+  },
+  "securityNotice": "Not independently audited. Use TLS or REALITY on untrusted networks."
+}

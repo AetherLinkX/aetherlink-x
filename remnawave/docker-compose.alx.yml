@@ -1,0 +1,4 @@
+services:
+  remnanode:
+    image: ${ALX_NODE_IMAGE:-ghcr.io/REPLACE_GITHUB_OWNER/aetherlink-x-remnawave-node:latest}
+    pull_policy: always

@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package xray.proxy.aetherlinkx;
+option csharp_namespace = "Xray.Proxy.AetherLinkX";
+option go_package = "github.com/xtls/xray-core/proxy/aetherlinkx";
+option java_package = "com.xray.proxy.aetherlinkx";
+option java_multiple_files = true;
+
+import "common/protocol/user.proto";
+import "common/protocol/server_spec.proto";
+
+message Account {
+  // Public account identifier. It must be a canonical UUID.
+  string id = 1;
+  // A 32-byte, independently generated secret encoded as Base64URL.
+  string secret = 2;
+}
+
+message TurboConfig {
+  bool enabled = 1;
+  // Drop UDP datagrams whose extra queue/path delay exceeds this value. Zero
+  // disables deadline drops.
+  uint32 max_datagram_age_ms = 2;
+  // Per-direction destination dictionary entries. Zero disables compression.
+  uint32 destination_cache_size = 3;
+  // Maximum accepted UDP payload. Valid range: 512..32768.
+  uint32 max_udp_payload = 4;
+  // Optional transport tuning. Explicit stream sockopts always win.
+  int32 tcp_keep_alive_idle = 5;
+  int32 tcp_keep_alive_interval = 6;
+  int32 tcp_user_timeout = 7;
+  string congestion = 8;
+  bool multipath_tcp = 9;
+  int32 mux_concurrency = 10;
+  int32 xudp_concurrency = 11;
+  string xudp_proxy_udp443 = 12;
+}
+
+message SecurityConfig {
+  // off, prefer or required. Uses the standardized X-Wing hybrid KEM
+  // (X25519 + ML-KEM-768), not the obsolete Kyber draft identifier.
+  string pq_mode = 1;
+  // Client-side X-Wing public key, 1216 bytes as Base64URL.
+  string xwing_public_key = 2;
+  // Server-side X-Wing private seed, 32 bytes as Base64URL.
+  string xwing_private_key = 3;
+  // Adds an authenticated ChaCha20-Poly1305 record layer inside TLS/REALITY.
+  bool inner_aead = 4;
+}
+
+message StealthConfig {
+  bool enabled = 1;
+  uint32 min_chunk_size = 2;
+  uint32 max_chunk_size = 3;
+  uint32 max_padding_bytes = 4;
+  uint32 padding_probability_percent = 5;
+}
+
+message ClientConfig {
+  xray.common.protocol.ServerEndpoint server = 1;
+  // Intended only for private/testing deployments. Public endpoints must use
+  // TLS or REALITY at the Xray transport layer.
+  bool allow_insecure_transport = 2;
+  TurboConfig turbo = 3;
+  SecurityConfig security = 4;
+  StealthConfig stealth = 5;
+}
+
+message ServerConfig {
+  repeated xray.common.protocol.User users = 1;
+  bool allow_insecure_transport = 2;
+  uint32 handshake_timeout_seconds = 3;
+  TurboConfig turbo = 4;
+  SecurityConfig security = 5;
+  StealthConfig stealth = 6;
+}

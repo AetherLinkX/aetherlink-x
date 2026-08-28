@@ -1,0 +1,98 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "local-socks",
+      "listen": "127.0.0.1",
+      "port": 10808,
+      "protocol": "socks",
+      "settings": {
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "aetherlinkx-out",
+      "protocol": "aetherlinkx",
+      "settings": {
+        "address": "alx.example.com",
+        "port": 443,
+        "id": "018f3f89-01be-7b44-8a7f-23e54f92ea00",
+        "secret": "REPLACE_WITH_32_RANDOM_BYTES_AS_BASE64URL",
+        "turbo": {
+          "enabled": true,
+          "maxDatagramAgeMs": 35,
+          "destinationCacheSize": 64,
+          "maxUdpPayload": 8192,
+          "tcpKeepAliveIdle": 15,
+          "tcpKeepAliveInterval": 5,
+          "tcpUserTimeout": 10000,
+          "congestion": "auto",
+          "multipathTcp": false,
+          "muxConcurrency": 8,
+          "xudpConcurrency": 4,
+          "xudpProxyUdp443": "allow"
+        },
+        "security": {
+          "pqMode": "required",
+          "xwingPublicKey": "REPLACE_WITH_1216_BYTE_XWING_PUBLIC_KEY_AS_BASE64URL",
+          "innerAead": true
+        },
+        "stealth": {
+          "enabled": true,
+          "minChunkSize": 256,
+          "maxChunkSize": 1200,
+          "maxPaddingBytes": 128,
+          "paddingProbabilityPercent": 25
+        }
+      },
+      "streamSettings": {
+        "method": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "www.example.com",
+          "fingerprint": "chrome",
+          "password": "REPLACE_WITH_REALITY_SERVER_PUBLIC_KEY",
+          "shortId": "0123456789abcdef",
+          "spiderX": "/"
+        },
+        "sockopt": {
+          "dialerProxy": "warp"
+        }
+      }
+    },
+    {
+      "tag": "warp",
+      "protocol": "wireguard",
+      "settings": {
+        "secretKey": "REPLACE_WITH_WARP_WIREGUARD_PRIVATE_KEY",
+        "address": [
+          "REPLACE_WITH_WARP_IPV4_ADDRESS/32",
+          "REPLACE_WITH_WARP_IPV6_ADDRESS/128"
+        ],
+        "peers": [
+          {
+            "publicKey": "REPLACE_WITH_WARP_PEER_PUBLIC_KEY",
+            "endpoint": "engage.cloudflareclient.com:2408",
+            "keepAlive": 25,
+            "allowedIPs": [
+              "0.0.0.0/0",
+              "::/0"
+            ]
+          }
+        ],
+        "mtu": 1280,
+        "domainStrategy": "ForceIP",
+        "noKernelTun": false
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    }
+  ]
+}

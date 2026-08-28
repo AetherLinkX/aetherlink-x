@@ -1,0 +1,4 @@
+services:
+  remnawave:
+    image: ${ALX_BACKEND_IMAGE:?Set ALX_BACKEND_IMAGE}
+    pull_policy: always

@@ -1,0 +1,11 @@
+* text=auto
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.patch text eol=lf
+*.proto text eol=lf
+*.ps1 text eol=crlf
+*.exe binary
+dist/linux-amd64/xray-aetherlinkx binary
+dist/linux-arm64/xray-aetherlinkx binary
+*.zip binary

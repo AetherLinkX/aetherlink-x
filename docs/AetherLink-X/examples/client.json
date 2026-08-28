@@ -1,0 +1,120 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "local-socks",
+      "listen": "127.0.0.1",
+      "port": 10808,
+      "protocol": "socks",
+      "settings": {
+        "udp": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "aetherlinkx-out",
+      "protocol": "aetherlinkx",
+      "settings": {
+        "address": "alx.example.com",
+        "port": 443,
+        "id": "018f3f89-01be-7b44-8a7f-23e54f92ea00",
+        "secret": "REPLACE_WITH_32_BYTE_BASE64URL_SECRET",
+        "securityProfile": "transport-bound",
+        "pqMode": "prefer",
+        "flow": "aether-vision",
+        "turbo": {
+          "enabled": true,
+          "profile": "game",
+          "targetQueueMs": 4,
+          "maxQueueMs": 12,
+          "maxDatagramAgeMs": 35,
+          "laneCount": 2,
+          "maxRealtimeStreams": 32,
+          "maxBatchDelayUs": 0,
+          "keepAliveSeconds": 15,
+          "congestion": "auto",
+          "streamIsolation": true,
+          "redundantControl": true
+        },
+        "accelerator": {
+          "headerCompression": true,
+          "destinationCacheSize": 64,
+          "payloadCompression": false,
+          "ackPolicy": "low-latency"
+        },
+        "stealth": {
+          "mode": "adaptive",
+          "persona": "generic-web",
+          "rotateOnNewSessionMinutes": 60,
+          "maxAddedLatencyMs": 1,
+          "paddingBudgetPercent": 2,
+          "wsFrameMorph": false
+        },
+        "multipath": {
+          "mode": "failover",
+          "maxPaths": 2,
+          "preferLowestRtt": true,
+          "duplicateControlOnly": true
+        }
+      },
+      "streamSettings": {
+        "method": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "www.example.com",
+          "fingerprint": "chrome",
+          "password": "REPLACE_WITH_REALITY_CLIENT_KEY",
+          "shortId": "0123456789abcdef",
+          "spiderX": "/"
+        },
+        "sockopt": {
+          "dialerProxy": "warp",
+          "tcpKeepAliveIdle": 30,
+          "tcpKeepAliveInterval": 10,
+          "tcpUserTimeout": 10000
+        }
+      }
+    },
+    {
+      "tag": "warp",
+      "protocol": "wireguard",
+      "settings": {
+        "secretKey": "REPLACE_WITH_WARP_WIREGUARD_PRIVATE_KEY",
+        "address": [
+          "172.16.0.2/32",
+          "2606:4700:110:8765::2/128"
+        ],
+        "peers": [
+          {
+            "publicKey": "REPLACE_WITH_WARP_PEER_PUBLIC_KEY",
+            "endpoint": "REPLACE_WITH_WARP_ENDPOINT:2408"
+          }
+        ],
+        "mtu": 1280,
+        "noKernelTun": false,
+        "domainStrategy": "ForceIP"
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "local-socks"
+        ],
+        "outboundTag": "aetherlinkx-out"
+      }
+    ]
+  }
+}
+
