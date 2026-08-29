@@ -90,7 +90,9 @@ WORKDIR /opt/app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
-ENV REMNAWAVE_BRANCH=2.7.4
+# The 2.7.4 runtime schema intentionally accepts only "main" or "dev" here.
+# Version identity stays in __RW_METADATA_VERSION below.
+ENV REMNAWAVE_BRANCH=main
 ENV PRISMA_HIDE_UPDATE_MESSAGE=true
 ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
 ENV PM2_DISABLE_VERSION_CHECK=true
