@@ -66,7 +66,13 @@ COPY --from=backend-source /src/prisma ./prisma
 COPY --from=backend-source /src/rspack.config.mjs ./
 COPY --from=backend-source /src/prisma.config.ts ./
 COPY --from=backend-source /src/@types ./@types
-RUN npm ci --prefer-offline --no-audit --no-fund
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm config set fetch-retries 5 \
+    && npm config set fetch-retry-factor 2 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set fetch-timeout 300000 \
+    && npm ci --prefer-offline --no-audit --no-fund
 COPY --from=backend-source /src/tsconfig.json /src/tsconfig.build.json ./
 COPY --from=backend-source /src/src ./src
 COPY --from=backend-source /src/libs ./libs
