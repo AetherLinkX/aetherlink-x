@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "policy": "fail-closed",
+  "xray": {
+    "26.7.28": {
+      "sourceCommit": "5ca6f4b7d4dc20a881d4330e498892697627ec0c",
+      "wireVersion": "1.1",
+      "status": "tested"
+    }
+  },
+  "panel": {
+    "2.7.4": {
+      "mode": "static",
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:latest",
+      "status": "live-tested"
+    },
+    "3.3.2": {
+      "mode": "static",
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend:latest",
+      "status": "build-tested"
+    }
+  },
+  "node": {
+    "2.7.0": {
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:latest",
+      "status": "build-tested"
+    },
+    "3.2.2": {
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:latest",
+      "status": "building"
+    },
+    "3.3.2": {
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node:latest",
+      "status": "build-tested"
+    }
+  },
+  "notes": [
+    "Unknown versions are rejected before compose is changed.",
+    "A version is added only after patch, build and runtime validation.",
+    "Static mode does not provide per-user Internal Squad credentials."
+  ]
+}
