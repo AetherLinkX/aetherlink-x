@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1.7
+
+ARG GO_VERSION=1.26.0
+ARG REMNAWAVE_NODE_IMAGE=remnawave/node:3.2.2
+
+FROM golang:${GO_VERSION}-alpine AS xray-builder
+ARG TARGETARCH
+ARG XRAY_COMMIT=5ca6f4b7d4dc20a881d4330e498892697627ec0c
+
+RUN apk add --no-cache git
+RUN git clone --filter=blob:none --no-checkout https://github.com/XTLS/Xray-core.git /src/xray \
+    && git -C /src/xray fetch --depth 1 origin "${XRAY_COMMIT}" \
+    && git -C /src/xray checkout --detach "${XRAY_COMMIT}" \
+    && test "$(git -C /src/xray rev-parse HEAD)" = "${XRAY_COMMIT}"
+WORKDIR /src/xray
+COPY patches/aetherlinkx-xray-core-v26.7.28.patch /tmp/aetherlinkx-xray-core.patch
+RUN git apply --check /tmp/aetherlinkx-xray-core.patch \
+    && git apply /tmp/aetherlinkx-xray-core.patch
+RUN CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" \
+    go build -trimpath -buildvcs=false \
+    -ldflags='-s -w -buildid=' \
+    -o /out/xray ./main
+
+FROM node:24.19-trixie-slim AS node-builder
+ARG REMNAWAVE_NODE_COMMIT=2c532c4e33bf5864e9867a7bdc36245cc1057eb1
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --filter=blob:none --no-checkout https://github.com/remnawave/node.git /src/node \
+    && git -C /src/node fetch --depth 1 origin "${REMNAWAVE_NODE_COMMIT}" \
+    && git -C /src/node checkout --detach "${REMNAWAVE_NODE_COMMIT}" \
+    && test "$(git -C /src/node rev-parse HEAD)" = "${REMNAWAVE_NODE_COMMIT}"
+COPY remnawave/node-managed-alx-3.2.2.patch /tmp/node-managed-alx.patch
+RUN git -C /src/node apply --check /tmp/node-managed-alx.patch \
+    && git -C /src/node apply /tmp/node-managed-alx.patch
+WORKDIR /src/node
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm ci --prefer-offline --no-audit --no-fund
+RUN npm run typecheck \
+    && npm run build \
+    && npm run trace \
+    && find dist/node_modules/@lmdb -name '*.node' ! -name 'node.napi.glibc.node' -delete \
+    && chmod +x dist/cli.js
+
+FROM ${REMNAWAVE_NODE_IMAGE}
+ARG SOURCE_URL="https://github.com/OWNER/aetherlink-x"
+USER root
+COPY --from=node-builder /src/node/dist /opt/app/dist
+COPY --from=xray-builder /out/xray /usr/local/bin/xray
+RUN chmod 0755 /usr/local/bin/xray \
+    && ln -sfn /usr/local/bin/xray /usr/local/bin/rw-core
+
+LABEL org.opencontainers.image.title="Remnawave Node 3.2.2 with managed AetherLink X"
+LABEL org.opencontainers.image.description="Remnawave Node with per-user ALX add/remove support"
+LABEL org.opencontainers.image.source="${SOURCE_URL}"

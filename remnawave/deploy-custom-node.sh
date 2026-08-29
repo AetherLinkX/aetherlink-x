@@ -8,7 +8,15 @@ fi
 
 REMNANODE_DIR=${REMNANODE_DIR:-/opt/remnanode}
 ALX_NODE_IMAGE=${ALX_NODE_IMAGE:-}
+ALX_MODE=${ALX_MODE:-static}
 REMNAWAVE_NODE_VERSION=${REMNAWAVE_NODE_VERSION:-}
+case "$ALX_MODE" in
+  static|managed) ;;
+  *)
+    echo "Unsupported ALX_MODE: $ALX_MODE (expected static or managed)." >&2
+    exit 1
+    ;;
+esac
 if [ ! -f "$REMNANODE_DIR/docker-compose.yml" ]; then
   echo "Missing $REMNANODE_DIR/docker-compose.yml" >&2
   exit 1
@@ -34,7 +42,7 @@ if [ -z "$REMNAWAVE_NODE_VERSION" ]; then
   current_image=$(docker compose -f docker-compose.yml config --images | grep -E '(^|/)(remnawave/)?node:' | head -n 1 || true)
   case "$current_image" in
     *aetherlink-x-remnawave-node-2.7.0*|*:2.7.0*) REMNAWAVE_NODE_VERSION=2.7.0 ;;
-    *aetherlink-x-remnawave-node-3.2.2*|*:3.2.2*) REMNAWAVE_NODE_VERSION=3.2.2 ;;
+    *aetherlink-x-remnawave-node-managed-3.2.2*|*aetherlink-x-remnawave-node-3.2.2*|*:3.2.2*) REMNAWAVE_NODE_VERSION=3.2.2 ;;
     *aetherlink-x-remnawave-node:sha-*|*aetherlink-x-remnawave-node:latest|*:3.3.2*) REMNAWAVE_NODE_VERSION=3.3.2 ;;
     *)
       echo "Cannot safely detect the Remnawave Node version from: ${current_image:-<empty>}." >&2
@@ -45,12 +53,13 @@ if [ -z "$REMNAWAVE_NODE_VERSION" ]; then
 fi
 
 if [ -z "$ALX_NODE_IMAGE" ]; then
-  case "$REMNAWAVE_NODE_VERSION" in
-    2.7.0) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:latest ;;
-    3.2.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:latest ;;
-    3.3.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node:latest ;;
+  case "$ALX_MODE:$REMNAWAVE_NODE_VERSION" in
+    static:2.7.0) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:latest ;;
+    static:3.2.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:latest ;;
+    static:3.3.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node:latest ;;
+    managed:3.2.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2:latest ;;
     *)
-      echo "Unsupported Remnawave Node version: $REMNAWAVE_NODE_VERSION" >&2
+      echo "Unsupported Remnawave Node/mode pair: $REMNAWAVE_NODE_VERSION/$ALX_MODE" >&2
       echo "No files or containers were changed." >&2
       exit 1
       ;;
@@ -82,5 +91,5 @@ if ! docker compose -f docker-compose.yml -f docker-compose.alx.yml exec -T remn
   exit 1
 fi
 
-echo "Custom AetherLink X node image is active for Remnawave Node $REMNAWAVE_NODE_VERSION."
+echo "Custom AetherLink X node image is active for Remnawave Node $REMNAWAVE_NODE_VERSION in $ALX_MODE mode."
 echo "Rollback: restore $override_backup when present (or remove $override), then run docker compose up -d remnanode."

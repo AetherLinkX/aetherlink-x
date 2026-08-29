@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..773f2ca279bfb8b2d042f88b34fe5e26eff87cb7
 --- /dev/null
 +++ b/infra/conf/aetherlinkx.go
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,253 @@
 +package conf
 +
 +import (
@@ -221,9 +221,6 @@ index 0000000000000000000000000000000000000000..773f2ca279bfb8b2d042f88b34fe5e26
 +	if c.Clients != nil {
 +		c.Users = c.Clients
 +	}
-+	if len(c.Users) == 0 {
-+		return nil, errors.New("AetherLink X requires at least one user")
-+	}
 +	turbo, err := c.Turbo.Build()
 +	if err != nil {
 +		return nil, err
@@ -265,7 +262,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..87fe379cd99b040081d0dafd77bd20177588d791
 --- /dev/null
 +++ b/infra/conf/aetherlinkx_test.go
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,118 @@
 +package conf
 +
 +import (
@@ -327,6 +324,17 @@ index 0000000000000000000000000000000000000000..87fe379cd99b040081d0dafd77bd2017
 +	config.AllowInsecureTransport = true
 +	if err := validateInboundTransportSecurity(config, &proxyman.ReceiverConfig{}); err != nil {
 +		t.Fatalf("explicit private/test override was rejected: %v", err)
++	}
++}
++
++func TestAetherLinkXServerAllowsEmptyManagedUsers(t *testing.T) {
++	message, err := (&AetherLinkXServerConfig{}).Build()
++	if err != nil {
++		t.Fatalf("empty managed user set was rejected: %v", err)
++	}
++	config, ok := message.(*aetherlinkx.ServerConfig)
++	if !ok || len(config.Users) != 0 {
++		t.Fatalf("unexpected empty managed config: %#v", message)
 +	}
 +}
 +
@@ -3540,7 +3548,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..b3cb2131ae8e55196d3cd520d7946d9f29e1ba9b
 --- /dev/null
 +++ b/proxy/aetherlinkx/server.go
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,229 @@
 +package aetherlinkx
 +
 +import (
@@ -3585,9 +3593,6 @@ index 0000000000000000000000000000000000000000..b3cb2131ae8e55196d3cd520d7946d9f
 +		if err := validator.Add(user); err != nil {
 +			return nil, errors.New("failed to add AetherLink X user").Base(err)
 +		}
-+	}
-+	if validator.GetCount() == 0 {
-+		return nil, errors.New("AetherLink X requires at least one user")
 +	}
 +	timeout := time.Duration(config.HandshakeTimeoutSeconds) * time.Second
 +	security, err := ParseServerSecurity(config.Security)

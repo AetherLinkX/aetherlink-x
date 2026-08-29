@@ -215,9 +215,6 @@ func (c *AetherLinkXServerConfig) Build() (proto.Message, error) {
 	if c.Clients != nil {
 		c.Users = c.Clients
 	}
-	if len(c.Users) == 0 {
-		return nil, errors.New("AetherLink X requires at least one user")
-	}
 	turbo, err := c.Turbo.Build()
 	if err != nil {
 		return nil, err

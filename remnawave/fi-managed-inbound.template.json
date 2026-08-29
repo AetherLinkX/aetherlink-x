@@ -1,0 +1,62 @@
+{
+  "tag": "AETHERLINK_X_MANAGED_FI",
+  "listen": "0.0.0.0",
+  "port": 8443,
+  "protocol": "aetherlinkx",
+  "settings": {
+    "users": [],
+    "handshakeTimeoutSeconds": 4,
+    "turbo": {
+      "enabled": true,
+      "maxDatagramAgeMs": 35,
+      "destinationCacheSize": 64,
+      "maxUdpPayload": 8192,
+      "tcpKeepAliveIdle": 15,
+      "tcpKeepAliveInterval": 5,
+      "tcpUserTimeout": 10000,
+      "congestion": "auto",
+      "multipathTcp": true,
+      "muxConcurrency": 8,
+      "xudpConcurrency": 4,
+      "xudpProxyUdp443": "reject"
+    },
+    "security": {
+      "pqMode": "required",
+      "xwingPublicKey": "REPLACE_WITH_XWING_PUBLIC_KEY",
+      "xwingPrivateKey": "REPLACE_WITH_XWING_PRIVATE_KEY",
+      "innerAead": true
+    },
+    "stealth": {
+      "enabled": true,
+      "minChunkSize": 256,
+      "maxChunkSize": 1200,
+      "maxPaddingBytes": 128,
+      "paddingProbabilityPercent": 25
+    }
+  },
+  "streamSettings": {
+    "network": "raw",
+    "security": "reality",
+    "realitySettings": {
+      "show": false,
+      "target": "REPLACE_REALITY_TARGET:443",
+      "xver": 0,
+      "serverNames": [
+        "REPLACE_REALITY_SERVER_NAME"
+      ],
+      "privateKey": "REPLACE_WITH_REALITY_PRIVATE_KEY",
+      "shortIds": [
+        "REPLACE_WITH_16_HEX_SHORT_ID"
+      ]
+    }
+  },
+  "sniffing": {
+    "enabled": true,
+    "routeOnly": true,
+    "destOverride": [
+      "http",
+      "tls",
+      "quic"
+    ]
+  }
+}

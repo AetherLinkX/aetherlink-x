@@ -1,0 +1,215 @@
+diff --git a/libs/contract/commands/handler/add-user.command.ts b/libs/contract/commands/handler/add-user.command.ts
+index d36b094..127f627 100644
+--- a/libs/contract/commands/handler/add-user.command.ts
++++ b/libs/contract/commands/handler/add-user.command.ts
+@@ -53,6 +53,14 @@ export namespace AddUserCommand {
+         password: z.string(),
+     });
+ 
++    const BaseAetherLinkXUser = z.object({
++        type: z.literal('aetherlinkx'),
++        tag: z.string(),
++        username: z.string(),
++        uuid: z.uuid(),
++        secret: z.string().min(43).max(44),
++    });
++
+     export const RequestSchema = z.object({
+         data: z.array(
+             z.discriminatedUnion('type', [
+@@ -61,6 +69,7 @@ export namespace AddUserCommand {
+                 BaseShadowsocksUser,
+                 BaseShadowsocks22User,
+                 BaseHysteriaUser,
++                BaseAetherLinkXUser,
+             ]),
+         ),
+         hashData: z.object({
+diff --git a/libs/contract/commands/handler/add-users.command.ts b/libs/contract/commands/handler/add-users.command.ts
+index 55e9b67..0bede2c 100644
+--- a/libs/contract/commands/handler/add-users.command.ts
++++ b/libs/contract/commands/handler/add-users.command.ts
+@@ -31,6 +31,11 @@ export namespace AddUsersCommand {
+         tag: z.string(),
+     });
+ 
++    const BaseAetherLinkXUser = z.object({
++        type: z.literal('aetherlinkx'),
++        tag: z.string(),
++    });
++
+     export const RequestSchema = z.object({
+         affectedInboundTags: z.array(z.string()),
+         users: z.array(
+@@ -42,6 +47,7 @@ export namespace AddUsersCommand {
+                         BaseShadowsocksUser,
+                         BaseShadowsocks22User,
+                         BaseHysteriaUser,
++                        BaseAetherLinkXUser,
+                     ]),
+                 ),
+ 
+diff --git a/src/modules/handler/aetherlinkx-account.ts b/src/modules/handler/aetherlinkx-account.ts
+new file mode 100644
+index 0000000..3355125
+--- /dev/null
++++ b/src/modules/handler/aetherlinkx-account.ts
+@@ -0,0 +1,46 @@
++import { createHash } from 'node:crypto';
++
++import { TypedMessage } from '@remnawave/xtls-sdk/build/src/xray-protos/common/serial/typed_message';
++
++const ACCOUNT_TYPE = 'xray.proxy.aetherlinkx.Account';
++const KDF_CONTEXT = 'AetherLink X Remnawave user secret v1\u0000';
++
++function encodeVarint(value: number): number[] {
++    const result: number[] = [];
++    let remaining = value >>> 0;
++    while (remaining >= 0x80) {
++        result.push((remaining & 0x7f) | 0x80);
++        remaining >>>= 7;
++    }
++    result.push(remaining);
++    return result;
++}
++
++function encodeStringField(fieldNumber: number, value: string): Uint8Array {
++    const body = Buffer.from(value, 'utf8');
++    return Uint8Array.from([
++        ...encodeVarint((fieldNumber << 3) | 2),
++        ...encodeVarint(body.length),
++        ...body,
++    ]);
++}
++
++export function deriveAetherLinkXSecret(ssPassword: string): string {
++    return createHash('sha256')
++        .update(KDF_CONTEXT, 'utf8')
++        .update(ssPassword, 'utf8')
++        .digest('base64url');
++}
++
++export function createAetherLinkXAccount(id: string, secret: string): TypedMessage {
++    const idField = encodeStringField(1, id);
++    const secretField = encodeStringField(2, secret);
++    const value = new Uint8Array(idField.length + secretField.length);
++    value.set(idField, 0);
++    value.set(secretField, idField.length);
++
++    return TypedMessage.create({
++        type: ACCOUNT_TYPE,
++        value,
++    });
++}
+diff --git a/src/modules/handler/handler.service.ts b/src/modules/handler/handler.service.ts
+index c3528aa..e08f55a 100644
+--- a/src/modules/handler/handler.service.ts
++++ b/src/modules/handler/handler.service.ts
+@@ -11,6 +11,13 @@ import {
+ import { ISdkResponse } from '@remnawave/xtls-sdk/build/src/common/types';
+ import { InjectXtls } from '@remnawave/xtls-sdk-nestjs';
+ import { XtlsApi } from '@remnawave/xtls-sdk';
++import { createClient } from 'nice-grpc';
++import {
++    AddUserOperation,
++    HandlerServiceDefinition,
++} from '@remnawave/xtls-sdk/build/src/xray-protos/app/proxyman/command/command';
++import { User } from '@remnawave/xtls-sdk/build/src/xray-protos/common/protocol/user';
++import createTypedMessage from '@remnawave/xtls-sdk/build/src/common/utils/create-typed-message/create-typed-message';
+ 
+ import { ICommandResponse } from '@common/types/command-response.type';
+ import { ERRORS } from '@libs/contracts/constants/errors';
+@@ -32,6 +39,7 @@ import {
+ } from './models';
+ import { DropConnectionsEvent } from '../_plugin/events/drop-connections';
+ import { InternalService } from '../internal/internal.service';
++import { createAetherLinkXAccount, deriveAetherLinkXSecret } from './aetherlinkx-account';
+ 
+ @Injectable()
+ export class HandlerService implements OnModuleInit {
+@@ -165,6 +173,21 @@ export class HandlerService implements OnModuleInit {
+                         }
+                         response.push(tempRes);
+ 
++                        break;
++                    case 'aetherlinkx':
++                        tempRes = await this.addAetherLinkXUser({
++                            tag: item.tag,
++                            username: item.username,
++                            uuid: item.uuid,
++                            secret: item.secret,
++                        });
++                        if (tempRes.isOk) {
++                            await this.internalService.addUserToInbound(
++                                item.tag,
++                                hashData.vlessUuid,
++                            );
++                        }
++                        response.push(tempRes);
+                         break;
+                 }
+             }
+@@ -356,6 +379,20 @@ export class HandlerService implements OnModuleInit {
+                                 );
+                             }
+                             break;
++                        case 'aetherlinkx':
++                            tempRes = await this.addAetherLinkXUser({
++                                tag: item.tag,
++                                username: user.userData.userId,
++                                uuid: user.userData.vlessUuid,
++                                secret: deriveAetherLinkXSecret(user.userData.ssPassword),
++                            });
++                            if (tempRes.isOk) {
++                                await this.internalService.addUserToInbound(
++                                    item.tag,
++                                    user.userData.vlessUuid,
++                                );
++                            }
++                            break;
+                         default:
+                             break;
+                     }
+@@ -598,4 +635,42 @@ export class HandlerService implements OnModuleInit {
+             return;
+         }
+     }
++
++    private async addAetherLinkXUser(data: {
++        tag: string;
++        username: string;
++        uuid: string;
++        secret: string;
++    }): Promise<ISdkResponse<AddUserResponseModelFromSdk>> {
++        try {
++            const client = createClient(HandlerServiceDefinition, this.xtlsApi.channel);
++            await client.alterInbound({
++                tag: data.tag,
++                operation: createTypedMessage(AddUserOperation, {
++                    user: User.create({
++                        email: data.username,
++                        level: 0,
++                        account: createAetherLinkXAccount(data.uuid, data.secret),
++                    }),
++                }),
++            });
++
++            return {
++                isOk: true,
++                data: new AddUserResponseModelFromSdk(true),
++            };
++        } catch (error) {
++            const message = error instanceof Error ? error.message : String(error);
++            if (message.includes('already exists')) {
++                return {
++                    isOk: true,
++                    data: new AddUserResponseModelFromSdk(false),
++                };
++            }
++            return {
++                isOk: false,
++                message,
++            };
++        }
++    }
+ }

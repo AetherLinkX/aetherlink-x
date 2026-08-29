@@ -62,6 +62,17 @@ func TestAetherLinkXInboundRequiresTransportSecurity(t *testing.T) {
 	}
 }
 
+func TestAetherLinkXServerAllowsEmptyManagedUsers(t *testing.T) {
+	message, err := (&AetherLinkXServerConfig{}).Build()
+	if err != nil {
+		t.Fatalf("empty managed user set was rejected: %v", err)
+	}
+	config, ok := message.(*aetherlinkx.ServerConfig)
+	if !ok || len(config.Users) != 0 {
+		t.Fatalf("unexpected empty managed config: %#v", message)
+	}
+}
+
 func TestAetherLinkXTurboTransportTuning(t *testing.T) {
 	stream := &internet.StreamConfig{SocketSettings: &internet.SocketConfig{TcpKeepAliveIdle: 99}}
 	turbo := &AetherLinkXTurboConfig{Enabled: true, Congestion: "auto", MultipathTCP: true}

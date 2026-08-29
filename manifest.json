@@ -1,6 +1,6 @@
 {
   "name": "AetherLink X",
-  "packageVersion": "0.4.0-experimental",
+  "packageVersion": "0.5.0-experimental",
   "wireVersion": "1.1",
   "status": "experimental",
   "createdAt": "2026-08-28",
@@ -29,6 +29,11 @@
     "remnawaveBackendDockerfile": "remnawave/Dockerfile.backend",
     "remnawaveBackend274Dockerfile": "remnawave/Dockerfile.backend-2.7.4",
     "remnawaveBackend274Patch": "remnawave/backend-static-alx-2.7.4.patch",
+    "remnawaveManagedBackend274Dockerfile": "remnawave/Dockerfile.backend-managed-2.7.4",
+    "remnawaveManagedBackend274Patch": "remnawave/backend-managed-alx-2.7.4.patch",
+    "remnawaveManagedNode322Dockerfile": "remnawave/Dockerfile.node-managed-3.2.2",
+    "remnawaveManagedNode322Patch": "remnawave/node-managed-alx-3.2.2.patch",
+    "remnawaveCompatibilityMatrix": "remnawave/compatibility-matrix.json",
     "remnawaveWorkflow": ".github/workflows/build-remnawave-images.yml"
   },
   "artifacts": {
@@ -38,14 +43,18 @@
     "linuxAmd64Size": 33935486,
     "linuxArm64Sha256": "20CCE3B0FD4F9099A57A73472406199E5B371B5E8CD7257EB0A64E93F87D5E9E",
     "linuxArm64Size": 31719550,
-    "patchSha256": "6022E3FA6B813ED025D43E7F26FA710F46E3F0B9ACFF51F50A1754FE9D495158",
-    "patchSize": 156209,
-    "remnawaveXrayPatchSha256": "F131F681EE3B6E00B4BED34897703A712D6B38011B1EEEF51668726097175430",
-    "remnawaveXrayPatchSize": 156528,
+    "patchSha256": "63CC20FE20FC67CBACF6C68FE7938B9C715359078B43BF8E75DAC9823F8F552D",
+    "patchSize": 156368,
+    "remnawaveXrayPatchSha256": "433162B2D399E20529BA8EBA98933413A3E6295FE104B0E1D972A9DA59DCF89E",
+    "remnawaveXrayPatchSize": 156685,
     "remnawaveBackendPatchSha256": "AA3DF345A8DFB688E60B9585B199C43F64E0C5C805057F06AA9787225C344D0B",
     "remnawaveBackendPatchSize": 8181,
     "remnawaveBackend274PatchSha256": "AFA36C9BA18D2D7EC45AC5CF79FBE3FEA23641F5AF9FC6AF256F84E144103908",
     "remnawaveBackend274PatchSize": 8332,
+    "remnawaveManagedBackend274PatchSha256": "02F98E0B29DA12FE1D513FBD747B5F9EC4034044DE4E6B48AACFFE5F2BBFC84D",
+    "remnawaveManagedBackend274PatchSize": 21620,
+    "remnawaveManagedNode322PatchSha256": "BC4624F7D34B0822C5D29FBA2099B6BCAC2EF0BDE61AAA9931DF5FC74CD9BB91",
+    "remnawaveManagedNode322PatchSize": 8191,
     "remnawaveWasmPatchSha256": "4FD7D3784C8DEFBDB787A76613799397C52DE3885850B18E69CB29BFA8A59387",
     "remnawaveWasmPatchSize": 22526
   },
@@ -83,6 +92,24 @@
         "tag": "sha-6a091c7",
         "digest": "sha256:8d19c4616a587b51de4680d5c21d766601a7d9388682227e351b695ee2a364da"
       }
+    },
+    "compatibility322": {
+      "workflowRun": "https://github.com/AetherLinkX/aetherlink-x/actions/runs/33258100283",
+      "sourceCommit": "ba41abf",
+      "visibility": "private",
+      "nodeVersion": "3.2.2",
+      "node": {
+        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2",
+        "tag": "sha-ba41abf",
+        "status": "multi-arch-build-passed"
+      }
+    },
+    "managedCompatibility274_322": {
+      "panelVersion": "2.7.4",
+      "nodeVersion": "3.2.2",
+      "backendImage": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-managed-2.7.4",
+      "nodeImage": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2",
+      "status": "awaiting-multi-arch-ci"
     }
   },
   "validation": {
@@ -102,6 +129,12 @@
     "remnawaveBackendTypeScriptBuild": "passed",
     "remnawaveBackend274PatchCheck": "passed on exact 2.7.4 commit 8032a39eae7a83d2a503ee5eab1f6545168178a5",
     "remnawaveBackend274TypeScriptBuild": "passed: Prisma 6.19.0 generation and NestJS build",
+    "remnawaveManagedBackend274PatchCheck": "passed on exact 2.7.4 commit 8032a39eae7a83d2a503ee5eab1f6545168178a5",
+    "remnawaveManagedBackend274TypeScriptBuild": "passed: Prisma 6.19.0 generation and NestJS build",
+    "remnawaveManagedNode322PatchCheck": "passed on exact 3.2.2 commit 2c532c4e33bf5864e9867a7bdc36245cc1057eb1",
+    "remnawaveManagedNode322TypeScriptCheck": "passed: npm run typecheck",
+    "remnawaveManagedSecretGoldenVector": "passed",
+    "emptyManagedSquadConfig": "implemented and patch-checked; container CI pending",
     "remnawaveBackend274RuntimeBranchCheck": "passed: REMNAWAVE_BRANCH=main is accepted by the pinned 2.7.4 runtime schema",
     "remnawaveBrowserWasmBuild": "passed",
     "linuxCrossBuilds": "passed",

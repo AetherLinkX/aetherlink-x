@@ -1,0 +1,476 @@
+diff --git a/libs/contract/models/resolved-proxy-config.schema.ts b/libs/contract/models/resolved-proxy-config.schema.ts
+index d30fed715aaa535d223af6abb21fd3ace39ed50c..8707c06aac122c64a9e24244e85074a5c7bf0a00 100644
+--- a/libs/contract/models/resolved-proxy-config.schema.ts
++++ b/libs/contract/models/resolved-proxy-config.schema.ts
+@@ -85,6 +85,15 @@ export const HysteriaProtocolOptionsSchema = z.object({
+     version: z.number().int(),
+ });
+ 
++export const AetherLinkXProtocolOptionsSchema = z.object({
++    id: z.string().uuid(),
++    secret: z.string().min(1),
++    allowInsecureTransport: z.boolean(),
++    turbo: z.record(z.unknown()).nullable(),
++    security: z.record(z.unknown()).nullable(),
++    stealth: z.record(z.unknown()).nullable(),
++});
++
+ export const HysteriaTransportOptionsSchema = z.object({
+     version: z.number().int(),
+     auth: z.string(),
+@@ -129,11 +138,17 @@ const HysteriaProtocolSchema = z.object({
+     protocolOptions: HysteriaProtocolOptionsSchema,
+ });
+ 
++const AetherLinkXProtocolSchema = z.object({
++    protocol: z.literal('aetherlinkx'),
++    protocolOptions: AetherLinkXProtocolOptionsSchema,
++});
++
+ export const ProtocolVariantSchema = z.discriminatedUnion('protocol', [
+     VlessProtocolSchema,
+     TrojanProtocolSchema,
+     ShadowsocksProtocolSchema,
+     HysteriaProtocolSchema,
++    AetherLinkXProtocolSchema,
+ ]);
+ 
+ const TcpTransportSchema = z.object({
+@@ -221,12 +236,13 @@ export const ResolvedProxyConfigSchema = z.object({
+     address: z.string(),
+     port: z.number().int().positive(),
+ 
+-    protocol: z.enum(['vless', 'trojan', 'shadowsocks', 'hysteria']),
++    protocol: z.enum(['vless', 'trojan', 'shadowsocks', 'hysteria', 'aetherlinkx']),
+     protocolOptions: z.union([
+         VlessProtocolOptionsSchema,
+         TrojanProtocolOptionsSchema,
+         ShadowsocksProtocolOptionsSchema,
+         HysteriaProtocolOptionsSchema,
++        AetherLinkXProtocolOptionsSchema,
+     ]),
+ 
+     transport: z.enum(['tcp', 'xhttp', 'ws', 'httpupgrade', 'grpc', 'kcp', 'hysteria']),
+diff --git a/src/common/helpers/xray-config/aetherlinkx-secret.ts b/src/common/helpers/xray-config/aetherlinkx-secret.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b01f01a7b6ee9d16d94f92e3ccff07bc6a24f5aa
+--- /dev/null
++++ b/src/common/helpers/xray-config/aetherlinkx-secret.ts
+@@ -0,0 +1,10 @@
++import { createHash } from 'node:crypto';
++
++const KDF_CONTEXT = 'AetherLink X Remnawave user secret v1\u0000';
++
++export function deriveAetherLinkXSecret(ssPassword: string): string {
++    return createHash('sha256')
++        .update(KDF_CONTEXT, 'utf8')
++        .update(ssPassword, 'utf8')
++        .digest('base64url');
++}
+diff --git a/src/common/helpers/xray-config/xray-config.validator.ts b/src/common/helpers/xray-config/xray-config.validator.ts
+index fd4b82dcc2b0139d4fa90c57dce9303a05357486..f985d8bd58348e3ca9ddbc39a5df1b019fdc0e34 100644
+--- a/src/common/helpers/xray-config/xray-config.validator.ts
++++ b/src/common/helpers/xray-config/xray-config.validator.ts
+@@ -19,11 +19,14 @@ import { getVlessFlow } from '@common/utils/flow/get-vless-flow';
+ import { UserForConfigEntity } from '@modules/users/entities/users-for-config';
+ 
+ import { getSsPassword, isSS2022MethodFromMethod, SHADOWSOCKS_METHODS } from './ss-cipher';
++import { deriveAetherLinkXSecret } from './aetherlinkx-secret';
+ 
+ const MANAGED_CLIENT_PROTOCOLS = new Set(['hysteria', 'shadowsocks', 'trojan', 'vless']);
++const PANEL_VISIBLE_PROTOCOLS = new Set([...MANAGED_CLIENT_PROTOCOLS, 'aetherlinkx']);
+ type ManagedInboundSettings = VLessInboundConfig | TrojanInboundConfig | ShadowsocksInboundConfig;
+ 
+ const ALLOWED_PROTOCOLS = new Set([
++    'aetherlinkx',
+     'dokodemo-door',
+     'http',
+     'hysteria',
+@@ -87,7 +90,7 @@ export class XRayConfig {
+ 
+     public getAllInbounds(): InboundsWithTagsAndType[] {
+         return this.inbounds
+-            .filter((inbound) => this.hasManagedClients(inbound))
++            .filter((inbound) => this.isPanelVisibleInbound(inbound))
+             .map((inbound) => ({
+                 tag: inbound.tag!,
+                 rawInbound: inbound as unknown as object,
+@@ -105,7 +108,7 @@ export class XRayConfig {
+ 
+     public leaveInbounds(tags: Set<string>): void {
+         this.config.inbounds = this.config.inbounds!.filter(
+-            (inbound) => tags.has(inbound.tag!) || !this.hasManagedClients(inbound),
++            (inbound) => tags.has(inbound.tag!) || !this.isPanelVisibleInbound(inbound),
+         );
+     }
+ 
+@@ -157,10 +160,29 @@ export class XRayConfig {
+         return MANAGED_CLIENT_PROTOCOLS.has(inbound.protocol);
+     }
+ 
++    private isManagedAetherLinkX(inbound: InboundConfig): boolean {
++        const candidate = inbound as unknown as { protocol?: string; tag?: string };
++        return (
++            candidate.protocol === 'aetherlinkx' &&
++            typeof candidate.tag === 'string' &&
++            candidate.tag.startsWith('AETHERLINK_X_MANAGED_')
++        );
++    }
++
++    private isPanelVisibleInbound(inbound: InboundConfig): boolean {
++        return PANEL_VISIBLE_PROTOCOLS.has(inbound.protocol);
++    }
++
+     public cleanInboundClients(injectFlow: boolean): void {
+         if (!this.config.inbounds) return;
+ 
+         for (const inbound of this.config.inbounds) {
++            if (this.isManagedAetherLinkX(inbound)) {
++                this.ensureSettings(inbound);
++                const settings = inbound.settings as unknown as { users?: unknown[] };
++                settings.users = [];
++                continue;
++            }
+             if (!this.hasManagedClients(inbound)) continue;
+ 
+             this.ensureSettings(inbound);
+@@ -182,7 +204,10 @@ export class XRayConfig {
+ 
+         const inboundMap = new Map(
+             this.config.inbounds
+-                .filter((inbound) => this.hasManagedClients(inbound))
++                .filter(
++                    (inbound) =>
++                        this.hasManagedClients(inbound) || this.isManagedAetherLinkX(inbound),
++                )
+                 .map((inbound) => [inbound.tag, inbound]),
+         );
+ 
+@@ -223,6 +248,28 @@ export class XRayConfig {
+     }
+ 
+     private addUsersToInbound(inbound: InboundConfig, users: UserForConfigEntity[]): void {
++        if ((inbound.protocol as string) === 'aetherlinkx') {
++            this.ensureSettings(inbound);
++            const settings = inbound.settings as unknown as {
++                users?: Array<{
++                    id: string;
++                    secret: string;
++                    email: string;
++                    level: number;
++                }>;
++            };
++            settings.users ??= [];
++            for (const user of users) {
++                settings.users.push({
++                    id: user.vlessUuid,
++                    secret: deriveAetherLinkXSecret(user.ssPassword),
++                    email: user.tId.toString(),
++                    level: 0,
++                });
++            }
++            return;
++        }
++
+         switch (inbound.protocol) {
+             case 'trojan':
+                 if (!inbound.settings) {
+diff --git a/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts b/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts
+index 2446b740936c2eb629051bdd02bd8f9772a73f30..dfe9ceba12d3ce978ca01581ec3648e39d084bd2 100644
+--- a/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts
++++ b/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts
+@@ -10,6 +10,7 @@ import {
+     isSS2022Method,
+ } from '@common/helpers/xray-config/ss-cipher';
+ import { getVlessFlowFromDbInbound } from '@common/utils/flow/get-vless-flow';
++import { deriveAetherLinkXSecret } from '@common/helpers/xray-config/aetherlinkx-secret';
+ 
+ import { ConfigProfileInboundEntity } from '@modules/config-profiles/entities/config-profile-inbound.entity';
+ import { GetUserWithResolvedInboundsQuery } from '@modules/users/queries/get-user-with-resolved-inbounds';
+@@ -40,7 +41,11 @@ export class AddUserToNodeHandler implements IEventHandler<AddUserToNodeEvent> {
+ 
+             const { tId, trojanPassword, vlessUuid, ssPassword, inbounds } = userEntity.response;
+ 
+-            if (inbounds.length === 0) {
++            const managedInbounds = inbounds.filter((inbound) =>
++                this.isDynamicallyManaged(inbound),
++            );
++
++            if (managedInbounds.length === 0) {
+                 return;
+             }
+ 
+@@ -50,13 +55,13 @@ export class AddUserToNodeHandler implements IEventHandler<AddUserToNodeEvent> {
+                 return;
+             }
+ 
+-            const userData: AddUserToNodeCommandSdk.Request = {
++            const userData = {
+                 hashData: {
+                     vlessUuid,
+                     prevVlessUuid: event.prevVlessUuid,
+                 },
+ 
+-                data: inbounds.map((inbound) => {
++                data: managedInbounds.map((inbound) => {
+                     const inboundType = this.resolveInboundType(inbound);
+ 
+                     switch (inboundType) {
+@@ -98,18 +103,30 @@ export class AddUserToNodeHandler implements IEventHandler<AddUserToNodeEvent> {
+                                 password: vlessUuid,
+                                 tag: inbound.tag,
+                             };
++                        case 'aetherlinkx':
++                            return {
++                                type: inboundType,
++                                username: tId.toString(),
++                                uuid: vlessUuid,
++                                secret: deriveAetherLinkXSecret(ssPassword),
++                                tag: inbound.tag,
++                            };
+                         default:
+                             throw new Error(`Unsupported inbound type: ${inboundType}`);
+                     }
+                 }),
+-            };
++            } as unknown as AddUserToNodeCommandSdk.Request;
+ 
+             for (const node of nodes) {
+                 if (node.activeInbounds.length === 0 || !node.activeConfigProfileUuid) {
+                     continue;
+                 }
+ 
+-                const activeTags = new Set(node.activeInbounds.map((inbound) => inbound.tag));
++                const activeTags = new Set(
++                    node.activeInbounds
++                        .filter((inbound) => this.isDynamicallyManaged(inbound))
++                        .map((inbound) => inbound.tag),
++                );
+ 
+                 const filteredData = {
+                     ...userData,
+@@ -154,4 +171,8 @@ export class AddUserToNodeHandler implements IEventHandler<AddUserToNodeEvent> {
+         }
+         return inbound.type;
+     }
++
++    private isDynamicallyManaged(inbound: ConfigProfileInboundEntity): boolean {
++        return inbound.type !== 'aetherlinkx' || inbound.tag.startsWith('AETHERLINK_X_MANAGED_');
++    }
+ }
+diff --git a/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts b/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts
+index 8e0583620fa48689bd74b81b3cdfba126077e19d..1d5ff498bf01a91f82af15421a65aaa53fd15bfc 100644
+--- a/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts
++++ b/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts
+@@ -48,7 +48,11 @@ export class AddUsersToNodeHandler implements IEventHandler<AddUsersToNodeEvent>
+             if (activeNodes.length === 0) return;
+ 
+             for (const node of activeNodes) {
+-                const activeTags = new Set(node.activeInbounds.map((ib) => ib.tag));
++                const activeTags = new Set(
++                    node.activeInbounds
++                        .filter((inbound) => this.isDynamicallyManaged(inbound))
++                        .map((inbound) => inbound.tag),
++                );
+ 
+                 const usersForNode: AddUsersToNodeCommandSdk.Request['users'] = [];
+                 const usersToRemove: Array<{ userId: string; hashUuid: string }> = [];
+@@ -94,11 +98,13 @@ export class AddUsersToNodeHandler implements IEventHandler<AddUsersToNodeEvent>
+                                     return { type: inboundType, tag: inbound.tag };
+                                 case 'shadowsocks22':
+                                     return { type: inboundType, tag: inbound.tag };
++                                case 'aetherlinkx':
++                                    return { type: inboundType, tag: inbound.tag };
+                                 default:
+                                     throw new Error(`Unsupported inbound type: ${inboundType}`);
+                             }
+                         }),
+-                    });
++                    } as unknown as AddUsersToNodeCommandSdk.Request['users'][number]);
+                 }
+ 
+                 if (usersForNode.length > 0) {
+@@ -136,4 +142,8 @@ export class AddUsersToNodeHandler implements IEventHandler<AddUsersToNodeEvent>
+         }
+         return inbound.type;
+     }
++
++    private isDynamicallyManaged(inbound: ConfigProfileInboundEntity): boolean {
++        return inbound.type !== 'aetherlinkx' || inbound.tag.startsWith('AETHERLINK_X_MANAGED_');
++    }
+ }
+diff --git a/src/modules/subscription-template/generators/xray-json.generator.service.ts b/src/modules/subscription-template/generators/xray-json.generator.service.ts
+index 7b60ed03279158cd88abd05b69fe0c356c13e609..1b7ed9c1f834c014eebfa8276f91e07e54538fa2 100644
+--- a/src/modules/subscription-template/generators/xray-json.generator.service.ts
++++ b/src/modules/subscription-template/generators/xray-json.generator.service.ts
+@@ -20,12 +20,14 @@ type VlessConfig = Extract<ResolvedProxyConfig, { protocol: 'vless' }>;
+ type TrojanConfig = Extract<ResolvedProxyConfig, { protocol: 'trojan' }>;
+ type ShadowsocksConfig = Extract<ResolvedProxyConfig, { protocol: 'shadowsocks' }>;
+ type HysteriaConfig = Extract<ResolvedProxyConfig, { protocol: 'hysteria' }>;
++type AetherLinkXConfig = Extract<ResolvedProxyConfig, { protocol: 'aetherlinkx' }>;
+ 
+ type ProtocolBuilderMap = {
+     vless: (host: VlessConfig) => object;
+     trojan: (host: TrojanConfig) => object;
+     shadowsocks: (host: ShadowsocksConfig) => object;
+     hysteria: (host: HysteriaConfig) => object;
++    aetherlinkx: (host: AetherLinkXConfig) => object;
+ };
+ 
+ type WsConfig = Extract<ResolvedProxyConfig, { transport: 'ws' }>;
+@@ -46,6 +48,16 @@ type TransportBuilderMap = {
+     kcp: (host: KcpConfig) => Record<string, unknown>;
+ };
+ const PROTOCOL_BUILDERS: ProtocolBuilderMap = {
++    aetherlinkx: (host) => ({
++        address: host.address,
++        port: host.port,
++        id: host.protocolOptions.id,
++        secret: host.protocolOptions.secret,
++        allowInsecureTransport: host.protocolOptions.allowInsecureTransport,
++        ...(host.protocolOptions.turbo && { turbo: host.protocolOptions.turbo }),
++        ...(host.protocolOptions.security && { security: host.protocolOptions.security }),
++        ...(host.protocolOptions.stealth && { stealth: host.protocolOptions.stealth }),
++    }),
+     vless: (host) => ({
+         vnext: [
+             {
+@@ -298,6 +310,8 @@ export class XrayJsonGeneratorService {
+ 
+     private buildProtocolSettings(host: ResolvedProxyConfig): object {
+         switch (host.protocol) {
++            case 'aetherlinkx':
++                return PROTOCOL_BUILDERS.aetherlinkx(host);
+             case 'vless':
+                 return PROTOCOL_BUILDERS.vless(host);
+             case 'trojan':
+diff --git a/src/modules/subscription-template/generators/xray.generator.service.ts b/src/modules/subscription-template/generators/xray.generator.service.ts
+index 64c14167d4a42d0871508f8a2964a10e9959b284..cff2bfce48be668a181e1210682e553a28c06541 100644
+--- a/src/modules/subscription-template/generators/xray.generator.service.ts
++++ b/src/modules/subscription-template/generators/xray.generator.service.ts
+@@ -55,6 +55,8 @@ export class XrayGeneratorService {
+                 return this.buildTrojanLink(host);
+             case 'shadowsocks':
+                 return this.buildShadowsocksLink(host);
++            case 'aetherlinkx':
++                return this.buildAetherLinkXLink(host);
+             default:
+                 return null;
+         }
+@@ -125,6 +127,29 @@ export class XrayGeneratorService {
+         return `ss://${credentials}@${host.address}:${host.port}#${remark}`;
+     }
+ 
++    private buildAetherLinkXLink(
++        host: Extract<ResolvedProxyConfig, { protocol: 'aetherlinkx' }>,
++    ): string {
++        const params: Record<string, unknown> = {
++            secret: host.protocolOptions.secret,
++            allowInsecureTransport: host.protocolOptions.allowInsecureTransport ? 1 : 0,
++        };
++
++        this.applyTransportParams(params, host);
++        this.applySecurityParams(params, host);
++
++        const encodeOptions = (value: Record<string, unknown> | null): string | undefined =>
++            value ? Buffer.from(JSON.stringify(value), 'utf8').toString('base64url') : undefined;
++
++        params.turbo = encodeOptions(host.protocolOptions.turbo);
++        params.alxSecurity = encodeOptions(host.protocolOptions.security);
++        params.stealth = encodeOptions(host.protocolOptions.stealth);
++
++        const query = this.buildQueryString(params);
++        const remark = encodeURIComponent(host.finalRemark);
++        return `aetherlinkx://${host.protocolOptions.id}@${host.address}:${host.port}?${query}#${remark}`;
++    }
++
+     // ── Transport Params ─────────────────────────────
+ 
+     private applyTransportParams(params: Record<string, unknown>, host: ResolvedProxyConfig): void {
+diff --git a/src/modules/subscription-template/resolve-proxy/interfaces/resolved-proxy-config.interface.ts b/src/modules/subscription-template/resolve-proxy/interfaces/resolved-proxy-config.interface.ts
+index 38066f6afbbf4491cd2ea9a4cb14ace1ab6d958d..a729a877fdb0cd1c180ba571f3240c60089397d8 100644
+--- a/src/modules/subscription-template/resolve-proxy/interfaces/resolved-proxy-config.interface.ts
++++ b/src/modules/subscription-template/resolve-proxy/interfaces/resolved-proxy-config.interface.ts
+@@ -25,6 +25,15 @@ export interface IHysteriaProtocolOptions {
+     version: number;
+ }
+ 
++export interface IAetherLinkXProtocolOptions {
++    id: string;
++    secret: string;
++    allowInsecureTransport: boolean;
++    turbo: Record<string, unknown> | null;
++    security: Record<string, unknown> | null;
++    stealth: Record<string, unknown> | null;
++}
++
+ // ─── Transport Options ───────────────────────────────────
+ 
+ export interface ITcpTransportOptions {
+@@ -111,11 +120,17 @@ export type HysteriaProtocol = {
+     protocolOptions: IHysteriaProtocolOptions;
+ };
+ 
++export type AetherLinkXProtocol = {
++    protocol: 'aetherlinkx';
++    protocolOptions: IAetherLinkXProtocolOptions;
++};
++
+ export type ProtocolVariant =
+     | VlessProtocol
+     | TrojanProtocol
+     | ShadowsocksProtocol
+-    | HysteriaProtocol;
++    | HysteriaProtocol
++    | AetherLinkXProtocol;
+ 
+ // ─── Transport Variants ──────────────────────────────────
+ 
+diff --git a/src/modules/subscription-template/resolve-proxy/resolve-proxy-config.service.ts b/src/modules/subscription-template/resolve-proxy/resolve-proxy-config.service.ts
+index f1a49a6b99e8d2106971f5f46669828f92dedf20..2e3235cc56be5e6c5e9b2e32f4c6897874bf0580 100644
+--- a/src/modules/subscription-template/resolve-proxy/resolve-proxy-config.service.ts
++++ b/src/modules/subscription-template/resolve-proxy/resolve-proxy-config.service.ts
+@@ -21,6 +21,7 @@ import {
+     resolveInboundAndPublicKey,
+ } from '@common/helpers/xray-config';
+ import { getSsPassword, isSS2022MethodFromMethod } from '@common/helpers/xray-config/ss-cipher';
++import { deriveAetherLinkXSecret } from '@common/helpers/xray-config/aetherlinkx-secret';
+ import { TemplateEngine } from '@common/utils/templates/replace-templates-values';
+ import { setVlessRouteForUuid } from '@common/utils/vless-route';
+ import { getVlessFlow } from '@common/utils/flow';
+@@ -460,6 +461,34 @@ export class ResolveProxyConfigService {
+             return null;
+         }
+ 
++        if ((inbound.protocol as string) === 'aetherlinkx') {
++            const settings = inbound.settings as unknown as {
++                allowInsecureTransport?: boolean;
++                turbo?: Record<string, unknown>;
++                security?: Record<string, unknown>;
++                stealth?: Record<string, unknown>;
++            };
++            const clientSecurity = settings.security
++                ? Object.fromEntries(
++                      Object.entries(settings.security).filter(
++                          ([key]) => key !== 'xwingPrivateKey',
++                      ),
++                  )
++                : null;
++
++            return {
++                protocol: 'aetherlinkx',
++                protocolOptions: {
++                    id: user.vlessUuid,
++                    secret: deriveAetherLinkXSecret(user.ssPassword),
++                    allowInsecureTransport: settings.allowInsecureTransport ?? false,
++                    turbo: settings.turbo ?? null,
++                    security: clientSecurity,
++                    stealth: settings.stealth ?? null,
++                },
++            };
++        }
++
+         switch (inbound.protocol) {
+             case 'vless':
+                 return {
+

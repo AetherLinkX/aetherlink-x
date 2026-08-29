@@ -21,33 +21,46 @@ GitHub сам по себе не добавляет протокол в пане
 
 - `ghcr.io/OWNER/aetherlink-x-remnawave-node-3.2.2`.
 
+Для выборочной выдачи через Internal Squads собирается отдельная согласованная
+пара managed-образов:
+
+- `ghcr.io/OWNER/aetherlink-x-remnawave-backend-managed-2.7.4`;
+- `ghcr.io/OWNER/aetherlink-x-remnawave-node-managed-3.2.2`.
+
 Версия Backend и версия Node не обязаны совпадать. Однако базовую версию
 production-ноды менять или понижать только ради ALX нельзя: выбирайте образ с
 тем же суффиксом версии, который панель показывает для конкретной ноды.
 
-## Текущий поддерживаемый режим
+## Режимы интеграции
 
-Поддерживаемый режим интеграции — **статический ALX inbound**:
+**Статический режим** сохраняет ALX accounts непосредственно в Config Profile.
+Он подходит для ручных клиентских JSON, но не предоставляет изоляцию по squad.
 
-1. custom Backend принимает и показывает ALX в Config Profiles;
-2. custom Remnawave Node запускает ALX-capable Xray;
-3. `config-profile-static.json` добавляется как Config Profile;
-4. UUID, ALX secret, X-Wing и REALITY keys заменяются значениями из `aetherlinkx-keygen`/`x25519`;
-5. клиент получает ручной JSON из `tools/generate-configs.ps1`.
+**Managed-режим** включается только для inbound, tag которого начинается с
+`AETHERLINK_X_MANAGED_`. Backend очищает его `settings.users` и при каждой
+сборке конфигурации добавляет только пользователей Internal Squad, которому
+назначен этот inbound. События add/remove передаются Node без перезапуска Xray.
+Пустой squad создаёт пустой список пользователей: inbound запускается, но
+отклоняет любое рукопожатие.
 
-Панель может сохранять профиль, включать inbound на ноде, запускать ядро и учитывать суммарный трафик inbound. Штатное динамическое управление пользователями и генератор подписок пока не понимают ALX; ALX-учётные данные внутри профиля намеренно не очищаются и не изменяются событиями обычных пользователей.
+Для каждого пользователя детерминированно формируются разные credentials:
+`id = vlessUuid`, а `secret = base64url(SHA-256(context || ssPassword))`.
+Backend и Node проверяются одним golden-вектором. При ротации стандартного
+`ssPassword` меняется и ALX secret, отдельная миграция БД не требуется.
 
-## Почему динамические пользователи пока недоступны
+Raw/Xray-подписка получает URI `aetherlinkx://` и Xray JSON outbound.
+Обычные сторонние клиенты не распознают новый URI без ALX-capable ядра или
+импортера; поэтому для первого production-теста следует использовать
+собственный Xray JSON.
 
-Официальный `@remnawave/xtls-sdk` умеет добавлять только VLESS, Trojan, Shadowsocks, Shadowsocks 2022, SOCKS и HTTP accounts. Backend также очищает/инжектирует пользователей только для известных протоколов. ALX требует UUID и отдельный secret, а стандартная модель пользователя Remnawave такого поля не содержит.
+Managed-реализация намеренно не меняет БД и официальный SDK package. Node
+добавляет ALX protobuf account через тот же gRPC HandlerService, который
+используется штатным SDK. Привязка к точным commit Remnawave 2.7.4/3.2.2
+проверяется `git apply --check`, TypeScript build/typecheck и container build.
 
-Для полноценного production-подключения нужны согласованные изменения ещё в трёх проектах:
-
-- `remnawave/xtls-sdk`: protobuf account и `addAetherLinkXUser`;
-- `remnawave/node`: routing команды add/remove user к новому SDK method;
-- `remnawave/backend/panel`: protocol schemas, profile validation, subscription output и UI.
-
-Без этих изменений нельзя честно обещать, что обычные пользователи панели автоматически появятся в ALX inbound или получат рабочую подписку.
+Неизвестные версии не патчатся «на удачу»: deploy-скрипты завершаются до
+изменений. Новая версия добавляется в `compatibility-matrix.json` только после
+отдельного адаптера и полного CI.
 
 ## Развёртывание custom images
 
@@ -68,6 +81,15 @@ export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:late
 export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:latest
 ```
 
+Для managed/squad-режима пары Panel 2.7.4 + Node 3.2.2:
+
+```sh
+export ALX_MODE=managed
+sudo -E sh deploy-custom-panel.sh
+# На отдельном сервере ноды:
+sudo -E sh deploy-custom-node.sh
+```
+
 Сначала на сервере панели:
 
 ```sh
@@ -86,6 +108,10 @@ sudo -E sh deploy-custom-node.sh
 
 Оба скрипта сохраняют backup основного compose, проверяют объединённую конфигурацию и перезапускают только соответствующий сервис. Миграций базы данных нет. Команда отката печатается после успешного запуска.
 
-После переключения создайте профиль `AetherLink X Static`, вставьте сгенерированный `server.json`, назначьте профиль тестовой Node и включите inbound `AETHERLINK_X_REALITY`. Не добавляйте этот inbound во внутренний squad: подключения выдаются ручным клиентским JSON, а не стандартной подпиской Remnawave.
+В статическом режиме создайте профиль `AetherLink X Static` и не добавляйте
+его inbound во внутренний squad. В managed-режиме добавьте inbound с префиксом
+`AETHERLINK_X_MANAGED_` в существующий профиль, затем включите его только в
+отдельный Internal Squad: доступ получат исключительно пользователи этого
+squad.
 
 Перед переключением production-ноды рекомендуется создать отдельную тестовую Node в Remnawave и назначить ей отдельный порт.

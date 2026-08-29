@@ -1,0 +1,119 @@
+# syntax=docker/dockerfile:1.7
+
+ARG REMNAWAVE_BACKEND_COMMIT=8032a39eae7a83d2a503ee5eab1f6545168178a5
+ARG XRAY_COMMIT=5ca6f4b7d4dc20a881d4330e498892697627ec0c
+ARG VALIDATOR_COMMIT=359f58ec01d34bee016335c21bb0fa571a6f4ddf
+
+FROM --platform=$BUILDPLATFORM alpine:3.19 AS backend-source
+ARG REMNAWAVE_BACKEND_COMMIT
+RUN apk add --no-cache git
+RUN git clone --filter=blob:none --no-checkout https://github.com/remnawave/backend.git /src \
+    && git -C /src fetch --depth 1 origin "${REMNAWAVE_BACKEND_COMMIT}" \
+    && git -C /src checkout --detach "${REMNAWAVE_BACKEND_COMMIT}" \
+    && test "$(git -C /src rev-parse HEAD)" = "${REMNAWAVE_BACKEND_COMMIT}"
+COPY remnawave/backend-managed-alx-2.7.4.patch /tmp/backend-managed-alx.patch
+RUN git -C /src apply --check /tmp/backend-managed-alx.patch \
+    && git -C /src apply /tmp/backend-managed-alx.patch
+
+# The browser validator is WebAssembly and therefore target-architecture independent.
+# Build it on the native runner instead of under ARM64 QEMU.
+FROM --platform=$BUILDPLATFORM golang:1.26.0-alpine AS validator-build
+ARG XRAY_COMMIT
+ARG VALIDATOR_COMMIT
+RUN apk add --no-cache ca-certificates curl git
+RUN git clone --filter=blob:none --no-checkout https://github.com/remnawave/xray-monaco-editor.git /validator \
+    && git -C /validator fetch --depth 1 origin "${VALIDATOR_COMMIT}" \
+    && git -C /validator checkout --detach "${VALIDATOR_COMMIT}"
+RUN git clone --filter=blob:none --no-checkout https://github.com/XTLS/Xray-core.git /validator/go/assets/xray-patched \
+    && git -C /validator/go/assets/xray-patched fetch --depth 1 origin "${XRAY_COMMIT}" \
+    && git -C /validator/go/assets/xray-patched checkout --detach "${XRAY_COMMIT}"
+COPY patches/aetherlinkx-xray-core-v26.7.28.patch /tmp/aetherlinkx.patch
+COPY remnawave/xray-wasm.patch /tmp/xray-wasm.patch
+RUN git -C /validator/go/assets/xray-patched apply --check /tmp/aetherlinkx.patch \
+    && git -C /validator/go/assets/xray-patched apply /tmp/aetherlinkx.patch \
+    && git -C /validator/go/assets/xray-patched apply --check /tmp/xray-wasm.patch \
+    && git -C /validator/go/assets/xray-patched apply /tmp/xray-wasm.patch
+RUN curl --fail --location --retry 3 \
+      https://github.com/zuckerhalo/geotrim/releases/latest/download/geoip.dat \
+      -o /validator/go/assets/geoip.dat \
+    && curl --fail --location --retry 3 \
+      https://github.com/zuckerhalo/geotrim/releases/latest/download/geosite.dat \
+      -o /validator/go/assets/geosite.dat
+WORKDIR /validator/go
+RUN CGO_ENABLED=0 GOOS=js GOARCH=wasm \
+    go build -trimpath -buildvcs=false -o /out/main.wasm main.go \
+    && cp /usr/local/go/lib/wasm/wasm_exec.js /out/wasm_exec.js
+
+FROM --platform=$BUILDPLATFORM node:24.14-alpine AS frontend
+ARG FRONTEND_URL=https://github.com/remnawave/frontend/releases/download/2.7.4/remnawave-frontend.zip
+ARG FRONTEND_SHA256=18567642caa3a20be1f8b3812435d3ecd46dea68af29b92b4be42e0b988cac20
+RUN apk add --no-cache ca-certificates curl unzip
+WORKDIR /opt/frontend
+RUN curl --fail --location --retry 3 "${FRONTEND_URL}" -o frontend.zip \
+    && echo "${FRONTEND_SHA256}  frontend.zip" | sha256sum -c - \
+    && unzip frontend.zip -d frontend_temp \
+    && curl --fail --location --retry 3 https://validator.remna.dev/xray.schema.json \
+      -o frontend_temp/dist/assets/xray.schema.json \
+    && curl --fail --location --retry 3 https://validator.remna.dev/xray.schema.cn.json \
+      -o frontend_temp/dist/assets/xray.schema.cn.json
+COPY remnawave/patch-xray-schema.mjs /tmp/patch-xray-schema.mjs
+RUN node /tmp/patch-xray-schema.mjs \
+      frontend_temp/dist/assets/xray.schema.json \
+      frontend_temp/dist/assets/xray.schema.cn.json
+COPY --from=validator-build /out/main.wasm /opt/frontend/frontend_temp/dist/assets/main.wasm
+COPY --from=validator-build /out/wasm_exec.js /opt/frontend/frontend_temp/dist/assets/wasm_exec.js
+
+FROM node:24.14-trixie-slim AS backend-build
+WORKDIR /opt/app
+ENV PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x,linux-arm64-openssl-3.0.x
+COPY --from=backend-source /src/ ./
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm config set fetch-retries 5 \
+    && npm config set fetch-retry-factor 2 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set fetch-timeout 300000 \
+    && npm ci --prefer-offline --no-audit --no-fund
+RUN npm run migrate:generate \
+    && npm run build \
+    && npm prune --omit=dev \
+    && npm cache clean --force
+
+FROM node:24.14-trixie-slim
+ARG SOURCE_URL="https://github.com/OWNER/aetherlink-x"
+ARG REMNAWAVE_BACKEND_COMMIT
+LABEL org.opencontainers.image.title="Remnawave Backend 2.7.4 with managed AetherLink X support"
+LABEL org.opencontainers.image.description="Remnawave 2.7.4 backend and browser validator extended for squad-managed ALX users and subscription links"
+LABEL org.opencontainers.image.source="${SOURCE_URL}"
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only AND MPL-2.0"
+WORKDIR /opt/app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+# The 2.7.4 runtime schema intentionally accepts only "main" or "dev" here.
+# Version identity stays in __RW_METADATA_VERSION below.
+ENV REMNAWAVE_BRANCH=main
+ENV PRISMA_HIDE_UPDATE_MESSAGE=true
+ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
+ENV PM2_DISABLE_VERSION_CHECK=true
+ENV NODE_OPTIONS="--max-old-space-size=16384"
+ENV __RW_METADATA_VERSION=2.7.4-alx-managed.1
+ENV __RW_METADATA_GIT_BACKEND_COMMIT=${REMNAWAVE_BACKEND_COMMIT}
+ENV __RW_METADATA_GIT_FRONTEND_COMMIT=180d24607660305b1d44e0861c83698b7904bb08
+ENV __RW_METADATA_GIT_BRANCH=alx-managed-2.7.4
+COPY --from=backend-build /opt/app/dist ./dist
+COPY --from=frontend /opt/frontend/frontend_temp/dist ./frontend
+COPY --from=backend-build /opt/app/prisma ./prisma
+COPY --from=backend-build /opt/app/patches ./patches
+COPY --from=backend-build /opt/app/node_modules ./node_modules
+COPY --from=backend-source /src/configs /var/lib/remnawave/configs
+COPY --from=backend-source /src/package.json /src/package-lock.json ./
+COPY --from=backend-source /src/prisma.config.ts ./prisma.config.ts
+COPY --from=backend-source /src/libs ./libs
+COPY --from=backend-source /src/ecosystem.config.js ./
+COPY --from=backend-source /src/docker-entrypoint.sh ./
+RUN npm install -g pm2 \
+    && npm link
+ENTRYPOINT ["/bin/sh", "docker-entrypoint.sh"]
+CMD ["pm2-runtime", "start", "ecosystem.config.js", "--env", "production"]
+

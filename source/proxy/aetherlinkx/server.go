@@ -43,9 +43,6 @@ func NewServer(ctx context.Context, config *ServerConfig) (*Server, error) {
 			return nil, errors.New("failed to add AetherLink X user").Base(err)
 		}
 	}
-	if validator.GetCount() == 0 {
-		return nil, errors.New("AetherLink X requires at least one user")
-	}
 	timeout := time.Duration(config.HandshakeTimeoutSeconds) * time.Second
 	security, err := ParseServerSecurity(config.Security)
 	if err != nil {

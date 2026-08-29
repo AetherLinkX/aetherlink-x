@@ -12,7 +12,11 @@
     "2.7.4": {
       "mode": "static",
       "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:latest",
-      "status": "live-tested"
+      "status": "live-tested",
+      "managedMode": {
+        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-managed-2.7.4:latest",
+        "status": "local-build-tested"
+      }
     },
     "3.3.2": {
       "mode": "static",
@@ -27,7 +31,11 @@
     },
     "3.2.2": {
       "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:latest",
-      "status": "building"
+      "status": "build-tested",
+      "managedMode": {
+        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2:latest",
+        "status": "local-typecheck-tested"
+      }
     },
     "3.3.2": {
       "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node:latest",
@@ -37,6 +45,8 @@
   "notes": [
     "Unknown versions are rejected before compose is changed.",
     "A version is added only after patch, build and runtime validation.",
-    "Static mode does not provide per-user Internal Squad credentials."
+    "Static mode does not provide per-user Internal Squad credentials.",
+    "Managed mode is enabled only for tags beginning with AETHERLINK_X_MANAGED_.",
+    "An empty managed squad produces an empty ALX user set and rejects every handshake."
   ]
 }
