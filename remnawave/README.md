@@ -45,23 +45,25 @@ GitHub сам по себе не добавляет протокол в пане
 Для панели `2.7.4` используйте только согласованную пару:
 
 ```sh
-export ALX_BACKEND_IMAGE=ghcr.io/OWNER/aetherlink-x-remnawave-backend-2.7.4:latest
-export ALX_NODE_IMAGE=ghcr.io/OWNER/aetherlink-x-remnawave-node-2.7.0:latest
+export ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:sha-7ef48b3
+export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:sha-7ef48b3
 ```
+
+Проверенные multi-arch digest: Backend `sha256:64027ea7c88f4b656ec16e401734fddf437216035a9756fa0fb1b196aad5a796`, Node `sha256:5d2907bbd2cbcefd608eba3a8f05c2cf40d253c243bb67641f60a2a3d8f6fda4`. Сборка: [GitHub Actions #3](https://github.com/AetherLinkX/aetherlink-x/actions/runs/33248315033).
 
 Не устанавливайте Backend `3.3.2` поверх панели `2.7.4` без отдельной штатной процедуры обновления Remnawave.
 
 Сначала на сервере панели:
 
 ```sh
-export ALX_BACKEND_IMAGE=ghcr.io/OWNER/aetherlink-x-remnawave-backend:latest
+export ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:sha-7ef48b3
 sudo -E sh deploy-custom-panel.sh
 ```
 
 Затем на сервере ноды:
 
 ```sh
-export ALX_NODE_IMAGE=ghcr.io/OWNER/aetherlink-x-remnawave-node:latest
+export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:sha-7ef48b3
 sudo -E sh deploy-custom-node.sh
 ```
 

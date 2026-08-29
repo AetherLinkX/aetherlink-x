@@ -56,7 +56,7 @@ Installer сначала выполняет `git apply --check`. Patch прим�
   -RealityPrivateKey PRIVATE_KEY
 ```
 
-Скрипт самостоятельно создаст UUID, account secret и X-Wing key pair и запишет согласованные `client.json`/`server.json`. Секреты выводятся только в созданные файлы; каталог следует защищать как credentials.
+Скрипт самостоятельно создаст UUID, account secret и X-Wing key pair и запишет согласованные `client.json`, `server.json` и готовый для вставки в Remnawave `remnawave-profile.json`. Секреты выводятся только в созданные файлы; каталог следует защищать как credentials.
 
 ## Документация
 

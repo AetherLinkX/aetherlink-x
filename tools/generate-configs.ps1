@@ -31,7 +31,7 @@ foreach ($required in @('ID','Secret','XWingPrivateKey','XWingPublicKey')) {
 $turbo = [ordered]@{
     enabled = $true; maxDatagramAgeMs = 35; destinationCacheSize = 64; maxUdpPayload = 8192
     tcpKeepAliveIdle = 15; tcpKeepAliveInterval = 5; tcpUserTimeout = 10000
-    congestion = 'auto'; multipathTcp = $false; muxConcurrency = 8
+    congestion = 'auto'; multipathTcp = $true; muxConcurrency = 8
     xudpConcurrency = 4; xudpProxyUdp443 = 'allow'
 }
 $stealth = [ordered]@{
@@ -49,7 +49,7 @@ $client = [ordered]@{
             stealth=$stealth
         }
         streamSettings=[ordered]@{
-            method='raw'; security='reality'
+            network='raw'; security='reality'
             realitySettings=[ordered]@{ serverName=$RealityServerName; fingerprint='chrome'; password=$RealityPublicKey; shortId=$ShortId; spiderX='/' }
         }
     })
@@ -57,25 +57,38 @@ $client = [ordered]@{
 $server = [ordered]@{
     log = [ordered]@{ loglevel = 'warning' }
     inbounds = @([ordered]@{
-        tag='aetherlinkx-in'; listen='0.0.0.0'; port=$Port; protocol='aetherlinkx'
+        tag='AETHERLINK_X_REALITY'; listen='0.0.0.0'; port=$Port; protocol='aetherlinkx'
         settings=[ordered]@{
-            users=@([ordered]@{ id=$keys.ID; secret=$keys.Secret; email='player@example.com'; level=0 })
+            users=@([ordered]@{ id=$keys.ID; secret=$keys.Secret; email='static-alx@local'; level=0 })
             handshakeTimeoutSeconds=4; turbo=$turbo
             security=[ordered]@{ pqMode='required'; xwingPrivateKey=$keys.XWingPrivateKey; innerAead=$true }
             stealth=$stealth
         }
         streamSettings=[ordered]@{
-            method='raw'; security='reality'
+            network='raw'; security='reality'
             realitySettings=[ordered]@{ show=$false; target=$RealityTarget; xver=0; serverNames=@($RealityServerName); privateKey=$RealityPrivateKey; shortIds=@($ShortId) }
         }
+        sniffing=[ordered]@{ enabled=$true; routeOnly=$true; destOverride=@('http','tls','quic') }
     })
-    outbounds = @([ordered]@{ tag='direct'; protocol='freedom'; settings=[ordered]@{} })
+    outbounds = @(
+        [ordered]@{ tag='DIRECT'; protocol='freedom'; settings=[ordered]@{} },
+        [ordered]@{ tag='BLOCK'; protocol='blackhole'; settings=[ordered]@{} }
+    )
+    routing = [ordered]@{
+        rules = @(
+            [ordered]@{ type='field'; ip=@('0.0.0.0/8','10.0.0.0/8','100.64.0.0/10','127.0.0.0/8','169.254.0.0/16','172.16.0.0/12','192.168.0.0/16','198.18.0.0/15','224.0.0.0/4','240.0.0.0/4','::1/128','fc00::/7','fe80::/10','ff00::/8'); outboundTag='BLOCK' },
+            [ordered]@{ type='field'; domain=@('full:localhost','domain:local'); outboundTag='BLOCK' },
+            [ordered]@{ type='field'; protocol=@('bittorrent'); outboundTag='BLOCK' }
+        )
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $clientPath = Join-Path $OutputDirectory 'client.json'
 $serverPath = Join-Path $OutputDirectory 'server.json'
+$profilePath = Join-Path $OutputDirectory 'remnawave-profile.json'
 $client | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $clientPath -Encoding utf8
 $server | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $serverPath -Encoding utf8
-Write-Host "Generated $clientPath and $serverPath"
+$server | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $profilePath -Encoding utf8
+Write-Host "Generated $clientPath, $serverPath and $profilePath"
 Write-Warning 'These files contain live credentials. Restrict access and do not commit them.'
