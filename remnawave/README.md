@@ -16,6 +16,15 @@ GitHub сам по себе не добавляет протокол в пане
 - `ghcr.io/OWNER/aetherlink-x-remnawave-backend-2.7.4`;
 - `ghcr.io/OWNER/aetherlink-x-remnawave-node-2.7.0`.
 
+Для нод, которые уже работают на Remnawave Node `3.2.2`, workflow также
+публикует совместимый образ без понижения версии Node:
+
+- `ghcr.io/OWNER/aetherlink-x-remnawave-node-3.2.2`.
+
+Версия Backend и версия Node не обязаны совпадать. Однако базовую версию
+production-ноды менять или понижать только ради ALX нельзя: выбирайте образ с
+тем же суффиксом версии, который панель показывает для конкретной ноды.
+
 ## Текущий поддерживаемый режим
 
 Поддерживаемый режим интеграции — **статический ALX inbound**:
@@ -52,6 +61,12 @@ export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:late
 Точные проверенные digest фиксируются в `manifest.json`. Используйте только образ, для которого workflow завершился успешно и runtime healthcheck имеет статус `healthy`.
 
 Не устанавливайте Backend `3.3.2` поверх панели `2.7.4` без отдельной штатной процедуры обновления Remnawave.
+
+Если панель `2.7.4` уже управляет нодой `3.2.2`, используйте для этой ноды:
+
+```sh
+export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:latest
+```
 
 Сначала на сервере панели:
 
