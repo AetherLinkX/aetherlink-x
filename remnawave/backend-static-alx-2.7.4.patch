@@ -1,0 +1,167 @@
+diff --git a/src/common/helpers/xray-config/xray-config.validator.ts b/src/common/helpers/xray-config/xray-config.validator.ts
+index fd4b82d..1ed06bc 100644
+--- a/src/common/helpers/xray-config/xray-config.validator.ts
++++ b/src/common/helpers/xray-config/xray-config.validator.ts
+@@ -21,9 +21,11 @@ import { UserForConfigEntity } from '@modules/users/entities/users-for-config';
+ import { getSsPassword, isSS2022MethodFromMethod, SHADOWSOCKS_METHODS } from './ss-cipher';
+ 
+ const MANAGED_CLIENT_PROTOCOLS = new Set(['hysteria', 'shadowsocks', 'trojan', 'vless']);
++const PANEL_VISIBLE_PROTOCOLS = new Set([...MANAGED_CLIENT_PROTOCOLS, 'aetherlinkx']);
+ type ManagedInboundSettings = VLessInboundConfig | TrojanInboundConfig | ShadowsocksInboundConfig;
+ 
+ const ALLOWED_PROTOCOLS = new Set([
++    'aetherlinkx',
+     'dokodemo-door',
+     'http',
+     'hysteria',
+@@ -87,7 +89,7 @@ export class XRayConfig {
+ 
+     public getAllInbounds(): InboundsWithTagsAndType[] {
+         return this.inbounds
+-            .filter((inbound) => this.hasManagedClients(inbound))
++            .filter((inbound) => this.isPanelVisibleInbound(inbound))
+             .map((inbound) => ({
+                 tag: inbound.tag!,
+                 rawInbound: inbound as unknown as object,
+@@ -105,7 +107,7 @@ export class XRayConfig {
+ 
+     public leaveInbounds(tags: Set<string>): void {
+         this.config.inbounds = this.config.inbounds!.filter(
+-            (inbound) => tags.has(inbound.tag!) || !this.hasManagedClients(inbound),
++            (inbound) => tags.has(inbound.tag!) || !this.isPanelVisibleInbound(inbound),
+         );
+     }
+ 
+@@ -157,6 +159,10 @@ export class XRayConfig {
+         return MANAGED_CLIENT_PROTOCOLS.has(inbound.protocol);
+     }
+ 
++    private isPanelVisibleInbound(inbound: InboundConfig): boolean {
++        return PANEL_VISIBLE_PROTOCOLS.has(inbound.protocol);
++    }
++
+     public cleanInboundClients(injectFlow: boolean): void {
+         if (!this.config.inbounds) return;
+ 
+diff --git a/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts b/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts
+index 2446b74..6303bb0 100644
+--- a/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts
++++ b/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts
+@@ -56,52 +56,54 @@ export class AddUserToNodeHandler implements IEventHandler<AddUserToNodeEvent> {
+                     prevVlessUuid: event.prevVlessUuid,
+                 },
+ 
+-                data: inbounds.map((inbound) => {
+-                    const inboundType = this.resolveInboundType(inbound);
+-
+-                    switch (inboundType) {
+-                        case 'trojan':
+-                            return {
+-                                type: inboundType,
+-                                username: tId.toString(),
+-                                password: trojanPassword,
+-                                tag: inbound.tag,
+-                            };
+-                        case 'vless':
+-                            return {
+-                                type: inboundType,
+-                                username: tId.toString(),
+-                                uuid: vlessUuid,
+-                                flow: getVlessFlowFromDbInbound(inbound),
+-                                tag: inbound.tag,
+-                            };
+-                        case 'shadowsocks':
+-                            return {
+-                                type: inboundType,
+-                                username: tId.toString(),
+-                                password: ssPassword,
+-                                tag: inbound.tag,
+-                                cipherType: getCipherTypeFromString(inbound.rawInbound),
+-                                ivCheck: false,
+-                            };
+-                        case 'shadowsocks22':
+-                            return {
+-                                type: inboundType,
+-                                username: tId.toString(),
+-                                password: getSsPassword(ssPassword, true),
+-                                tag: inbound.tag,
+-                            };
+-                        case 'hysteria':
+-                            return {
+-                                type: inboundType,
+-                                username: tId.toString(),
+-                                password: vlessUuid,
+-                                tag: inbound.tag,
+-                            };
+-                        default:
+-                            throw new Error(`Unsupported inbound type: ${inboundType}`);
+-                    }
+-                }),
++                data: inbounds
++                    .filter((inbound) => inbound.type !== 'aetherlinkx')
++                    .map((inbound) => {
++                        const inboundType = this.resolveInboundType(inbound);
++
++                        switch (inboundType) {
++                            case 'trojan':
++                                return {
++                                    type: inboundType,
++                                    username: tId.toString(),
++                                    password: trojanPassword,
++                                    tag: inbound.tag,
++                                };
++                            case 'vless':
++                                return {
++                                    type: inboundType,
++                                    username: tId.toString(),
++                                    uuid: vlessUuid,
++                                    flow: getVlessFlowFromDbInbound(inbound),
++                                    tag: inbound.tag,
++                                };
++                            case 'shadowsocks':
++                                return {
++                                    type: inboundType,
++                                    username: tId.toString(),
++                                    password: ssPassword,
++                                    tag: inbound.tag,
++                                    cipherType: getCipherTypeFromString(inbound.rawInbound),
++                                    ivCheck: false,
++                                };
++                            case 'shadowsocks22':
++                                return {
++                                    type: inboundType,
++                                    username: tId.toString(),
++                                    password: getSsPassword(ssPassword, true),
++                                    tag: inbound.tag,
++                                };
++                            case 'hysteria':
++                                return {
++                                    type: inboundType,
++                                    username: tId.toString(),
++                                    password: vlessUuid,
++                                    tag: inbound.tag,
++                                };
++                            default:
++                                throw new Error(`Unsupported inbound type: ${inboundType}`);
++                        }
++                    }),
+             };
+ 
+             for (const node of nodes) {
+diff --git a/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts b/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts
+index 8e05836..e41797e 100644
+--- a/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts
++++ b/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts
+@@ -48,7 +48,11 @@ export class AddUsersToNodeHandler implements IEventHandler<AddUsersToNodeEvent>
+             if (activeNodes.length === 0) return;
+ 
+             for (const node of activeNodes) {
+-                const activeTags = new Set(node.activeInbounds.map((ib) => ib.tag));
++                const activeTags = new Set(
++                    node.activeInbounds
++                        .filter((inbound) => inbound.type !== 'aetherlinkx')
++                        .map((inbound) => inbound.tag),
++                );
+ 
+                 const usersForNode: AddUsersToNodeCommandSdk.Request['users'] = [];
+                 const usersToRemove: Array<{ userId: string; hashUuid: string }> = [];

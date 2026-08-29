@@ -4,12 +4,17 @@
 
 GitHub сам по себе не добавляет протокол в панель. Remnawave Panel валидирует Xray JSON, отправляет его в Remnawave Node, а Node запускает встроенный `/usr/local/bin/xray`. Поэтому для ALX нужны два согласованных образа: custom Backend и custom Node.
 
-`Dockerfile` собирает Xray-core из официального тега `v26.7.28`, commit `5ca6f4b7d4dc20a881d4330e498892697627ec0c`, применяет ALX patch и заменяет бинарник внутри `remnawave/node:3.3.2`. `Dockerfile.backend` собирает `remnawave/backend:3.3.2` из commit `347e6de129f0289a3831dfbb7452d36b49528f3c`, разрешает ALX как статический inbound, добавляет его в список профиля и включает ALX-aware браузерный WASM-валидатор.
+`Dockerfile` собирает Xray-core из официального тега `v26.7.28`, commit `5ca6f4b7d4dc20a881d4330e498892697627ec0c`, применяет ALX patch и заменяет бинарник внутри выбранного образа Remnawave Node. `Dockerfile.backend` собирает вариант для Remnawave `3.3.2`. `Dockerfile.backend-2.7.4` и `backend-static-alx-2.7.4.patch` предназначены для установленной панели `2.7.4` и не требуют обновления её базы данных.
 
 Оба patch проверены командой `git apply --check` на закреплённых commit. GitHub Actions публикует два multi-architecture image для `linux/amd64` и `linux/arm64`:
 
 - `ghcr.io/OWNER/aetherlink-x-remnawave-backend`;
 - `ghcr.io/OWNER/aetherlink-x-remnawave-node`.
+
+Для legacy-пары, соответствующей фактически установленной панели:
+
+- `ghcr.io/OWNER/aetherlink-x-remnawave-backend-2.7.4`;
+- `ghcr.io/OWNER/aetherlink-x-remnawave-node-2.7.0`.
 
 ## Текущий поддерживаемый режим
 
@@ -36,6 +41,15 @@ GitHub сам по себе не добавляет протокол в пане
 Без этих изменений нельзя честно обещать, что обычные пользователи панели автоматически появятся в ALX inbound или получат рабочую подписку.
 
 ## Развёртывание custom images
+
+Для панели `2.7.4` используйте только согласованную пару:
+
+```sh
+export ALX_BACKEND_IMAGE=ghcr.io/OWNER/aetherlink-x-remnawave-backend-2.7.4:latest
+export ALX_NODE_IMAGE=ghcr.io/OWNER/aetherlink-x-remnawave-node-2.7.0:latest
+```
+
+Не устанавливайте Backend `3.3.2` поверх панели `2.7.4` без отдельной штатной процедуры обновления Remnawave.
 
 Сначала на сервере панели:
 

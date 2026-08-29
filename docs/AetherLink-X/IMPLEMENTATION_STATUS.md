@@ -109,6 +109,16 @@ GitHub Actions run [`33241158963`](https://github.com/AetherLinkX/aetherlink-x/a
 
 Текущий режим — статический ALX inbound: его accounts сохраняются внутри Config Profile и не изменяются обычными событиями пользователей Remnawave. Динамическое создание ALX accounts и генерация ALX-ссылок подписки не заявлены как готовые: для них необходимо расширить схему БД пользователя, `xtls-sdk`, backend, frontend и клиенты подписки.
 
+### Совместимость с установленной панелью 2.7.4
+
+Фактическая панель `ad.obsa.su` работает на Remnawave `2.7.4`; её ноды используют Node `2.7.0`–`3.2.2` и штатный Xray `26.3.27`–`26.7.28`. Для неё добавлены отдельные воспроизводимые артефакты:
+
+- `remnawave/backend-static-alx-2.7.4.patch`, привязанный к Backend commit `8032a39eae7a83d2a503ee5eab1f6545168178a5`;
+- `remnawave/Dockerfile.backend-2.7.4` с Frontend `2.7.4` commit `180d24607660305b1d44e0861c83698b7904bb08`;
+- GitHub Actions jobs для `aetherlink-x-remnawave-backend-2.7.4` и `aetherlink-x-remnawave-node-2.7.0`.
+
+Patch прошёл `git apply --check` на чистом tag `2.7.4`; изменённый Backend прошёл локальные Prisma generation и `nest build`. Вариант не добавляет миграций БД и сохраняет ALX как статический inbound.
+
 ## Рекомендации перед production
 
 1. Провести независимый криптографический и protocol review.

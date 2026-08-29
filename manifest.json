@@ -27,6 +27,8 @@
     "linuxArm64Binary": "dist/linux-arm64/xray-aetherlinkx",
     "remnawaveDockerfile": "remnawave/Dockerfile",
     "remnawaveBackendDockerfile": "remnawave/Dockerfile.backend",
+    "remnawaveBackend274Dockerfile": "remnawave/Dockerfile.backend-2.7.4",
+    "remnawaveBackend274Patch": "remnawave/backend-static-alx-2.7.4.patch",
     "remnawaveWorkflow": ".github/workflows/build-remnawave-images.yml"
   },
   "artifacts": {
@@ -42,6 +44,8 @@
     "remnawaveXrayPatchSize": 156528,
     "remnawaveBackendPatchSha256": "AA3DF345A8DFB688E60B9585B199C43F64E0C5C805057F06AA9787225C344D0B",
     "remnawaveBackendPatchSize": 8181,
+    "remnawaveBackend274PatchSha256": "AFA36C9BA18D2D7EC45AC5CF79FBE3FEA23641F5AF9FC6AF256F84E144103908",
+    "remnawaveBackend274PatchSize": 8332,
     "remnawaveWasmPatchSha256": "4FD7D3784C8DEFBDB787A76613799397C52DE3885850B18E69CB29BFA8A59387",
     "remnawaveWasmPatchSize": 22526
   },
@@ -79,6 +83,8 @@
     "officialV26_7_28TagPatchCheck": "passed",
     "remnawaveBackendPatchCheck": "passed on 3.3.2",
     "remnawaveBackendTypeScriptBuild": "passed",
+    "remnawaveBackend274PatchCheck": "passed on exact 2.7.4 commit 8032a39eae7a83d2a503ee5eab1f6545168178a5",
+    "remnawaveBackend274TypeScriptBuild": "passed: Prisma 6.19.0 generation and NestJS build",
     "remnawaveBrowserWasmBuild": "passed",
     "linuxCrossBuilds": "passed",
     "remnawaveDockerBuild": "passed: GitHub Actions run 33241158963, linux/amd64 + linux/arm64, Node and Backend published to GHCR",
