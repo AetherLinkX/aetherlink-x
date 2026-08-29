@@ -53,9 +53,9 @@ fi
 
 if [ -z "$ALX_BACKEND_IMAGE" ]; then
   case "$ALX_MODE:$REMNAWAVE_PANEL_VERSION" in
-    static:2.7.4) ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:latest ;;
-    static:3.3.2) ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend:latest ;;
-    managed:2.7.4) ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-managed-2.7.4:latest ;;
+    static:2.7.4) ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:sha-6a091c7 ;;
+    static:3.3.2) ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend:sha-6c536a9 ;;
+    managed:2.7.4) ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-managed-2.7.4:sha-e1f9593 ;;
     *)
       echo "Unsupported Remnawave Panel/mode pair: $REMNAWAVE_PANEL_VERSION/$ALX_MODE" >&2
       echo "No files or containers were changed." >&2

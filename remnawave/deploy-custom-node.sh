@@ -54,10 +54,10 @@ fi
 
 if [ -z "$ALX_NODE_IMAGE" ]; then
   case "$ALX_MODE:$REMNAWAVE_NODE_VERSION" in
-    static:2.7.0) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:latest ;;
-    static:3.2.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:latest ;;
-    static:3.3.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node:latest ;;
-    managed:3.2.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2:latest ;;
+    static:2.7.0) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:sha-6a091c7 ;;
+    static:3.2.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:sha-e1f9593 ;;
+    static:3.3.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node:sha-6c536a9 ;;
+    managed:3.2.2) ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2:sha-e1f9593 ;;
     *)
       echo "Unsupported Remnawave Node/mode pair: $REMNAWAVE_NODE_VERSION/$ALX_MODE" >&2
       echo "No files or containers were changed." >&2

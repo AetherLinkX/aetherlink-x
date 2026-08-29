@@ -1,6 +1,6 @@
 {
   "name": "AetherLink X",
-  "packageVersion": "0.5.0-experimental",
+  "packageVersion": "0.4.0-experimental",
   "wireVersion": "1.1",
   "status": "experimental",
   "createdAt": "2026-08-28",
@@ -94,22 +94,34 @@
       }
     },
     "compatibility322": {
-      "workflowRun": "https://github.com/AetherLinkX/aetherlink-x/actions/runs/33258100283",
-      "sourceCommit": "ba41abf",
+      "workflowRun": "https://github.com/AetherLinkX/aetherlink-x/actions/runs/33270878989",
+      "sourceCommit": "e1f9593c5042b7b9c4eb2596ee1b6a67786cbe77",
       "visibility": "private",
       "nodeVersion": "3.2.2",
       "node": {
         "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2",
-        "tag": "sha-ba41abf",
+        "tag": "sha-e1f9593",
+        "digest": "sha256:a530289aebfbda41f5d2593954f8c0250b9402afb54b44420d59d73313a117f1",
         "status": "multi-arch-build-passed"
       }
     },
     "managedCompatibility274_322": {
+      "workflowRun": "https://github.com/AetherLinkX/aetherlink-x/actions/runs/33270878989",
+      "sourceCommit": "e1f9593c5042b7b9c4eb2596ee1b6a67786cbe77",
+      "visibility": "private",
       "panelVersion": "2.7.4",
       "nodeVersion": "3.2.2",
-      "backendImage": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-managed-2.7.4",
-      "nodeImage": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2",
-      "status": "awaiting-multi-arch-ci"
+      "backend": {
+        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-managed-2.7.4",
+        "tag": "sha-e1f9593",
+        "digest": "sha256:f203670f4f6e69ea1d96612d416f5c946404392bc499fa044dce128c9c92d95e"
+      },
+      "node": {
+        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2",
+        "tag": "sha-e1f9593",
+        "digest": "sha256:a78608f87774dadd01ae48657eafc80e0d219dde3f516a5b16c6653a7a63c93b"
+      },
+      "status": "multi-arch-build-passed"
     }
   },
   "validation": {
@@ -134,11 +146,11 @@
     "remnawaveManagedNode322PatchCheck": "passed on exact 3.2.2 commit 2c532c4e33bf5864e9867a7bdc36245cc1057eb1",
     "remnawaveManagedNode322TypeScriptCheck": "passed: npm run typecheck",
     "remnawaveManagedSecretGoldenVector": "passed",
-    "emptyManagedSquadConfig": "implemented and patch-checked; container CI pending",
+    "emptyManagedSquadConfig": "implemented, patch-checked and multi-arch container-built; live FI Node test pending",
     "remnawaveBackend274RuntimeBranchCheck": "passed: REMNAWAVE_BRANCH=main is accepted by the pinned 2.7.4 runtime schema",
     "remnawaveBrowserWasmBuild": "passed",
     "linuxCrossBuilds": "passed",
-    "remnawaveDockerBuild": "passed: GitHub Actions runs 33241158963 and 33256675094, linux/amd64 + linux/arm64, 3.3.2 and 2.7.4-compatible Node/Backend images published to GHCR",
+    "remnawaveDockerBuild": "passed: GitHub Actions runs 33241158963, 33256675094 and 33270878989; static and managed linux/amd64 + linux/arm64 images published to GHCR",
     "remnawaveBackend274LiveDeployment": "passed: sha-6a091c7 on Panel 2.7.4, container healthy and static ALX profile persisted after reload",
     "raceDetector": "not run: portable Windows toolchain has no CGO C compiler"
   },

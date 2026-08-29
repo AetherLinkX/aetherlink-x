@@ -11,40 +11,44 @@
   "panel": {
     "2.7.4": {
       "mode": "static",
-      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:latest",
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:sha-6a091c7",
       "status": "live-tested",
       "managedMode": {
-        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-managed-2.7.4:latest",
-        "status": "local-build-tested"
+        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-managed-2.7.4:sha-e1f9593",
+        "digest": "sha256:f203670f4f6e69ea1d96612d416f5c946404392bc499fa044dce128c9c92d95e",
+        "status": "multi-arch-build-tested"
       }
     },
     "3.3.2": {
       "mode": "static",
-      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend:latest",
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend:sha-6c536a9",
       "status": "build-tested"
     }
   },
   "node": {
     "2.7.0": {
-      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:latest",
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:sha-6a091c7",
       "status": "build-tested"
     },
     "3.2.2": {
-      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:latest",
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:sha-e1f9593",
+      "digest": "sha256:a530289aebfbda41f5d2593954f8c0250b9402afb54b44420d59d73313a117f1",
       "status": "build-tested",
       "managedMode": {
-        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2:latest",
-        "status": "local-typecheck-tested"
+        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2:sha-e1f9593",
+        "digest": "sha256:a78608f87774dadd01ae48657eafc80e0d219dde3f516a5b16c6653a7a63c93b",
+        "status": "multi-arch-build-tested"
       }
     },
     "3.3.2": {
-      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node:latest",
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node:sha-6c536a9",
       "status": "build-tested"
     }
   },
   "notes": [
     "Unknown versions are rejected before compose is changed.",
     "A version is added only after patch, build and runtime validation.",
+    "There is no safe universal binary patch for every future Panel, Node or Xray release; each exact upstream version is admitted through this matrix.",
     "Static mode does not provide per-user Internal Squad credentials.",
     "Managed mode is enabled only for tags beginning with AETHERLINK_X_MANAGED_.",
     "An empty managed squad produces an empty ALX user set and rejects every handshake."

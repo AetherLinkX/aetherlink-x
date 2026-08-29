@@ -69,6 +69,17 @@ Installer сначала выполняет `git apply --check`. Patch прим�
 
 ## Remnawave
 
-В `remnawave/` находятся воспроизводимые сборки собственных образов Backend и Node, ALX-aware WASM-валидатор и статический ALX Config Profile. Публикация в GitHub запускает workflow, который создаёт оба образа для `linux/amd64` и `linux/arm64` в GHCR. Точные возможности и ограничение динамического управления пользователями описаны в `remnawave/README.md`.
+В `remnawave/` находятся воспроизводимые сборки Backend/Node, ALX-aware
+WASM-валидатор, static Config Profile и managed-адаптеры для Internal Squads.
+Managed-режим выдаёт отдельные ALX credentials каждому пользователю, передаёт
+add/remove события Node и генерирует `aetherlinkx://` и Xray JSON подписки.
+Точная матрица Panel/Node/Xray и fail-closed политика для неизвестных версий
+описаны в `remnawave/compatibility-matrix.json`.
+
+«Поддержка разных версий» реализована через точные адаптеры и неизменяемые
+SHA-теги образов. Универсальная бинарная совместимость со всеми будущими
+версиями Panel/Node/Xray технически невозможна; неизвестная комбинация
+останавливается до изменения Compose, а новый адаптер добавляется после CI и
+runtime smoke-test.
 
 ALX остаётся экспериментальным протоколом без независимого криптографического аудита. Перед публичным production-развёртыванием обязательны review, Linux race/soak tests и сетевые испытания с loss/jitter/netem.

@@ -91,7 +91,7 @@ size: 47,567,360 bytes
 SHA-256: DF64291E04B58185FCE7ADBA9FC71D0A6A06DF83CBB70891146EAF9E606B51C3
 ```
 
-## Интеграция с Remnawave 3.3.2
+## Интеграция с Remnawave
 
 Подготовлена воспроизводимая интеграция, состоящая из двух согласованных образов:
 
@@ -107,7 +107,22 @@ GitHub Actions run [`33241158963`](https://github.com/AetherLinkX/aetherlink-x/a
 
 Тег `latest` указывает на те же версии, но для воспроизводимого развёртывания следует использовать неизменяемый `sha-6c536a9` либо полный digest.
 
-Текущий режим — статический ALX inbound: его accounts сохраняются внутри Config Profile и не изменяются обычными событиями пользователей Remnawave. Динамическое создание ALX accounts и генерация ALX-ссылок подписки не заявлены как готовые: для них необходимо расширить схему БД пользователя, `xtls-sdk`, backend, frontend и клиенты подписки.
+Для 3.3.2 сохранён static-режим. Для фактической пары Panel 2.7.4 +
+Node 3.2.2 реализован отдельный managed-режим:
+
+- Backend инжектирует пользователей только в inbound с tag-префиксом
+  `AETHERLINK_X_MANAGED_`;
+- доступ определяется членством в Internal Squad;
+- `id` берётся из `vlessUuid`, уникальный ALX secret выводится из
+  `ssPassword` через фиксированный SHA-256 KDF context;
+- Node выполняет add/remove через Xray HandlerService;
+- генератор отдаёт raw `aetherlinkx://` и полноценный Xray JSON outbound;
+- пустой squad запускает inbound с нулём accounts и отклоняет все handshakes;
+- static ALX inbound исключён из managed-событий и не изменяется.
+
+Схема базы данных и официальный SDK package не изменяются. Клиент должен
+использовать ALX-capable Xray JSON либо отдельный ALX importer: обычные
+сторонние клиенты неизвестный URI не распознают.
 
 ### Совместимость с установленной панелью 2.7.4
 
@@ -116,8 +131,23 @@ GitHub Actions run [`33241158963`](https://github.com/AetherLinkX/aetherlink-x/a
 - `remnawave/backend-static-alx-2.7.4.patch`, привязанный к Backend commit `8032a39eae7a83d2a503ee5eab1f6545168178a5`;
 - `remnawave/Dockerfile.backend-2.7.4` с Frontend `2.7.4` commit `180d24607660305b1d44e0861c83698b7904bb08`;
 - GitHub Actions jobs для `aetherlink-x-remnawave-backend-2.7.4` и `aetherlink-x-remnawave-node-2.7.0`.
+- managed Backend patch/image для точного Backend 2.7.4 commit;
+- managed Node patch/image для точного Node 3.2.2 commit
+  `2c532c4e33bf5864e9867a7bdc36245cc1057eb1`.
 
-Patch прошёл `git apply --check` на чистом tag `2.7.4`; изменённый Backend прошёл локальные Prisma generation и `nest build`. Вариант не добавляет миграций БД и сохраняет ALX как статический inbound.
+Оба managed patch прошли `git apply --check`; Backend прошёл Prisma 6.19.0
+generation и `nest build`, Node — `npm run typecheck`. Общий golden-вектор
+подтверждает одинаковое выведение ALX secret. Оба managed-образа прошли
+multi-arch сборку `linux/amd64` + `linux/arm64` в GitHub Actions run
+[`33270878989`](https://github.com/AetherLinkX/aetherlink-x/actions/runs/33270878989).
+Production handshake/revoke-test на FI Node остаётся отдельным gate и не может
+быть заменён успешной сборкой контейнера.
+
+Совместимость не заявляется как «один patch для любой будущей версии»:
+Panel, Node и Xray меняют внутренние TypeScript/Protobuf/Go интерфейсы. Каждая
+точная версия сначала проходит `git apply --check`, сборку, smoke-test и только
+после этого добавляется в fail-closed матрицу
+`remnawave/compatibility-matrix.json`.
 
 ## Рекомендации перед production
 
