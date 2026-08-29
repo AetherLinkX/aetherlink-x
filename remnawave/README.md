@@ -62,13 +62,20 @@ Managed-реализация намеренно не меняет БД и офи
 изменений. Новая версия добавляется в `compatibility-matrix.json` только после
 отдельного адаптера и полного CI.
 
+Node по умолчанию использует `ALX_COMPOSE_STRATEGY=in-place`: атомарно заменяет
+только `services.remnanode.image` в существующем
+`/opt/remnanode/docker-compose.yml` и сохраняет датированную резервную копию.
+`SECRET_KEY`, network mode, порты, capabilities и остальные поля не
+переписываются. Для прежней схемы с дополнительным Compose-файлом задайте
+`ALX_COMPOSE_STRATEGY=override`.
+
 ## Развёртывание custom images
 
 Для панели `2.7.4` используйте только согласованную пару:
 
 ```sh
-export ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:latest
-export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:latest
+export ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:sha-6a091c7
+export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:sha-6a091c7
 ```
 
 Точные проверенные digest фиксируются в `manifest.json`. Используйте только образ, для которого workflow завершился успешно и runtime healthcheck имеет статус `healthy`.
@@ -78,7 +85,7 @@ export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:late
 Если панель `2.7.4` уже управляет нодой `3.2.2`, используйте для этой ноды:
 
 ```sh
-export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:latest
+export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:sha-e1f9593
 ```
 
 Для managed/squad-режима пары Panel 2.7.4 + Node 3.2.2:
@@ -87,20 +94,21 @@ export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-3.2.2:late
 export ALX_MODE=managed
 sudo -E sh deploy-custom-panel.sh
 # На отдельном сервере ноды:
+export ALX_COMPOSE_STRATEGY=in-place
 sudo -E sh deploy-custom-node.sh
 ```
 
 Сначала на сервере панели:
 
 ```sh
-export ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:latest
+export ALX_BACKEND_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4:sha-6a091c7
 sudo -E sh deploy-custom-panel.sh
 ```
 
 Затем на сервере ноды:
 
 ```sh
-export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:latest
+export ALX_NODE_IMAGE=ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0:sha-6a091c7
 sudo -E sh deploy-custom-node.sh
 ```
 

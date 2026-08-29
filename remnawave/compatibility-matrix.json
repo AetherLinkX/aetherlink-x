@@ -16,7 +16,7 @@
       "managedMode": {
         "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-managed-2.7.4:sha-e1f9593",
         "digest": "sha256:f203670f4f6e69ea1d96612d416f5c946404392bc499fa044dce128c9c92d95e",
-        "status": "multi-arch-build-tested"
+        "status": "live-tested"
       }
     },
     "3.3.2": {
