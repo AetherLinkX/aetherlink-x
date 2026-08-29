@@ -1,6 +1,7 @@
 package aetherlinkx
 
 import (
+	"crypto/subtle"
 	"encoding/base64"
 	"strings"
 
@@ -96,18 +97,28 @@ func ParseServerSecurity(config *SecurityConfig) (SecuritySettings, error) {
 	if err != nil {
 		return SecuritySettings{}, err
 	}
-	if config.XwingPublicKey != "" {
-		return SecuritySettings{}, errors.New("AetherLink X server config must not contain xwingPublicKey")
-	}
 	privateKey, err := decodeBase64URL(config.XwingPrivateKey, xwing.PrivateKeySize, "xwingPrivateKey")
 	if err != nil {
 		return SecuritySettings{}, err
 	}
-	if mode == PQModeOff && len(privateKey) != 0 {
-		return SecuritySettings{}, errors.New("AetherLink X xwingPrivateKey requires pqMode prefer or required")
+	publicKey, err := decodeBase64URL(config.XwingPublicKey, xwing.PublicKeySize, "xwingPublicKey")
+	if err != nil {
+		return SecuritySettings{}, err
+	}
+	if mode == PQModeOff && (len(privateKey) != 0 || len(publicKey) != 0) {
+		return SecuritySettings{}, errors.New("AetherLink X X-Wing keys require pqMode prefer or required")
 	}
 	if len(privateKey) != 0 && isAllZero(privateKey) {
 		return SecuritySettings{}, errors.New("AetherLink X xwingPrivateKey must not be all zero")
+	}
+	if len(publicKey) != 0 {
+		if len(privateKey) == 0 {
+			return SecuritySettings{}, errors.New("AetherLink X server xwingPublicKey requires xwingPrivateKey")
+		}
+		_, derivedPublic := xwing.DeriveKeyPairPacked(privateKey)
+		if subtle.ConstantTimeCompare(publicKey, derivedPublic) != 1 {
+			return SecuritySettings{}, errors.New("AetherLink X server X-Wing public and private keys do not match")
+		}
 	}
 	if mode == PQModeRequired && len(privateKey) == 0 {
 		return SecuritySettings{}, errors.New("AetherLink X pqMode required needs xwingPrivateKey")

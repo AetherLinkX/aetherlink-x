@@ -110,7 +110,7 @@ Client protocol settings:
 }
 ```
 
-Server protocol settings use the same `id` and `secret`, but `security.xwingPrivateKey` instead of the public key. Complete templates are in [`examples`](examples). Placeholder credentials are intentionally invalid until replaced.
+Server protocol settings use the same `id` and `secret`, with `security.xwingPrivateKey`. A managed control-plane profile may additionally retain the matching `xwingPublicKey` for client export; the core validates the pair and discards the public key from server runtime settings. Complete templates are in [`examples`](examples). Placeholder credentials are intentionally invalid until replaced.
 
 Turbo socket fields are defaults only: explicit `streamSettings.sockopt` values win. `congestion: "auto"` preserves the operating system default; names such as `bbr` request that OS algorithm and fail or have no benefit if the host/kernel does not support it. MPTCP requires operating-system support and only affects eligible RAW TCP sockets. It is disabled in the WARP example because WireGuard already supplies the underlay tunnel.
 

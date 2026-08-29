@@ -41,7 +41,7 @@ Stealth padding is encrypted and bounded. It is traffic shaping, not a cryptogra
 
 ## Deployment checklist
 
-1. Generate credentials with `xray aetherlinkx-keygen`; do not invent passwords or reuse REALITY/WireGuard keys.
+1. Generate credentials with `xray aetherlinkx-keygen`; do not invent passwords or reuse REALITY/WireGuard keys. A managed server profile may retain the matching public key for client export; the core verifies it against the private seed and never uses it for server-side decapsulation.
 2. Keep the X-Wing private seed only on the server and the account secret on both endpoints.
 3. Use REALITY or TLS; never enable `allowInsecureTransport` on the Internet.
 4. Synchronize system clocks and rate-limit new inbound handshakes.

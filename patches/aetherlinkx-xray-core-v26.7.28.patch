@@ -1,6 +1,6 @@
 diff --git a/infra/conf/aetherlinkx.go b/infra/conf/aetherlinkx.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..11debba7e6d2dc5288ee2681dbc55221439bbe88
+index 0000000..11debba
 --- /dev/null
 +++ b/infra/conf/aetherlinkx.go
 @@ -0,0 +1,253 @@
@@ -259,7 +259,7 @@ index 0000000000000000000000000000000000000000..11debba7e6d2dc5288ee2681dbc55221
 +}
 diff --git a/infra/conf/aetherlinkx_test.go b/infra/conf/aetherlinkx_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..3071d637ede66c0b2c66ccac8de4840ee3a372df
+index 0000000..3071d63
 --- /dev/null
 +++ b/infra/conf/aetherlinkx_test.go
 @@ -0,0 +1,118 @@
@@ -382,7 +382,7 @@ index 0000000000000000000000000000000000000000..3071d637ede66c0b2c66ccac8de4840e
 +	}
 +}
 diff --git a/infra/conf/xray.go b/infra/conf/xray.go
-index bdcabbd503b60e4e81a4bd8bb72b15a93c019e61..c85d3b2c09072c072d347ebab2ad586e15d8e274 100644
+index bdcabbd..c85d3b2 100644
 --- a/infra/conf/xray.go
 +++ b/infra/conf/xray.go
 @@ -26,6 +26,8 @@ var (
@@ -526,7 +526,7 @@ index bdcabbd503b60e4e81a4bd8bb72b15a93c019e61..c85d3b2c09072c072d347ebab2ad586e
  		SenderSettings: serial.ToTypedMessage(senderSettings),
 diff --git a/main/commands/all/aetherlinkx.go b/main/commands/all/aetherlinkx.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..4f72e7f8ac9d675fea1207e762b67a360d699e08
+index 0000000..4f72e7f
 --- /dev/null
 +++ b/main/commands/all/aetherlinkx.go
 @@ -0,0 +1,47 @@
@@ -578,7 +578,7 @@ index 0000000000000000000000000000000000000000..4f72e7f8ac9d675fea1207e762b67a36
 +	)
 +}
 diff --git a/main/commands/all/commands.go b/main/commands/all/commands.go
-index fba3a4b8bb439f2fdfe17eb290342c7dd8d640a5..9f0a5b5871711e5cce276e78910148e4e9827306 100644
+index fba3a4b..9f0a5b5 100644
 --- a/main/commands/all/commands.go
 +++ b/main/commands/all/commands.go
 @@ -19,5 +19,6 @@ func init() {
@@ -589,7 +589,7 @@ index fba3a4b8bb439f2fdfe17eb290342c7dd8d640a5..9f0a5b5871711e5cce276e78910148e4
  	)
  }
 diff --git a/main/distro/all/all.go b/main/distro/all/all.go
-index accb7b07fbe43cc54c94b4569f7fd3bcafaf55a6..d629e54d7b3ea72727c1e807a505d875ada0c9cd 100644
+index accb7b0..d629e54 100644
 --- a/main/distro/all/all.go
 +++ b/main/distro/all/all.go
 @@ -35,6 +35,7 @@ import (
@@ -602,7 +602,7 @@ index accb7b07fbe43cc54c94b4569f7fd3bcafaf55a6..d629e54d7b3ea72727c1e807a505d875
  	_ "github.com/xtls/xray-core/proxy/dokodemo"
 diff --git a/proxy/aetherlinkx/BENCHMARKS.md b/proxy/aetherlinkx/BENCHMARKS.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..a91cb449b3d62edec73cd38a146d7cfa463d3dd9
+index 0000000..a91cb44
 --- /dev/null
 +++ b/proxy/aetherlinkx/BENCHMARKS.md
 @@ -0,0 +1,20 @@
@@ -628,7 +628,7 @@ index 0000000000000000000000000000000000000000..a91cb449b3d62edec73cd38a146d7cfa
 +```
 diff --git a/proxy/aetherlinkx/README.md b/proxy/aetherlinkx/README.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..36aa0e74efe8f74f108dff2b09674df53807b11a
+index 0000000..1530208
 --- /dev/null
 +++ b/proxy/aetherlinkx/README.md
 @@ -0,0 +1,148 @@
@@ -744,7 +744,7 @@ index 0000000000000000000000000000000000000000..36aa0e74efe8f74f108dff2b09674df5
 +}
 +```
 +
-+Server protocol settings use the same `id` and `secret`, but `security.xwingPrivateKey` instead of the public key. Complete templates are in [`examples`](examples). Placeholder credentials are intentionally invalid until replaced.
++Server protocol settings use the same `id` and `secret`, with `security.xwingPrivateKey`. A managed control-plane profile may additionally retain the matching `xwingPublicKey` for client export; the core validates the pair and discards the public key from server runtime settings. Complete templates are in [`examples`](examples). Placeholder credentials are intentionally invalid until replaced.
 +
 +Turbo socket fields are defaults only: explicit `streamSettings.sockopt` values win. `congestion: "auto"` preserves the operating system default; names such as `bbr` request that OS algorithm and fail or have no benefit if the host/kernel does not support it. MPTCP requires operating-system support and only affects eligible RAW TCP sockets. It is disabled in the WARP example because WireGuard already supplies the underlay tunnel.
 +
@@ -782,7 +782,7 @@ index 0000000000000000000000000000000000000000..36aa0e74efe8f74f108dff2b09674df5
 +```
 diff --git a/proxy/aetherlinkx/SECURITY.md b/proxy/aetherlinkx/SECURITY.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..bc0732369827be6b34a39368bc5dfca0ae77cebd
+index 0000000..3c292bb
 --- /dev/null
 +++ b/proxy/aetherlinkx/SECURITY.md
 @@ -0,0 +1,61 @@
@@ -829,7 +829,7 @@ index 0000000000000000000000000000000000000000..bc0732369827be6b34a39368bc5dfca0
 +
 +## Deployment checklist
 +
-+1. Generate credentials with `xray aetherlinkx-keygen`; do not invent passwords or reuse REALITY/WireGuard keys.
++1. Generate credentials with `xray aetherlinkx-keygen`; do not invent passwords or reuse REALITY/WireGuard keys. A managed server profile may retain the matching public key for client export; the core verifies it against the private seed and never uses it for server-side decapsulation.
 +2. Keep the X-Wing private seed only on the server and the account secret on both endpoints.
 +3. Use REALITY or TLS; never enable `allowInsecureTransport` on the Internet.
 +4. Synchronize system clocks and rate-limit new inbound handshakes.
@@ -849,7 +849,7 @@ index 0000000000000000000000000000000000000000..bc0732369827be6b34a39368bc5dfca0
 +This is an engineering review, not a third-party security certification.
 diff --git a/proxy/aetherlinkx/account.go b/proxy/aetherlinkx/account.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..16574f194a58640ec97dab82d9363640c05a49e5
+index 0000000..16574f1
 --- /dev/null
 +++ b/proxy/aetherlinkx/account.go
 @@ -0,0 +1,78 @@
@@ -933,7 +933,7 @@ index 0000000000000000000000000000000000000000..16574f194a58640ec97dab82d9363640
 +}
 diff --git a/proxy/aetherlinkx/benchmark_test.go b/proxy/aetherlinkx/benchmark_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..2af82e18d40bc077ab542e75d80a9d11dac85b8c
+index 0000000..2af82e1
 --- /dev/null
 +++ b/proxy/aetherlinkx/benchmark_test.go
 @@ -0,0 +1,95 @@
@@ -1034,7 +1034,7 @@ index 0000000000000000000000000000000000000000..2af82e18d40bc077ab542e75d80a9d11
 +}
 diff --git a/proxy/aetherlinkx/client.go b/proxy/aetherlinkx/client.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..29e06cd3ebb42827dacfc0e44a03d9fabe7e38e1
+index 0000000..29e06cd
 --- /dev/null
 +++ b/proxy/aetherlinkx/client.go
 @@ -0,0 +1,152 @@
@@ -1192,7 +1192,7 @@ index 0000000000000000000000000000000000000000..29e06cd3ebb42827dacfc0e44a03d9fa
 +}
 diff --git a/proxy/aetherlinkx/config.pb.go b/proxy/aetherlinkx/config.pb.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..d658465d0e9feba4c652f3a7a70747d2fd627e32
+index 0000000..d658465
 --- /dev/null
 +++ b/proxy/aetherlinkx/config.pb.go
 @@ -0,0 +1,639 @@
@@ -1837,7 +1837,7 @@ index 0000000000000000000000000000000000000000..d658465d0e9feba4c652f3a7a70747d2
 +}
 diff --git a/proxy/aetherlinkx/config.proto b/proxy/aetherlinkx/config.proto
 new file mode 100644
-index 0000000000000000000000000000000000000000..73474fb9525b4f534df69c3307c57b83a44f053e
+index 0000000..73474fb
 --- /dev/null
 +++ b/proxy/aetherlinkx/config.proto
 @@ -0,0 +1,76 @@
@@ -1919,7 +1919,7 @@ index 0000000000000000000000000000000000000000..73474fb9525b4f534df69c3307c57b83
 +}
 diff --git a/proxy/aetherlinkx/examples/client-reality.json b/proxy/aetherlinkx/examples/client-reality.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..23143a2dd50f364ce582a5ba537f7224e520462b
+index 0000000..23143a2
 --- /dev/null
 +++ b/proxy/aetherlinkx/examples/client-reality.json
 @@ -0,0 +1,65 @@
@@ -1990,7 +1990,7 @@ index 0000000000000000000000000000000000000000..23143a2dd50f364ce582a5ba537f7224
 +}
 diff --git a/proxy/aetherlinkx/examples/client-warp-reality.json b/proxy/aetherlinkx/examples/client-warp-reality.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..cbde5197e366e6cd9fa4eea4c6cc7cfff22402dd
+index 0000000..cbde519
 --- /dev/null
 +++ b/proxy/aetherlinkx/examples/client-warp-reality.json
 @@ -0,0 +1,98 @@
@@ -2094,7 +2094,7 @@ index 0000000000000000000000000000000000000000..cbde5197e366e6cd9fa4eea4c6cc7cff
 +}
 diff --git a/proxy/aetherlinkx/examples/server-reality.json b/proxy/aetherlinkx/examples/server-reality.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..237163586a9426362cfcf5f9f7c46943837beb9c
+index 0000000..2371635
 --- /dev/null
 +++ b/proxy/aetherlinkx/examples/server-reality.json
 @@ -0,0 +1,70 @@
@@ -2170,7 +2170,7 @@ index 0000000000000000000000000000000000000000..237163586a9426362cfcf5f9f7c46943
 +}
 diff --git a/proxy/aetherlinkx/protocol.go b/proxy/aetherlinkx/protocol.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..18a462123f80a82e85eeee3998b071d1209eb692
+index 0000000..18a4621
 --- /dev/null
 +++ b/proxy/aetherlinkx/protocol.go
 @@ -0,0 +1,639 @@
@@ -2815,10 +2815,10 @@ index 0000000000000000000000000000000000000000..18a462123f80a82e85eeee3998b071d1
 +}
 diff --git a/proxy/aetherlinkx/protocol_test.go b/proxy/aetherlinkx/protocol_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..65566f52c0fae7466d306f385ca29eb2cdbe4031
+index 0000000..4c2276f
 --- /dev/null
 +++ b/proxy/aetherlinkx/protocol_test.go
-@@ -0,0 +1,415 @@
+@@ -0,0 +1,433 @@
 +package aetherlinkx
 +
 +import (
@@ -2926,7 +2926,25 @@ index 0000000000000000000000000000000000000000..65566f52c0fae7466d306f385ca29eb2
 +		t.Fatal("client accepted a server private key")
 +	}
 +	if _, err := ParseServerSecurity(&SecurityConfig{PqMode: "required", XwingPublicKey: encodedPublic}); err == nil {
-+		t.Fatal("server accepted a client public key field")
++		t.Fatal("server accepted a public key without its private key")
++	}
++	serverSecurity, err := ParseServerSecurity(&SecurityConfig{PqMode: "required", XwingPrivateKey: encodedPrivate, XwingPublicKey: encodedPublic})
++	if err != nil {
++		t.Fatalf("server rejected a matching control-plane public key: %v", err)
++	}
++	if len(serverSecurity.XWingPublic) != 0 {
++		t.Fatal("server retained the control-plane public key in runtime security settings")
++	}
++	_, otherPublic, err := xwing.GenerateKeyPairPacked(nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := ParseServerSecurity(&SecurityConfig{
++		PqMode:          "required",
++		XwingPrivateKey: encodedPrivate,
++		XwingPublicKey:  base64.RawURLEncoding.EncodeToString(otherPublic),
++	}); err == nil {
++		t.Fatal("server accepted mismatched X-Wing public and private keys")
 +	}
 +	if _, err := ParseClientSecurity(&SecurityConfig{PqMode: "off", XwingPublicKey: encodedPublic}); err == nil {
 +		t.Fatal("client accepted a key while PQ was disabled")
@@ -3236,7 +3254,7 @@ index 0000000000000000000000000000000000000000..65566f52c0fae7466d306f385ca29eb2
 +}
 diff --git a/proxy/aetherlinkx/record.go b/proxy/aetherlinkx/record.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..9b171667aac6e5c90a909f05a4bce676e61d13da
+index 0000000..9b17166
 --- /dev/null
 +++ b/proxy/aetherlinkx/record.go
 @@ -0,0 +1,170 @@
@@ -3412,13 +3430,14 @@ index 0000000000000000000000000000000000000000..9b171667aac6e5c90a909f05a4bce676
 +}
 diff --git a/proxy/aetherlinkx/security.go b/proxy/aetherlinkx/security.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..740dc7b3eda8bc32e1bf437b7f9881e5ccea6b4d
+index 0000000..2e421f4
 --- /dev/null
 +++ b/proxy/aetherlinkx/security.go
-@@ -0,0 +1,136 @@
+@@ -0,0 +1,147 @@
 +package aetherlinkx
 +
 +import (
++	"crypto/subtle"
 +	"encoding/base64"
 +	"strings"
 +
@@ -3514,18 +3533,28 @@ index 0000000000000000000000000000000000000000..740dc7b3eda8bc32e1bf437b7f9881e5
 +	if err != nil {
 +		return SecuritySettings{}, err
 +	}
-+	if config.XwingPublicKey != "" {
-+		return SecuritySettings{}, errors.New("AetherLink X server config must not contain xwingPublicKey")
-+	}
 +	privateKey, err := decodeBase64URL(config.XwingPrivateKey, xwing.PrivateKeySize, "xwingPrivateKey")
 +	if err != nil {
 +		return SecuritySettings{}, err
 +	}
-+	if mode == PQModeOff && len(privateKey) != 0 {
-+		return SecuritySettings{}, errors.New("AetherLink X xwingPrivateKey requires pqMode prefer or required")
++	publicKey, err := decodeBase64URL(config.XwingPublicKey, xwing.PublicKeySize, "xwingPublicKey")
++	if err != nil {
++		return SecuritySettings{}, err
++	}
++	if mode == PQModeOff && (len(privateKey) != 0 || len(publicKey) != 0) {
++		return SecuritySettings{}, errors.New("AetherLink X X-Wing keys require pqMode prefer or required")
 +	}
 +	if len(privateKey) != 0 && isAllZero(privateKey) {
 +		return SecuritySettings{}, errors.New("AetherLink X xwingPrivateKey must not be all zero")
++	}
++	if len(publicKey) != 0 {
++		if len(privateKey) == 0 {
++			return SecuritySettings{}, errors.New("AetherLink X server xwingPublicKey requires xwingPrivateKey")
++		}
++		_, derivedPublic := xwing.DeriveKeyPairPacked(privateKey)
++		if subtle.ConstantTimeCompare(publicKey, derivedPublic) != 1 {
++			return SecuritySettings{}, errors.New("AetherLink X server X-Wing public and private keys do not match")
++		}
 +	}
 +	if mode == PQModeRequired && len(privateKey) == 0 {
 +		return SecuritySettings{}, errors.New("AetherLink X pqMode required needs xwingPrivateKey")
@@ -3554,7 +3583,7 @@ index 0000000000000000000000000000000000000000..740dc7b3eda8bc32e1bf437b7f9881e5
 +}
 diff --git a/proxy/aetherlinkx/server.go b/proxy/aetherlinkx/server.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..1f5a04739ff270a107f333560b7fb43e1b000b9d
+index 0000000..1f5a047
 --- /dev/null
 +++ b/proxy/aetherlinkx/server.go
 @@ -0,0 +1,229 @@
@@ -3789,7 +3818,7 @@ index 0000000000000000000000000000000000000000..1f5a04739ff270a107f333560b7fb43e
 +}
 diff --git a/proxy/aetherlinkx/stealth.go b/proxy/aetherlinkx/stealth.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..be95ed1b7e08a699df94f1d8874730aecb5a6e29
+index 0000000..be95ed1
 --- /dev/null
 +++ b/proxy/aetherlinkx/stealth.go
 @@ -0,0 +1,101 @@
@@ -3896,7 +3925,7 @@ index 0000000000000000000000000000000000000000..be95ed1b7e08a699df94f1d8874730ae
 +}
 diff --git a/proxy/aetherlinkx/turbo.go b/proxy/aetherlinkx/turbo.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..781adecca3e132bd599c57e415a912b1553e426b
+index 0000000..781adec
 --- /dev/null
 +++ b/proxy/aetherlinkx/turbo.go
 @@ -0,0 +1,146 @@
@@ -4048,7 +4077,7 @@ index 0000000000000000000000000000000000000000..781adecca3e132bd599c57e415a912b1
 +}
 diff --git a/proxy/aetherlinkx/validator.go b/proxy/aetherlinkx/validator.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..15a97896f789277851230f57a6293083dd254975
+index 0000000..15a9789
 --- /dev/null
 +++ b/proxy/aetherlinkx/validator.go
 @@ -0,0 +1,126 @@
@@ -4180,10 +4209,10 @@ index 0000000000000000000000000000000000000000..15a97896f789277851230f57a6293083
 +}
 diff --git a/testing/scenarios/aetherlinkx_test.go b/testing/scenarios/aetherlinkx_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..4b9a230a929da89bc854d6177d474ea3a300d1e4
+index 0000000..4b9a230
 --- /dev/null
 +++ b/testing/scenarios/aetherlinkx_test.go
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,222 @@
 +package scenarios
 +
 +import (
@@ -4318,6 +4347,7 @@ index 0000000000000000000000000000000000000000..4b9a230a929da89bc854d6177d474ea3
 +		t.Fatal(err)
 +	}
 +}
++
 +func TestAetherLinkXTurboUDP(t *testing.T) {
 +	echoServer := udpServer.Server{MsgProcessor: xor}
 +	destination, err := echoServer.Start()

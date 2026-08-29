@@ -31,6 +31,8 @@
 
 В `pqMode: required` клиент encapsulates X-Wing shared secret публичным ключом сервера. Этот secret смешивается с account secret до проверки binder и до вывода AEAD-ключей. Клиент аутентифицированно проверяет, что сервер не выключил PQ, AEAD или Turbo.
 
+В managed-профиле серверный JSON может хранить совпадающий публичный X-Wing ключ рядом с приватным seed, чтобы Backend формировал клиентские ссылки. Ядро проверяет соответствие пары в constant-time, отбрасывает публичный ключ из серверных runtime-настроек и fail-closed отклоняет несовпадающие ключи.
+
 Внутренние records используют разные ключи для uplink/downlink и ChaCha20-Poly1305. Length входит в associated data; malformed tag/length/padding закрывает соединение.
 
 ## Созданные файлы протокола
@@ -87,8 +89,8 @@ Race-detector не запущен: portable Windows Go toolchain не имеет
 
 ```text
 Для протокола/dist/windows-amd64/xray-aetherlinkx.exe
-size: 47,567,360 bytes
-SHA-256: DF64291E04B58185FCE7ADBA9FC71D0A6A06DF83CBB70891146EAF9E606B51C3
+size: 47,569,408 bytes
+SHA-256: ACD04EEA5394E65A3DB0208CB72BCC36433501CEDBA6A9687D16A02C2424B304
 ```
 
 ## Интеграция с Remnawave
@@ -100,7 +102,7 @@ SHA-256: DF64291E04B58185FCE7ADBA9FC71D0A6A06DF83CBB70891146EAF9E606B51C3
 
 Patch ядра проверен на точном Xray commit `5ca6f4b7d4dc20a881d4330e498892697627ec0c`. Backend patch проверен на Remnawave Backend `3.3.2` commit `347e6de129f0289a3831dfbb7452d36b49528f3c`; TypeScript/Rspack build завершился успешно. Браузерный WASM-валидатор также собран успешно.
 
-GitHub Actions run [`33241158963`](https://github.com/AetherLinkX/aetherlink-x/actions/runs/33241158963) завершился со статусом `Success` и опубликовал приватные multi-arch образы `linux/amd64` + `linux/arm64`:
+GitHub Actions run [`33241158963`](https://github.com/AetherLinkX/aetherlink-x/actions/runs/33241158963) завершился со статусом `Success` и опубликовал multi-arch образы `linux/amd64` + `linux/arm64`; пакеты GHCR впоследствии переведены в публичный режим:
 
 - `ghcr.io/aetherlinkx/aetherlink-x-remnawave-node:sha-6c536a9` — `sha256:ad434d56d469288d752c18b2da4496117bfcbd6249402c60a9ffbc4fbb7b6a82`;
 - `ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend:sha-6c536a9` — `sha256:580229d362c70eec72b0dcf26b54e857ce4831ad927f0afc65e8f78883ed27ae`.

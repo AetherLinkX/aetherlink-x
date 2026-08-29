@@ -105,7 +105,25 @@ func TestSecurityConfigurationRejectsWrongSideAndWeakKeys(t *testing.T) {
 		t.Fatal("client accepted a server private key")
 	}
 	if _, err := ParseServerSecurity(&SecurityConfig{PqMode: "required", XwingPublicKey: encodedPublic}); err == nil {
-		t.Fatal("server accepted a client public key field")
+		t.Fatal("server accepted a public key without its private key")
+	}
+	serverSecurity, err := ParseServerSecurity(&SecurityConfig{PqMode: "required", XwingPrivateKey: encodedPrivate, XwingPublicKey: encodedPublic})
+	if err != nil {
+		t.Fatalf("server rejected a matching control-plane public key: %v", err)
+	}
+	if len(serverSecurity.XWingPublic) != 0 {
+		t.Fatal("server retained the control-plane public key in runtime security settings")
+	}
+	_, otherPublic, err := xwing.GenerateKeyPairPacked(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseServerSecurity(&SecurityConfig{
+		PqMode:          "required",
+		XwingPrivateKey: encodedPrivate,
+		XwingPublicKey:  base64.RawURLEncoding.EncodeToString(otherPublic),
+	}); err == nil {
+		t.Fatal("server accepted mismatched X-Wing public and private keys")
 	}
 	if _, err := ParseClientSecurity(&SecurityConfig{PqMode: "off", XwingPublicKey: encodedPublic}); err == nil {
 		t.Fatal("client accepted a key while PQ was disabled")
