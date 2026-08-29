@@ -37,7 +37,8 @@
       "managedMode": {
         "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2:sha-e1f9593",
         "digest": "sha256:a78608f87774dadd01ae48657eafc80e0d219dde3f516a5b16c6653a7a63c93b",
-        "status": "multi-arch-build-tested"
+        "status": "live-tested",
+        "validation": "FI Node in-place deployment; Xray 26.7.28 Custom; restart count 0; Node API and 8 existing inbound listeners preserved; no critical startup errors"
       }
     },
     "3.3.2": {

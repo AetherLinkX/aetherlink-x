@@ -4,7 +4,7 @@
   "wireVersion": "1.1",
   "status": "experimental",
   "createdAt": "2026-08-28",
-  "updatedAt": "2026-08-29",
+  "updatedAt": "2026-08-30",
   "xrayCompatibility": {
     "testedVersion": "26.7.28",
     "sourceBaseline": "XTLS/Xray-core@c1958dba04ba065cd82a05b65bfe877e2323f0cc",
@@ -120,9 +120,10 @@
       "node": {
         "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2",
         "tag": "sha-e1f9593",
-        "digest": "sha256:a78608f87774dadd01ae48657eafc80e0d219dde3f516a5b16c6653a7a63c93b"
+        "digest": "sha256:a78608f87774dadd01ae48657eafc80e0d219dde3f516a5b16c6653a7a63c93b",
+        "status": "live-deployed"
       },
-      "status": "multi-arch-build-passed"
+      "status": "live-deployed"
     }
   },
   "validation": {
@@ -148,13 +149,14 @@
     "remnawaveManagedNode322TypeScriptCheck": "passed: npm run typecheck",
     "remnawaveNodeInPlaceDeployHarness": "passed on Ubuntu 22.04: shell syntax, exact image replacement, SECRET_KEY preservation, dated backup and no override file",
     "remnawaveManagedSecretGoldenVector": "passed",
-    "emptyManagedSquadConfig": "implemented, patch-checked and multi-arch container-built; live FI Node test pending",
+    "emptyManagedSquadConfig": "implemented, patch-checked and multi-arch container-built; live FI inbound test pending",
     "remnawaveBackend274RuntimeBranchCheck": "passed: REMNAWAVE_BRANCH=main is accepted by the pinned 2.7.4 runtime schema",
     "remnawaveBrowserWasmBuild": "passed",
     "linuxCrossBuilds": "passed",
     "remnawaveDockerBuild": "passed: GitHub Actions runs 33241158963, 33256675094 and 33270878989; static and managed linux/amd64 + linux/arm64 images published to GHCR",
     "remnawaveBackend274LiveDeployment": "passed: sha-6a091c7 on Panel 2.7.4, container healthy and static ALX profile persisted after reload",
     "remnawaveManagedBackend274LiveDeployment": "passed: sha-e1f9593 on Panel 2.7.4, container healthy, dashboard HTTP 200 and no fatal startup log entries",
+    "remnawaveManagedNode322LiveDeployment": "passed: sha-e1f9593 on FI Node 3.2.2 via in-place Compose image replacement; Xray 26.7.28 Custom, restart count 0, Node API and all 8 pre-existing inbound ports preserved, port 8443 free, no critical startup log entries",
     "raceDetector": "not run: portable Windows toolchain has no CGO C compiler"
   },
   "securityNotice": "Not independently audited. Use TLS or REALITY on untrusted networks."
