@@ -45,6 +45,25 @@
     "remnawaveWasmPatchSha256": "4FD7D3784C8DEFBDB787A76613799397C52DE3885850B18E69CB29BFA8A59387",
     "remnawaveWasmPatchSize": 22526
   },
+  "remnawaveImages": {
+    "workflowRun": "https://github.com/AetherLinkX/aetherlink-x/actions/runs/33241158963",
+    "sourceCommit": "6c536a962e02b6936d45b006400a1e1829c90729",
+    "visibility": "private",
+    "platforms": [
+      "linux/amd64",
+      "linux/arm64"
+    ],
+    "node": {
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node",
+      "tag": "sha-6c536a9",
+      "digest": "sha256:ad434d56d469288d752c18b2da4496117bfcbd6249402c60a9ffbc4fbb7b6a82"
+    },
+    "backend": {
+      "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend",
+      "tag": "sha-6c536a9",
+      "digest": "sha256:580229d362c70eec72b0dcf26b54e857ce4831ad927f0afc65e8f78883ed27ae"
+    }
+  },
   "validation": {
     "unitTests": "passed",
     "configurationTests": "passed",
@@ -62,7 +81,7 @@
     "remnawaveBackendTypeScriptBuild": "passed",
     "remnawaveBrowserWasmBuild": "passed",
     "linuxCrossBuilds": "passed",
-    "remnawaveDockerBuild": "not run locally: Docker is not installed; GitHub Actions workflow provided",
+    "remnawaveDockerBuild": "passed: GitHub Actions run 33241158963, linux/amd64 + linux/arm64, Node and Backend published to GHCR",
     "raceDetector": "not run: portable Windows toolchain has no CGO C compiler"
   },
   "securityNotice": "Not independently audited. Use TLS or REALITY on untrusted networks."

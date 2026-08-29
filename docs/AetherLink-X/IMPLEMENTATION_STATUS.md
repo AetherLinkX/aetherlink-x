@@ -98,7 +98,14 @@ SHA-256: DF64291E04B58185FCE7ADBA9FC71D0A6A06DF83CBB70891146EAF9E606B51C3
 - custom Remnawave Node со сборкой Xray `v26.7.28`, в которую применён ALX patch;
 - custom Remnawave Backend с разрешённым статическим `aetherlinkx` inbound, ALX-aware JSON Schema и браузерным WASM-валидатором.
 
-Patch ядра проверен на точном Xray commit `5ca6f4b7d4dc20a881d4330e498892697627ec0c`. Backend patch проверен на Remnawave Backend `3.3.2` commit `347e6de129f0289a3831dfbb7452d36b49528f3c`; TypeScript/Rspack build завершился успешно. Браузерный WASM-валидатор также собран успешно. Multi-arch Docker-сборку и публикацию `linux/amd64`/`linux/arm64` выполняет GitHub Actions.
+Patch ядра проверен на точном Xray commit `5ca6f4b7d4dc20a881d4330e498892697627ec0c`. Backend patch проверен на Remnawave Backend `3.3.2` commit `347e6de129f0289a3831dfbb7452d36b49528f3c`; TypeScript/Rspack build завершился успешно. Браузерный WASM-валидатор также собран успешно.
+
+GitHub Actions run [`33241158963`](https://github.com/AetherLinkX/aetherlink-x/actions/runs/33241158963) завершился со статусом `Success` и опубликовал приватные multi-arch образы `linux/amd64` + `linux/arm64`:
+
+- `ghcr.io/aetherlinkx/aetherlink-x-remnawave-node:sha-6c536a9` — `sha256:ad434d56d469288d752c18b2da4496117bfcbd6249402c60a9ffbc4fbb7b6a82`;
+- `ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend:sha-6c536a9` — `sha256:580229d362c70eec72b0dcf26b54e857ce4831ad927f0afc65e8f78883ed27ae`.
+
+Тег `latest` указывает на те же версии, но для воспроизводимого развёртывания следует использовать неизменяемый `sha-6c536a9` либо полный digest.
 
 Текущий режим — статический ALX inbound: его accounts сохраняются внутри Config Profile и не изменяются обычными событиями пользователей Remnawave. Динамическое создание ALX accounts и генерация ALX-ссылок подписки не заявлены как готовые: для них необходимо расширить схему БД пользователя, `xtls-sdk`, backend, frontend и клиенты подписки.
 
