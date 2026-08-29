@@ -68,19 +68,20 @@
       "digest": "sha256:580229d362c70eec72b0dcf26b54e857ce4831ad927f0afc65e8f78883ed27ae"
     },
     "compatibility274": {
-      "workflowRun": "https://github.com/AetherLinkX/aetherlink-x/actions/runs/33248315033",
-      "sourceCommit": "7ef48b3522463d4a50828e68715eb3779081bc8b",
+      "workflowRun": "https://github.com/AetherLinkX/aetherlink-x/actions/runs/33256675094",
+      "sourceCommit": "6a091c74649d0503cf2de09a3e86a3875057eb27",
+      "visibility": "public",
       "panelVersion": "2.7.4",
       "nodeVersion": "2.7.0",
       "node": {
         "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-2.7.0",
-        "tag": "sha-7ef48b3",
-        "digest": "sha256:5d2907bbd2cbcefd608eba3a8f05c2cf40d253c243bb67641f60a2a3d8f6fda4"
+        "tag": "sha-6a091c7",
+        "digest": "sha256:058a8a8c4efe25832b1ba19364c4abeb4bb8b5cd59b0bb06fa9558c5e9e0bdc6"
       },
       "backend": {
         "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-2.7.4",
-        "tag": "sha-7ef48b3",
-        "digest": "sha256:64027ea7c88f4b656ec16e401734fddf437216035a9756fa0fb1b196aad5a796"
+        "tag": "sha-6a091c7",
+        "digest": "sha256:8d19c4616a587b51de4680d5c21d766601a7d9388682227e351b695ee2a364da"
       }
     }
   },
@@ -104,7 +105,8 @@
     "remnawaveBackend274RuntimeBranchCheck": "passed: REMNAWAVE_BRANCH=main is accepted by the pinned 2.7.4 runtime schema",
     "remnawaveBrowserWasmBuild": "passed",
     "linuxCrossBuilds": "passed",
-    "remnawaveDockerBuild": "passed: GitHub Actions runs 33241158963 and 33248315033, linux/amd64 + linux/arm64, 3.3.2 and 2.7.4-compatible Node/Backend images published to GHCR",
+    "remnawaveDockerBuild": "passed: GitHub Actions runs 33241158963 and 33256675094, linux/amd64 + linux/arm64, 3.3.2 and 2.7.4-compatible Node/Backend images published to GHCR",
+    "remnawaveBackend274LiveDeployment": "passed: sha-6a091c7 on Panel 2.7.4, container healthy and static ALX profile persisted after reload",
     "raceDetector": "not run: portable Windows toolchain has no CGO C compiler"
   },
   "securityNotice": "Not independently audited. Use TLS or REALITY on untrusted networks."
