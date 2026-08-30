@@ -52,6 +52,11 @@ object ProfileCodec {
     fun decodeSubscriptionBody(body: String): List<VpnProfile> {
         val trimmed = body.trim()
 
+        // Remnawave can return a complete Xray JSON document instead of share links.
+        // Keep this path before Base64 decoding so a valid JSON document is never
+        // accidentally interpreted as garbage Base64.
+        decodeXrayJsonSubscription(trimmed).takeIf { it.isNotEmpty() }?.let { return it }
+
         // Try base64 first (many providers serve a base64 blob of newline-separated links).
         val fromBase64 = listOf(Base64.DEFAULT, Base64.URL_SAFE).firstNotNullOfOrNull { flags ->
             runCatching { String(Base64.decode(trimmed, flags)) }.getOrNull()
@@ -64,6 +69,91 @@ object ProfileCodec {
         // BUG FIX: a plain-text body can still be "Base64-decodable" into garbage, which
         // previously yielded zero profiles. Fall back to parsing the original lines.
         return trimmed.lines().mapNotNull { decode(it.trim()) }
+    }
+
+    private fun decodeXrayJsonSubscription(body: String): List<VpnProfile> {
+        if (!body.startsWith("{") && !body.startsWith("[")) return emptyList()
+        return runCatching {
+            val outbounds = if (body.startsWith("[")) {
+                org.json.JSONArray(body)
+            } else {
+                val root = JSONObject(body)
+                root.optJSONArray("outbounds")
+                    ?: root.optJSONObject("config")?.optJSONArray("outbounds")
+                    ?: org.json.JSONArray().put(root.takeIf { it.has("protocol") })
+            }
+            buildList {
+                for (i in 0 until outbounds.length()) {
+                    val outbound = outbounds.optJSONObject(i) ?: continue
+                    decodeAetherLinkXOutbound(outbound)?.let(::add)
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun decodeAetherLinkXOutbound(outbound: JSONObject): VpnProfile? {
+        if (!outbound.optString("protocol").equals("aetherlinkx", true)) return null
+        val settings = outbound.optJSONObject("settings") ?: return null
+        val stream = outbound.optJSONObject("streamSettings") ?: JSONObject()
+        val network = stream.optString("network", "tcp").lowercase()
+        val transport = when (network) {
+            "ws" -> Transport.WS
+            "grpc" -> Transport.GRPC
+            "xhttp", "splithttp" -> Transport.XHTTP
+            "h2", "http" -> Transport.H2
+            "quic" -> Transport.QUIC
+            else -> Transport.TCP
+        }
+        val security = when (stream.optString("security").lowercase()) {
+            "tls" -> Security.TLS
+            "reality" -> Security.REALITY
+            "xtls" -> Security.XTLS
+            else -> Security.NONE
+        }
+        val reality = stream.optJSONObject("realitySettings")
+        val tls = stream.optJSONObject("tlsSettings")
+        val transportSettings = when (transport) {
+            Transport.WS -> stream.optJSONObject("wsSettings")
+            Transport.GRPC -> stream.optJSONObject("grpcSettings")
+            Transport.XHTTP -> stream.optJSONObject("xhttpSettings") ?: stream.optJSONObject("splithttpSettings")
+            Transport.H2 -> stream.optJSONObject("httpSettings")
+            Transport.QUIC -> stream.optJSONObject("quicSettings")
+            Transport.TCP -> stream.optJSONObject("tcpSettings")
+        }
+        val headers = transportSettings?.optJSONObject("headers")
+        val host = when {
+            transport == Transport.GRPC -> ""
+            headers?.optString("Host")?.isNotBlank() == true -> headers.optString("Host")
+            else -> transportSettings?.optString("host").orEmpty()
+        }
+        val path = when (transport) {
+            Transport.GRPC -> transportSettings?.optString("serviceName").orEmpty()
+            else -> transportSettings?.optString("path", "/") ?: "/"
+        }.ifBlank { "/" }
+        return VpnProfile(
+            name = outbound.optString("tag", "AetherLink X").ifBlank { "AetherLink X" },
+            protocol = Protocol.AETHERLINK_X,
+            address = settings.optString("address"),
+            port = settings.optInt("port", 443),
+            uuid = settings.optString("id"),
+            transport = transport,
+            path = path,
+            host = host,
+            security = security,
+            sni = reality?.optString("serverName")?.ifBlank { null }
+                ?: tls?.optString("serverName").orEmpty(),
+            fingerprint = reality?.optString("fingerprint")?.ifBlank { null }
+                ?: tls?.optString("fingerprint")?.ifBlank { null }
+                ?: "chrome",
+            publicKey = reality?.optString("publicKey").orEmpty(),
+            shortId = reality?.optString("shortId").orEmpty(),
+            allowInsecure = tls?.optBoolean("allowInsecure", false) ?: false,
+            alxSecret = settings.optString("secret"),
+            alxAllowInsecureTransport = settings.optBoolean("allowInsecureTransport", false),
+            alxTurboJson = settings.optJSONObject("turbo")?.toString() ?: "{}",
+            alxSecurityJson = settings.optJSONObject("security")?.toString() ?: "{}",
+            alxStealthJson = settings.optJSONObject("stealth")?.toString() ?: "{}",
+        )
     }
 
     // ─────────────────────────────────────────────────────────────────────────

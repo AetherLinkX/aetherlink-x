@@ -41,4 +41,42 @@ class AetherLinkXCodecTest {
         assertTrue(config.contains("\"pqMode\": \"prefer\""))
         assertTrue(config.contains("\"maxDatagramAgeMs\": 35"))
     }
+
+    @Test
+    fun remnawaveXrayJsonImportsAetherLinkXOutbound() {
+        val body = """
+            {
+              "outbounds": [{
+                "tag": "AetherLink X FI",
+                "protocol": "aetherlinkx",
+                "settings": {
+                  "address": "alx.example.com",
+                  "port": 443,
+                  "id": "018f3f89-01be-7b44-8a7f-23e54f92ea00",
+                  "secret": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                  "turbo": {"enabled": true},
+                  "security": {"pqMode": "prefer"}
+                },
+                "streamSettings": {
+                  "network": "grpc",
+                  "security": "reality",
+                  "grpcSettings": {"serviceName": "alx"},
+                  "realitySettings": {
+                    "serverName": "www.example.com",
+                    "fingerprint": "chrome",
+                    "publicKey": "public-key",
+                    "shortId": "0123456789abcdef"
+                  }
+                }
+              }]
+            }
+        """.trimIndent()
+
+        val profile = ProfileCodec.decodeSubscriptionBody(body).single()
+        assertEquals(Protocol.AETHERLINK_X, profile.protocol)
+        assertEquals("AetherLink X FI", profile.name)
+        assertEquals("alx", profile.path)
+        assertEquals("www.example.com", profile.sni)
+        assertTrue(profile.alxTurboJson.contains("enabled"))
+    }
 }

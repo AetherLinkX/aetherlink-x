@@ -26,11 +26,98 @@ enum ProfileCodec {
     /// Decode a subscription body (newline list, possibly base64-wrapped).
     static func decodeSubscriptionBody(_ body: String) -> [VpnProfile] {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let jsonProfiles = decodeXrayJSONSubscription(trimmed)
+        if !jsonProfiles.isEmpty { return jsonProfiles }
         if let decoded = base64Decode(trimmed) {
             let profiles = decoded.split(separator: "\n").compactMap { decode(String($0)) }
             if !profiles.isEmpty { return profiles }
         }
         return trimmed.split(separator: "\n").compactMap { decode(String($0)) }
+    }
+
+    /// Remnawave may negotiate a complete Xray JSON config instead of a Base64 link list.
+    /// Only ALX outbounds are decoded here; standard share-link imports remain unchanged.
+    private static func decodeXrayJSONSubscription(_ body: String) -> [VpnProfile] {
+        guard body.first == "{" || body.first == "[", let data = body.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) else { return [] }
+        let outbounds: [[String: Any]]
+        if let array = root as? [[String: Any]] {
+            outbounds = array
+        } else if let object = root as? [String: Any] {
+            if let array = object["outbounds"] as? [[String: Any]] {
+                outbounds = array
+            } else if let config = object["config"] as? [String: Any],
+                      let array = config["outbounds"] as? [[String: Any]] {
+                outbounds = array
+            } else if object["protocol"] != nil {
+                outbounds = [object]
+            } else {
+                outbounds = []
+            }
+        } else {
+            outbounds = []
+        }
+        return outbounds.compactMap(decodeAetherLinkXOutbound)
+    }
+
+    private static func decodeAetherLinkXOutbound(_ outbound: [String: Any]) -> VpnProfile? {
+        guard (outbound["protocol"] as? String)?.lowercased() == "aetherlinkx",
+              let settings = outbound["settings"] as? [String: Any] else { return nil }
+        let stream = outbound["streamSettings"] as? [String: Any] ?? [:]
+        let network = (stream["network"] as? String ?? "tcp").lowercased()
+        let transport: Transport = [
+            "ws": .ws, "grpc": .grpc, "xhttp": .xhttp, "splithttp": .xhttp,
+            "h2": .h2, "http": .h2, "quic": .quic,
+        ][network] ?? .tcp
+        let security = Security(rawValue: (stream["security"] as? String ?? "none").lowercased()) ?? .none
+        let reality = stream["realitySettings"] as? [String: Any] ?? [:]
+        let tls = stream["tlsSettings"] as? [String: Any] ?? [:]
+        let transportSettings: [String: Any] = {
+            switch transport {
+            case .ws: return stream["wsSettings"] as? [String: Any] ?? [:]
+            case .grpc: return stream["grpcSettings"] as? [String: Any] ?? [:]
+            case .xhttp: return stream["xhttpSettings"] as? [String: Any]
+                ?? stream["splithttpSettings"] as? [String: Any] ?? [:]
+            case .h2: return stream["httpSettings"] as? [String: Any] ?? [:]
+            case .quic: return stream["quicSettings"] as? [String: Any] ?? [:]
+            case .tcp: return stream["tcpSettings"] as? [String: Any] ?? [:]
+            }
+        }()
+        func text(_ object: [String: Any], _ key: String) -> String {
+            if let value = object[key] as? String { return value }
+            return object[key].map { String(describing: $0) } ?? ""
+        }
+        func json(_ value: Any?) -> String {
+            guard let value, JSONSerialization.isValidJSONObject(value),
+                  let data = try? JSONSerialization.data(withJSONObject: value),
+                  let result = String(data: data, encoding: .utf8) else { return "{}" }
+            return result
+        }
+        let headers = transportSettings["headers"] as? [String: Any] ?? [:]
+        var p = VpnProfile()
+        p.name = text(outbound, "tag").isEmpty ? "AetherLink X" : text(outbound, "tag")
+        p.proto = .aetherlinkx
+        p.address = text(settings, "address")
+        p.port = settings["port"] as? Int ?? Int(text(settings, "port")) ?? 443
+        p.uuid = text(settings, "id")
+        p.transport = transport
+        p.path = transport == .grpc ? text(transportSettings, "serviceName") : text(transportSettings, "path")
+        if p.path.isEmpty { p.path = "/" }
+        p.host = text(headers, "Host").isEmpty ? text(transportSettings, "host") : text(headers, "Host")
+        p.security = security
+        p.sni = text(reality, "serverName").isEmpty ? text(tls, "serverName") : text(reality, "serverName")
+        p.fingerprint = text(reality, "fingerprint").isEmpty
+            ? (text(tls, "fingerprint").isEmpty ? "chrome" : text(tls, "fingerprint"))
+            : text(reality, "fingerprint")
+        p.publicKey = text(reality, "publicKey")
+        p.shortId = text(reality, "shortId")
+        p.allowInsecure = tls["allowInsecure"] as? Bool ?? false
+        p.alxSecret = text(settings, "secret")
+        p.alxAllowInsecureTransport = settings["allowInsecureTransport"] as? Bool ?? false
+        p.alxTurboJson = json(settings["turbo"])
+        p.alxSecurityJson = json(settings["security"])
+        p.alxStealthJson = json(settings["stealth"])
+        return p
     }
 
     // ── Encode (share link) ──────────────────────────────────────────────────
