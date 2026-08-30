@@ -34,10 +34,25 @@ import com.palazik.vpn.ui.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
 import java.util.UUID
+
+private fun alxOptionEnabled(raw: String, key: String = "enabled"): Boolean =
+    runCatching { JSONObject(raw).optBoolean(key, false) }.getOrDefault(false)
+
+private fun alxOptionText(raw: String, key: String, fallback: String): String =
+    runCatching { JSONObject(raw).optString(key, fallback) }.getOrDefault(fallback)
+
+private fun setAlxOption(raw: String, key: String, enabled: Boolean): String =
+    runCatching { JSONObject(raw.ifBlank { "{}" }) }.getOrElse { JSONObject() }
+        .put(key, enabled).toString()
+
+private fun setAlxOption(raw: String, key: String, value: String): String =
+    runCatching { JSONObject(raw.ifBlank { "{}" }) }.getOrElse { JSONObject() }
+        .put(key, value).toString()
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -1164,6 +1179,35 @@ private fun ManualProfileDialog(
                 HorizontalDivider()
                 AnimatedVisibility(visible = protocol == Protocol.AETHERLINK_X) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ProfileToggleRow(
+                            title = "AetherLink Turbo (Game Mode)",
+                            subtitle = "Low-latency UDP deadlines, header cache and transport tuning.",
+                            checked = alxOptionEnabled(alxTurboJson),
+                            onChange = { alxTurboJson = setAlxOption(alxTurboJson, "enabled", it) },
+                        )
+                        ProfileToggleRow(
+                            title = "Inner AEAD",
+                            subtitle = "Authenticated ChaCha20-Poly1305 records inside TLS/REALITY.",
+                            checked = alxOptionEnabled(alxSecurityJson, "innerAead"),
+                            onChange = { alxSecurityJson = setAlxOption(alxSecurityJson, "innerAead", it) },
+                        )
+                        Text("Post-quantum X-Wing", style = MaterialTheme.typography.bodyMedium)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("off", "prefer", "required").forEach { mode ->
+                                FilterChip(
+                                    selected = alxOptionText(alxSecurityJson, "pqMode", "off") == mode,
+                                    onClick = { alxSecurityJson = setAlxOption(alxSecurityJson, "pqMode", mode) },
+                                    label = { Text(mode) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                        ProfileToggleRow(
+                            title = "Stealth Mode",
+                            subtitle = "Randomized chunk sizes and bounded padding for traffic shaping.",
+                            checked = alxOptionEnabled(alxStealthJson),
+                            onChange = { alxStealthJson = setAlxOption(alxStealthJson, "enabled", it) },
+                        )
                         ProfileToggleRow(
                             title = "Allow insecure ALX transport",
                             subtitle = "Testing only. Keep disabled when TLS or REALITY is available.",

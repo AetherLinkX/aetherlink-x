@@ -54,7 +54,7 @@ signature, so a later store/release-signed APK will require uninstalling this al
 - Import from share links, clipboard, QR (camera or image), or a subscription URL
 - Import preview with parsed protocol/server/transport/security and validation warnings
 - Manual editor with masked secrets, per-profile `allowInsecure`, mux toggle, and TLS-fragment toggle
-- Duplicate, export as native link / palazikVPN link / generated JSON, share as QR
+- Duplicate, export as native link / AetherLink X backup link / generated JSON, share as QR
 - Search, sort (name or latency), and grouping per subscription
 - TCP / HTTP GET / HTTP HEAD latency tests, run concurrently for "ping all" and "choose best"
 
@@ -147,16 +147,15 @@ the same `.dat` files as Android, bundled into the extension.
 > iOS build as ALX-capable until a patched XCFramework is built and its Network Extension
 > path passes a real-device connection test.
 
-The **iOS CI** workflow runs on a macOS runner: it installs XcodeGen, generates the Xcode
-project from `ios/project.yml`, builds an **unsigned** `.ipa`, and sends it to the maintainer
-DM via Telegram. To build/run on a real device you need an Apple Developer account (the
-Network Extension entitlement is not available to free accounts) and your own signing.
+There is no published ALX-capable iOS artifact yet. To build/run on a real device you need
+macOS with Xcode, an Apple Developer account, the Network Extension entitlement, your own
+signing, and a patched `LibXray.xcframework` containing AetherLink X.
 
 ```bash
 cd ios
 brew install xcodegen
 xcodegen generate
-open palazikVPN.xcodeproj   # set your team + bundle IDs to run on a device
+open AetherLinkXClient.xcodeproj   # set your team + bundle IDs to run on a device
 ```
 
 ## Building — Linux
@@ -180,10 +179,6 @@ image and uploads `aetherlink-x-client-linux-x64.tar.gz` as an artifact.
 ### Install (Arch Linux & any distro)
 
 ```bash
-# if it arrived from Telegram in parts:
-cat palazikVPN-linux-x64-installer.zip.part* > palazikVPN-linux-x64-installer.zip
-unzip palazikVPN-linux-x64-installer.zip
-
 tar -xzf aetherlink-x-client-linux-x64.tar.gz
 ./AetherLinkXClient/bin/AetherLinkXClient
 ```

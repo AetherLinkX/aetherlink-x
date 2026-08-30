@@ -22,15 +22,15 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
           cache: gradle
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "9.4.1"
 
@@ -70,7 +70,7 @@ jobs:
           test -n "$APP"
           tar -C "$(dirname "$APP")" -czf aetherlink-x-client-linux-x64.tar.gz "$(basename "$APP")"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: aetherlink-x-client-linux-x64
           retention-days: 30
@@ -90,6 +90,9 @@ jobs:
             gh release create client-dev --prerelease --target "$GITHUB_SHA" \
               --title "AetherLink X Client — development build" \
               --notes "Experimental Android/Linux client with the patched ALX core. Not independently security-audited."
+          else
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/client-dev" \
+              -f sha="$GITHUB_SHA" -F force=true >/dev/null
           fi
           gh release upload client-dev \
             aetherlink-x-client-linux-x64.tar.gz \
