@@ -77,7 +77,7 @@ fun AppNavHost(
 ) {
     val navController = rememberNavController()
     val ui by vm.ui.collectAsState()
-    val tabs = remember { listOf(Screen.Home, Screen.Profiles, Screen.Subscriptions, Screen.Settings) }
+    val tabs = remember { listOf(Screen.Home, Screen.Profiles, Screen.Settings) }
     val snackState = remember { SnackbarHostState() }
 
     LaunchedEffect(ui.snackMessage) {
@@ -166,7 +166,7 @@ fun AppNavHost(
         ) {
             val back: () -> Unit = { navController.popBackStack() }
             composable(Screen.Home.route)          { HomeScreen(vm, permLauncher) }
-            composable(Screen.Profiles.route)      { ProfilesScreen(vm) }
+            composable(Screen.Profiles.route)      { ProfilesScreen(vm, onOpenSubscriptions = { navController.navigate(Screen.Subscriptions.route) }) }
             composable(Screen.Subscriptions.route) { SubscriptionsScreen(vm) }
             composable(Screen.Settings.route)      { SettingsScreen(vm, onNavigate = { navController.navigate(it) }) }
             composable(Screen.Style.route)                  { StyleScreen(vm, onBack = back) }

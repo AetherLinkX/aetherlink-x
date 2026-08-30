@@ -3,12 +3,11 @@
 [![Android build](https://github.com/AetherLinkX/aetherlink-x/actions/workflows/build-aetherlinkx-client-android.yml/badge.svg)](https://github.com/AetherLinkX/aetherlink-x/actions/workflows/build-aetherlinkx-client-android.yml)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 ![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)
-![Linux](https://img.shields.io/badge/Linux-x64-FCC624?logo=linux&logoColor=black)
 [![Protocol source](https://img.shields.io/badge/protocol-AetherLink%20X-00E5FF)](https://github.com/AetherLinkX/aetherlink-x)
 
-An open-source Xray client for Android and Linux with an iOS frontend under development.
-The Android and Linux builds bundle the patched AetherLink X core, import Remnawave
-subscriptions, and retain the standard Xray protocols. **No accounts and no telemetry** —
+An open-source Xray client for Android. The Android build bundles the patched
+AetherLink X core, imports Remnawave subscriptions, and retains the standard Xray protocols.
+**No accounts and no telemetry** —
 your configs stay on your device.
 
 This is a modified GPLv3 build of [xStarRay](https://github.com/iliYF/xStarRay). The
@@ -23,8 +22,6 @@ Successful `main` builds are attached to the
 [`client-dev` release](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-dev):
 
 - Android: install `aetherlink-x-client-android-universal-debug.apk` (Android 8+).
-- Linux x64: extract `aetherlink-x-client-linux-x64.tar.gz`, then run
-  `AetherLinkXClient/bin/AetherLinkXClient`.
 - Verify the downloaded file with its matching `SHA256SUMS.txt` asset.
 
 This release is an unsigned/alpha distribution channel. Android uses the standard debug
@@ -95,8 +92,6 @@ The repo is a monorepo:
 
 ```text
 android/   Kotlin / Jetpack Compose app (Gradle project)
-ios/       Swift / SwiftUI app + NEPacketTunnelProvider (XcodeGen project)
-linux/     Kotlin / Compose for Desktop app (Gradle project)
 docs/      website (GitHub Pages)
 ```
 
@@ -158,46 +153,6 @@ xcodegen generate
 open AetherLinkXClient.xcodeproj   # set your team + bundle IDs to run on a device
 ```
 
-## Building — Linux
-
-The Linux app is a direct port of the Android app: the same Compose UI (Compose for
-Desktop), the same data layer, codecs and Xray config builder. Instead of `libv2ray.aar`
-it runs the official [Xray-core](https://github.com/XTLS/Xray-core) binary as a child
-process, with two connection modes:
-
-- **Proxy mode** (default, no root) — local SOCKS5 `127.0.0.1:10808` / HTTP `127.0.0.1:10809`,
-  with the desktop system proxy (GNOME/KDE) applied automatically while connected.
-- **TUN mode** (full-device, like Android's `VpnService`) — creates a `palazik0` TUN device
-  via [tun2socks](https://github.com/xjasonlyu/tun2socks), routes everything through it,
-  bypasses the proxy server, handles DNS (systemd-resolved or resolv.conf), prevents IPv6
-  leaks, and supports a kill switch. Privilege is requested per-connection with `pkexec`.
-
-The root **Build AetherLink X Client (Linux)** workflow bundles the tracked patched core,
-downloads tun2socks and geodata, runs the codec/config tests, creates a self-contained app
-image and uploads `aetherlink-x-client-linux-x64.tar.gz` as an artifact.
-
-### Install (Arch Linux & any distro)
-
-```bash
-tar -xzf aetherlink-x-client-linux-x64.tar.gz
-./AetherLinkXClient/bin/AetherLinkXClient
-```
-
-TUN mode additionally needs `polkit` (for the `pkexec` prompt), which every desktop
-install already has. xray, tun2socks and the geo files are bundled inside the app image;
-if you delete them, the app falls back to `~/.local/share/AetherLinkXClient/bin` and `$PATH`
-(e.g. `pacman -S xray`).
-
-### Platform notes vs Android
-
-- The tray icon replaces the persistent notification / Quick Settings tile / widget
-  (closing the window keeps the VPN running in the tray).
-- "Auto-connect on boot" becomes an XDG autostart entry (`--autoconnect` on login).
-- Per-app split tunneling is an Android-kernel feature with no Linux equivalent in this
-  architecture — use Proxy mode and point individual apps at the local proxy instead.
-- QR import works from image files (no camera capture); QR export works the same.
-- The Dynamic (Material You) theme is Android-12-only; all other themes are identical.
-
 ## Signing
 
 Release builds are signed automatically when credentials are present, and stay unsigned
@@ -254,12 +209,6 @@ ios/
   Shared/      App Group identifiers shared by both targets
   project.yml  XcodeGen project spec
 
-linux/src/main/kotlin/com/palazik/vpn/
-  compat/      android.net.Uri / android.util.Base64 / SharedPreferences shims
-  data/        models, codecs, repository, WARP provisioning, validation (ported 1:1)
-  service/     xray process controller, TUN manager (pkexec + tun2socks),
-               system proxy, autostart, Xray config builder
-  ui/          screens, theme, i18n (EN/RU), viewmodel — same Compose UI as Android
 ```
 
 ## License

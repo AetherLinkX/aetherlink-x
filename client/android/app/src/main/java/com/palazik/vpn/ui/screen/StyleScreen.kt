@@ -53,17 +53,17 @@ private fun MiuixStyleScreen(vm: MainViewModel, onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Назад")
             }
-            Text("Style", style = MaterialTheme.typography.headlineSmall)
+            Text("Стиль", style = MaterialTheme.typography.headlineSmall)
         }
 
         // ── Design System ────────────────────────────────────────────────────
-        SmallTitle(text = "Design System")
+        SmallTitle(text = "Система дизайна")
         MiuixCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
             Column(Modifier.padding(16.dp)) {
                 Text(
-                    "Miuix — Xiaomi HyperOS look & feel.\nM3 Expressive — Material Design 3 Expressive.",
+                    "Miuix — стиль Xiaomi HyperOS.\nM3 Expressive — выразительный Material Design 3.",
                     style    = MaterialTheme.typography.bodySmall,
                     color    = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 12.dp),
@@ -99,7 +99,7 @@ private fun MiuixStyleScreen(vm: MainViewModel, onBack: () -> Unit) {
         Spacer(Modifier.height(12.dp))
 
         // ── Dark Mode ────────────────────────────────────────────────────────
-        SmallTitle(text = "Dark Mode")
+        SmallTitle(text = "Тёмный режим")
         MiuixCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
             Column(Modifier.padding(16.dp)) {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -110,9 +110,9 @@ private fun MiuixStyleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             onClick  = { vm.setDarkMode(pref) },
                             label    = {
                                 Text(when (pref) {
-                                    DarkModePreference.SYSTEM       -> "System"
-                                    DarkModePreference.ALWAYS_LIGHT -> "Light"
-                                    DarkModePreference.ALWAYS_DARK  -> "Dark"
+                                    DarkModePreference.SYSTEM       -> "Система"
+                                    DarkModePreference.ALWAYS_LIGHT -> "Светлая"
+                                    DarkModePreference.ALWAYS_DARK  -> "Тёмная"
                                 })
                             },
                         )
@@ -124,13 +124,13 @@ private fun MiuixStyleScreen(vm: MainViewModel, onBack: () -> Unit) {
         Spacer(Modifier.height(12.dp))
 
         // ── Color Theme ──────────────────────────────────────────────────────
-        SmallTitle(text = "Color Theme")
+        SmallTitle(text = "Цветовая тема")
         MiuixCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
             Column(Modifier.padding(vertical = 4.dp)) {
                 AppThemeOptions.forEach { theme ->
                     ArrowPreference(
                         title = themeLabel(theme),
-                        summary = if (ui.appTheme == theme) "Active" else null,
+                        summary = if (ui.appTheme == theme) "Активна" else null,
                         onClick = { vm.setAppTheme(theme) },
                     )
                 }
@@ -164,9 +164,9 @@ private fun Md3StyleScreen(vm: MainViewModel, onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Назад")
             }
-            Text("Style", style = MaterialTheme.typography.headlineSmall)
+            Text("Стиль", style = MaterialTheme.typography.headlineSmall)
         }
 
         Column(
@@ -175,16 +175,16 @@ private fun Md3StyleScreen(vm: MainViewModel, onBack: () -> Unit) {
         ) {
 
             // ── Animations ───────────────────────────────────────────────────
-            StyleSection(title = "Animations") {
+            StyleSection(title = "Анимации") {
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Miuix animations", style = MaterialTheme.typography.bodyLarge)
+                        Text("Анимации Miuix", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "Springy Miuix-style overscroll on lists and animated theme transitions, on top of Material 3.",
+                            "Пружинная прокрутка списков и плавные переходы темы.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -200,7 +200,7 @@ private fun Md3StyleScreen(vm: MainViewModel, onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
 
             // ── Dark Mode ────────────────────────────────────────────────────
-            StyleSection(title = "Dark Mode") {
+            StyleSection(title = "Тёмный режим") {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     DarkModeOptions.forEachIndexed { idx, pref ->
                         SegmentedButton(
@@ -209,9 +209,9 @@ private fun Md3StyleScreen(vm: MainViewModel, onBack: () -> Unit) {
                             onClick  = { vm.setDarkMode(pref) },
                             label    = {
                                 Text(when (pref) {
-                                    DarkModePreference.SYSTEM       -> "System"
-                                    DarkModePreference.ALWAYS_LIGHT -> "Light"
-                                    DarkModePreference.ALWAYS_DARK  -> "Dark"
+                                    DarkModePreference.SYSTEM       -> "Система"
+                                    DarkModePreference.ALWAYS_LIGHT -> "Светлая"
+                                    DarkModePreference.ALWAYS_DARK  -> "Тёмная"
                                 })
                             },
                         )
@@ -222,9 +222,9 @@ private fun Md3StyleScreen(vm: MainViewModel, onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
 
             // ── Color Theme ──────────────────────────────────────────────────
-            StyleSection(title = "Color Theme") {
+            StyleSection(title = "Цветовая тема") {
                 Text(
-                    "Color palette used across the app.",
+                    "Цветовая палитра всего приложения.",
                     style    = MaterialTheme.typography.bodySmall,
                     color    = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp),
@@ -257,14 +257,14 @@ private fun StyleSection(title: String, content: @Composable ColumnScope.() -> U
 }
 
 private fun themeLabel(theme: AppTheme): String = when (theme) {
-    AppTheme.CYBER   -> "Cyber (Dark-first)"
-    AppTheme.OCEAN   -> "Ocean"
-    AppTheme.FOREST  -> "Forest"
-    AppTheme.SUNSET  -> "Sunset"
-    AppTheme.ROSE    -> "Rose"
-    AppTheme.VIOLET  -> "Violet"
-    AppTheme.AMOLED  -> "AMOLED (pure black)"
-    AppTheme.DYNAMIC -> "Dynamic (Android 12+)"
+    AppTheme.CYBER   -> "Киберпанк"
+    AppTheme.OCEAN   -> "Океан"
+    AppTheme.FOREST  -> "Лес"
+    AppTheme.SUNSET  -> "Закат"
+    AppTheme.ROSE    -> "Роза"
+    AppTheme.VIOLET  -> "Фиолетовая"
+    AppTheme.AMOLED  -> "AMOLED (чёрная)"
+    AppTheme.DYNAMIC -> "Динамическая (Android 12+)"
 }
 
 @Composable

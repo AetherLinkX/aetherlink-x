@@ -18,6 +18,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.palazik.vpn.R
 import com.palazik.vpn.data.SecurePreferences
+import com.palazik.vpn.data.network.LocalProxyEndpoint
 import com.palazik.vpn.data.model.AppSettings
 import com.palazik.vpn.data.model.SplitTunnelMode
 import com.palazik.vpn.data.model.VpnProfile
@@ -71,6 +72,7 @@ class palazikVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var coreController: CoreController? = null
     private var hevTunBridge: HevTunBridge? = null
+    private var localSocksPort: Int = 0
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
 
@@ -158,7 +160,7 @@ class palazikVpnService : VpnService() {
         }
             ?: run {
             Log.e(TAG, "activeProfile is null")
-            _lastError.value = "No active profile selected"
+            _lastError.value = "Активный профиль не выбран"
             addDiagnostic("Start failed: no active profile")
             _connectionState.value = ServiceState.ERROR
             stopSelf()
@@ -169,7 +171,7 @@ class palazikVpnService : VpnService() {
         _connectionState.value = ServiceState.STARTING
         _lastError.value = null
         addDiagnostic("Starting ${profile.name}")
-        startForeground(NOTIFICATION_ID, buildNotification("Connecting…"))
+        startForeground(NOTIFICATION_ID, buildNotification("Подключение…"))
 
         scope.launch {
             try {
@@ -177,7 +179,17 @@ class palazikVpnService : VpnService() {
                 initializeLibv2ray()
 
                 val settings = loadAppSettings()
-                val config = XrayConfigBuilder.build(profile, settings)
+                // Android permits only one active VpnService, but another app can keep a
+                // loopback proxy alive for a moment after the system revokes its VPN. A
+                // fresh private port avoids collisions without trying to kill other apps.
+                val socksPort = LocalProxyEndpoint.allocate()
+                localSocksPort = socksPort
+                val config = XrayConfigBuilder.build(
+                    profile = profile,
+                    settings = settings,
+                    localSocksPort = socksPort,
+                    includeHttpInbound = false,
+                )
                 Log.d(TAG, "Xray config built for ${profile.name}")
 
                 // Register network callback BEFORE establish() so setUnderlyingNetworks
@@ -206,19 +218,20 @@ class palazikVpnService : VpnService() {
                 // Xray owns only the loopback SOCKS listener. HEV owns the Android TUN fd
                 // and converts every IP packet (TCP/UDP/DNS) to that listener.
                 controller.startLoop(config, 0)
+                LocalProxyEndpoint.publish(socksPort)
                 val bridge = HevTunBridge(applicationContext)
                 hevTunBridge = bridge
-                bridge.start(iface, settings.enableIpv6)
+                bridge.start(iface, settings.enableIpv6, socksPort)
 
                 _connectionState.value = ServiceState.RUNNING
                 _connectedSince.value = System.currentTimeMillis()
                 addDiagnostic("Connected: ${profile.name}")
-                updateNotification("Connected — ${profile.name}")
+                updateNotification("Подключено — ${profile.name}")
                 startStatsPolling()
 
             } catch (e: Exception) {
                 Log.e(TAG, "VPN start failed: ${e.message}", e)
-                _lastError.value = e.message ?: e.javaClass.simpleName
+                _lastError.value = userFacingError(e)
                 addDiagnostic("Start failed: ${e.message ?: e.javaClass.simpleName}")
                 withContext(Dispatchers.Main) { failVpn() }
             }
@@ -325,7 +338,7 @@ class palazikVpnService : VpnService() {
 
         return builder
             .establish()
-            ?: throw IllegalStateException("establish() returned null — missing VPN permission?")
+            ?: throw IllegalStateException("Не выдано разрешение на создание VPN")
     }
 
     /**
@@ -397,9 +410,6 @@ class palazikVpnService : VpnService() {
         statsJob = null
         unregisterNetworkCallbackSafely()
 
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-
         // BUG FIX: teardownCore() does a blocking Thread.sleep(100) + native stopLoop.
         // stopVpn() is invoked from onStartCommand (main thread) and the xray shutdown
         // callback, so run the blocking part off the main thread to avoid jank/ANR.
@@ -411,11 +421,17 @@ class palazikVpnService : VpnService() {
             _bytesIn.value  = 0L
             _bytesOut.value = 0L
             addDiagnostic("Stopped")
+            withContext(Dispatchers.Main) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
         }
     }
 
     /** Blocking: stop packet intake, then the native core, and finally close the TUN. */
     private fun teardownCore() {
+        LocalProxyEndpoint.clear(localSocksPort)
+        localSocksPort = 0
         try { hevTunBridge?.stop() } catch (e: Exception) { Log.w(TAG, "HEV stop: ${e.message}") }
         hevTunBridge = null
 
@@ -443,6 +459,8 @@ class palazikVpnService : VpnService() {
         }
         statsJob?.cancel()
         statsJob = null
+        LocalProxyEndpoint.clear(localSocksPort)
+        localSocksPort = 0
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try { connectivity.unregisterNetworkCallback(defaultNetworkCallback) } catch (_: Exception) {}
@@ -496,7 +514,7 @@ class palazikVpnService : VpnService() {
                         _bytesIn.value = stats[3].coerceAtLeast(0L)
                     }
                 } catch (e: Exception) {
-                    _lastError.value = e.message ?: "Tunnel health check failed"
+                    _lastError.value = "Туннель неожиданно остановился. Повторите подключение"
                     addDiagnostic("Tunnel health check failed")
                     withContext(Dispatchers.Main) { failVpn() }
                     break
@@ -524,7 +542,7 @@ class palazikVpnService : VpnService() {
             .setContentText(status)
             .setSmallIcon(R.drawable.ic_vpn_key)
             .setOngoing(true)
-            .addAction(0, "Disconnect", stopPi)
+            .addAction(0, "Отключить", stopPi)
         builder.setContentIntent(pi)
         return builder.build()
     }
@@ -538,5 +556,18 @@ class palazikVpnService : VpnService() {
         val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
         _diagnostics.value = (_diagnostics.value + "$stamp  $message").takeLast(80)
+    }
+
+    private fun userFacingError(error: Throwable): String {
+        val raw = error.message.orEmpty()
+        return when {
+            raw.contains("address already in use", ignoreCase = true) ->
+                "Локальный порт занят другим процессом. Повторите подключение"
+            raw.contains("permission", ignoreCase = true) ->
+                "Android не выдал разрешение VPN"
+            raw.contains("Missing asset", ignoreCase = true) ->
+                "В приложении отсутствуют служебные гео-файлы"
+            else -> "Не удалось запустить туннель. Проверьте профиль и сеть"
+        }
     }
 }

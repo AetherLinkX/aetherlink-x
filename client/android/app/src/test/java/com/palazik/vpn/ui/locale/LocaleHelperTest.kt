@@ -5,15 +5,11 @@ import org.junit.Test
 
 class LocaleHelperTest {
     @Test
-    fun russianSystemLocaleSelectsRussian() {
+    fun interfaceIsRussianForEverySystemLocale() {
         assertEquals(AppLanguage.RUSSIAN, LocaleHelper.languageForSystemTag("ru"))
         assertEquals(AppLanguage.RUSSIAN, LocaleHelper.languageForSystemTag("RU"))
-    }
-
-    @Test
-    fun englishAndUnsupportedLocalesSelectEnglish() {
-        assertEquals(AppLanguage.ENGLISH, LocaleHelper.languageForSystemTag("en"))
-        assertEquals(AppLanguage.ENGLISH, LocaleHelper.languageForSystemTag("fr"))
-        assertEquals(AppLanguage.ENGLISH, LocaleHelper.languageForSystemTag(null))
+        assertEquals(AppLanguage.RUSSIAN, LocaleHelper.languageForSystemTag("en"))
+        assertEquals(AppLanguage.RUSSIAN, LocaleHelper.languageForSystemTag("fr"))
+        assertEquals(AppLanguage.RUSSIAN, LocaleHelper.languageForSystemTag(null))
     }
 }

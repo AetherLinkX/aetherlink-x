@@ -6,7 +6,12 @@ import org.json.JSONObject
 
 object XrayConfigBuilder {
 
-    fun build(profile: VpnProfile, settings: AppSettings = AppSettings()): String =
+    fun build(
+        profile: VpnProfile,
+        settings: AppSettings = AppSettings(),
+        localSocksPort: Int = 10808,
+        includeHttpInbound: Boolean = true,
+    ): String =
         JSONObject().apply {
             put("log",       buildLog())
             put("dns",       buildDns(settings))
@@ -19,7 +24,7 @@ object XrayConfigBuilder {
                     })
                 })
             }
-            put("inbounds",  buildInbounds(settings))
+            put("inbounds",  buildInbounds(settings, localSocksPort, includeHttpInbound))
             put("outbounds", buildOutbounds(profile, settings))
             put("routing",   buildRouting(settings))
             put("stats",     JSONObject())
@@ -37,7 +42,7 @@ object XrayConfigBuilder {
     // Android packets are converted by HEV tun2socks and enter Xray through this
     // loopback SOCKS inbound. Keeping Android's TUN descriptor out of Xray avoids
     // native-TUN routing loops seen on some vendor kernels.
-    private fun buildInbounds(settings: AppSettings) = JSONArray().apply {
+    private fun buildInbounds(settings: AppSettings, localSocksPort: Int, includeHttpInbound: Boolean) = JSONArray().apply {
         // FakeDNS must be the first destOverride entry so sniffed connections map back
         // to their real domain before http/tls override (v2rayNG ordering).
         fun sniffing() = JSONObject().apply {
@@ -49,7 +54,7 @@ object XrayConfigBuilder {
         }
         put(JSONObject().apply {
             put("tag", "socks")
-            put("port", 10808)
+            put("port", localSocksPort)
             put("listen", "127.0.0.1")
             put("protocol", "socks")
             put("settings", JSONObject().apply {
@@ -59,13 +64,15 @@ object XrayConfigBuilder {
             })
             put("sniffing", sniffing())
         })
-        put(JSONObject().apply {
-            put("tag", "http")
-            put("port", 10809)
-            put("listen", "127.0.0.1")
-            put("protocol", "http")
-            put("settings", JSONObject().apply { put("userLevel", 8) })
-        })
+        if (includeHttpInbound) {
+            put(JSONObject().apply {
+                put("tag", "http")
+                put("port", localSocksPort + 1)
+                put("listen", "127.0.0.1")
+                put("protocol", "http")
+                put("settings", JSONObject().apply { put("userLevel", 8) })
+            })
+        }
     }
 
     // ── Outbounds ─────────────────────────────────────────────────────────────

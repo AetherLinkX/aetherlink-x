@@ -141,11 +141,13 @@ jobs:
           if ! gh release view client-dev >/dev/null 2>&1; then
             gh release create client-dev --prerelease --target "$GITHUB_SHA" \
               --title "AetherLink X Client — development build" \
-              --notes "Experimental Android/Linux client. Android debug APK is installable and contains the patched ALX core. Not independently security-audited."
+              --notes "Experimental Android client. The debug APK is installable and contains the patched ALX core. Not independently security-audited."
           else
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/client-dev" \
               -f sha="$GITHUB_SHA" -F force=true >/dev/null
           fi
+          gh release delete-asset client-dev aetherlink-x-client-linux-x64.tar.gz --yes 2>/dev/null || true
+          gh release delete-asset client-dev aetherlink-x-client-linux-SHA256SUMS.txt --yes 2>/dev/null || true
           gh release upload client-dev \
             aetherlink-x-client-android-universal-debug.apk \
             aetherlink-x-client-android-SHA256SUMS.txt --clobber

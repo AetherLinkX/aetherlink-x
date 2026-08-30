@@ -3,6 +3,7 @@ package com.palazik.vpn.data.repository
 import android.content.Context
 import com.palazik.vpn.data.SecurePreferences
 import com.palazik.vpn.data.codec.ProfileCodec
+import com.palazik.vpn.data.network.LocalProxyEndpoint
 import com.palazik.vpn.data.model.AppSettings
 import com.palazik.vpn.data.model.AppSettingsCodec
 import com.palazik.vpn.data.model.PingMode
@@ -38,7 +39,6 @@ data class UpdateInfo(val version: String, val url: String)
 class ProfileRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     @Named("direct") private val directClient: OkHttpClient,
-    @Named("proxy")  private val proxyClient:  OkHttpClient,
 ) {
     private val prefs = SecurePreferences.get(context)
 
@@ -360,7 +360,7 @@ class ProfileRepository @Inject constructor(
             .apply { if (head) head() else get() }
             .build()
         val start = System.currentTimeMillis()
-        proxyClient.newCall(req).execute().use { resp ->
+        activeProxyClient().newCall(req).execute().use { resp ->
             if (!resp.isSuccessful && resp.code != 204) throw Exception("HTTP ${resp.code}")
         }
         return System.currentTimeMillis() - start
@@ -550,7 +550,7 @@ class ProfileRepository @Inject constructor(
 
         // Attempt 1: through proxy (so the fetch itself goes through the active profile)
         val proxyResult = runCatching {
-            proxyClient.newCall(req).execute().use { resp ->
+            activeProxyClient().newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
                 val body = resp.body?.string()?.takeIf { it.isNotBlank() }
                     ?: throw Exception("Empty body")
@@ -569,6 +569,12 @@ class ProfileRepository @Inject constructor(
     }
 
     private data class SubscriptionFetch(val body: String, val userInfo: String?)
+
+    private fun activeProxyClient(): OkHttpClient {
+        val proxy = LocalProxyEndpoint.proxyOrNull()
+            ?: throw IllegalStateException("VPN-туннель не запущен")
+        return directClient.newBuilder().proxy(proxy).build()
+    }
 
     private data class Usage(val upload: Long, val download: Long, val total: Long, val expire: Long)
 

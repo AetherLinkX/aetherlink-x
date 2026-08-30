@@ -27,21 +27,16 @@ object LocaleHelper {
     private const val KEY_LANGUAGE = "app_language"
 
     fun savedLanguage(context: Context): AppLanguage {
-        val prefs = context.getSharedPreferences(THEME_PREFS, Context.MODE_PRIVATE)
-        if (prefs.contains(KEY_LANGUAGE)) {
-            return AppLanguage.fromName(prefs.getString(KEY_LANGUAGE, null))
-        }
-        val detected = languageForSystemTag(Locale.getDefault().language)
-        prefs.edit().putString(KEY_LANGUAGE, detected.name).apply()
-        return detected
+        context.getSharedPreferences(THEME_PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_LANGUAGE, AppLanguage.RUSSIAN.name).apply()
+        return AppLanguage.RUSSIAN
     }
 
-    internal fun languageForSystemTag(language: String?): AppLanguage =
-        if (language.equals("ru", ignoreCase = true)) AppLanguage.RUSSIAN else AppLanguage.ENGLISH
+    internal fun languageForSystemTag(language: String?): AppLanguage = AppLanguage.RUSSIAN
 
     fun persistLanguage(context: Context, language: AppLanguage) {
         context.getSharedPreferences(THEME_PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_LANGUAGE, language.name).apply()
+            .edit().putString(KEY_LANGUAGE, AppLanguage.RUSSIAN.name).apply()
     }
 
     /** Wrap [base] so resources resolve in the saved language (defaults to English). */

@@ -1,7 +1,6 @@
 name: Release
 
-# Manual-only: builds Android + iOS + Linux in one go (Telegram delivery
-# skipped) and optionally publishes everything as a GitHub Release.
+# Manual-only Android release.
 on:
   workflow_dispatch:
     inputs:
@@ -25,24 +24,10 @@ jobs:
       skip_telegram: true
     secrets: inherit
 
-  ios:
-    name: iOS
-    uses: ./.github/workflows/ios.yml
-    with:
-      skip_telegram: true
-    secrets: inherit
-
-  linux:
-    name: Linux
-    uses: ./.github/workflows/linux.yml
-    with:
-      skip_telegram: true
-    secrets: inherit
-
   release:
     name: Publish GitHub Release
     if: ${{ inputs.create_release }}
-    needs: [android, ios, linux]
+    needs: [android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -62,7 +47,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -lhR dist
-          FILES=$(find dist -type f \( -name "*.apk" -o -name "*.ipa" -o -name "*.run" -o -name "*.tar.gz" \) ! -name "*debug*")
+          FILES=$(find dist -type f -name "*.apk" ! -name "*debug*")
           if [ -z "$FILES" ]; then echo "❌ No build artifacts found"; exit 1; fi
           gh release create "${{ inputs.tag_name }}" \
             --title "palazikVPN ${{ inputs.tag_name }}" \

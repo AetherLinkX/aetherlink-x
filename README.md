@@ -14,7 +14,7 @@
   docs/               архитектурный анализ и проектирование
   tools/              установка, сборка, проверка и генерация конфигов
   remnawave/          custom Node image, deploy script и Config Profile
-  client/             AetherLink X Client для Android/iOS/Linux (GPLv3)
+  client/             AetherLink X Client для Android (GPLv3)
   .github/workflows/  сборка multi-arch Remnawave Backend и Node в GHCR
   dist/               готовые Windows/Linux-бинарники и архив
   manifest.json       версия, совместимость и результаты проверок
@@ -79,10 +79,7 @@ PQ/security и Stealth параметры из Remnawave. Также подде�
 
 Workflow `build-aetherlinkx-client-android.yml` собирает собственный
 `libv2ray.aar` из Xray-core 26.7.28 с ALX patch, а затем APK. Workflow
-`build-aetherlinkx-client-linux.yml` упаковывает Linux-клиент с готовым
-`xray-aetherlinkx`. Исходная оболочка основана на xStarRay и сохраняет GPLv3.
-Android и Linux проходят отдельные CI-сборки. iOS-код пока является frontend-preview:
-до сборки собственного `LibXray.xcframework` он не считается ALX-совместимым.
+Активно разрабатывается и публикуется только Android-клиент. Linux-клиент и его CI удалены.
 
 ## Remnawave
 

@@ -116,15 +116,11 @@ class MainActivity : ComponentActivity() {
             // palazikvpn://import?config=<link>  → import the wrapped link
             // palazikvpn://<base64>#name          → import the share link itself
             "palazikvpn", "alxclient" ->
-                vm.importProfileFromLink(data.getQueryParameter("config") ?: data.toString())
+                vm.importFromText(data.getQueryParameter("config") ?: data.toString())
             // Other proxy schemes opened from a browser / file manager
             "aetherlinkx", "vmess", "vless", "ss", "trojan", "hysteria2", "wireguard", "socks5", "tuic", "anytls", "xhttp", "httpproxy" ->
-                vm.importProfileFromLink(data.toString())
-            "https" -> if (data.host.equals("s.obsa.su", ignoreCase = true) &&
-                data.path?.startsWith("/sub/") == true
-            ) {
-                vm.importSubscriptionFromUrl(data.toString())
-            }
+                vm.importFromText(data.toString())
+            "http", "https" -> vm.importFromText(data.toString())
         }
     }
 

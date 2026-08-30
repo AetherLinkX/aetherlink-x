@@ -69,7 +69,6 @@ private data class SettingsGroup(@androidx.annotation.StringRes val title: Int, 
 private val SettingsGroups = listOf(
     SettingsGroup(R.string.group_appearance, listOf(
         SettingsEntry(SettingsRoutes.STYLE, R.string.settings_style, R.string.settings_style_summary, Icons.Rounded.Palette),
-        SettingsEntry(SettingsRoutes.LANGUAGE, R.string.settings_language, R.string.settings_language_summary, Icons.Rounded.Language),
     )),
     SettingsGroup(R.string.group_connection, listOf(
         SettingsEntry(SettingsRoutes.CONNECTION, R.string.settings_connection, R.string.settings_connection_summary, Icons.Rounded.NetworkCheck),
@@ -191,7 +190,7 @@ private fun SettingsScaffold(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Назад")
             }
             Text(title, style = MaterialTheme.typography.headlineSmall)
         }
@@ -220,7 +219,7 @@ fun ConnectionSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     val ui by vm.ui.collectAsState()
     SettingsScaffold(stringResource(R.string.settings_connection), onBack) {
         SettingsCard {
-            Text("Ping Test Mode", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 4.dp))
+            Text("Режим проверки пинга", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 4.dp))
             Text(
                 "TCP — raw socket connect (fastest, most accurate, default).\n" +
                 "GET / HEAD — Cloudflare request through the running VPN.",
@@ -259,19 +258,19 @@ fun DnsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
             OutlinedTextField(
                 value = tunDns, onValueChange = { tunDns = it },
-                label = { Text("VPN DNS servers") },
-                supportingText = { Text("Comma separated") },
+                label = { Text("DNS-серверы VPN") },
+                supportingText = { Text("Через запятую") },
                 modifier = Modifier.fillMaxWidth(), singleLine = true,
             )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = remoteDns, onValueChange = { remoteDns = it },
-                label = { Text("Remote DNS") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                label = { Text("Удалённый DNS") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
             )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = directDns, onValueChange = { directDns = it },
-                label = { Text("Direct DNS") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                label = { Text("Прямой DNS") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
             )
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -284,7 +283,7 @@ fun DnsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 }) {
                     Icon(Icons.Rounded.Save, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Save DNS")
+                    Text("Сохранить DNS")
                 }
             }
         }
@@ -332,7 +331,7 @@ fun GeoFilesSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 }) {
                     Icon(Icons.Rounded.Save, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Save")
+                    Text("Сохранить")
                 }
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = {
@@ -341,7 +340,7 @@ fun GeoFilesSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 }) {
                     Icon(Icons.Rounded.Download, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Update now")
+                    Text("Обновить сейчас")
                 }
             }
         }
@@ -378,8 +377,8 @@ fun StartupSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     SettingsScaffold(stringResource(R.string.settings_startup), onBack) {
         SettingsCard {
             SettingRow(
-                title = "Auto-connect on boot",
-                subtitle = "Starts the selected profile after reboot when VPN permission is already granted.",
+                title = "Автоподключение при загрузке",
+                subtitle = "Запускает выбранный профиль после перезагрузки, если разрешение VPN уже выдано.",
                 checked = ui.settings.startOnBoot,
                 onChange = { vm.updateAppSettings(ui.settings.copy(startOnBoot = it)) },
             )
@@ -414,7 +413,7 @@ fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     SettingsScaffold(stringResource(R.string.settings_diagnostics), onBack) {
         SettingsCard {
             if (diagnostics.isEmpty()) {
-                Text("No connection events yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Событий подключения пока нет.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     diagnostics.forEach { line ->
@@ -434,7 +433,7 @@ fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 ) {
                     Icon(Icons.Rounded.SaveAlt, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Save to file")
+                    Text("Сохранить в файл")
                 }
                 Button(
                     onClick = { clipboard.setText(AnnotatedString(diagnostics.joinToString("\n"))) },
@@ -442,7 +441,7 @@ fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 ) {
                     Icon(Icons.Rounded.ContentCopy, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Copy Logs")
+                    Text("Копировать журнал")
                 }
             }
         }
@@ -492,7 +491,7 @@ fun AboutSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
         SettingsCard {
             ListItem(
                 headlineContent   = { Text("AetherLink X") },
-                supportingContent = { Text("V${stringResource(R.string.app_version)} • based on xStarRay (GPLv3)") },
+                supportingContent = { Text("V${stringResource(R.string.app_version)} • на базе xStarRay (GPLv3)") },
                 leadingContent    = { Icon(Icons.Rounded.Info, null) },
             )
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -504,7 +503,7 @@ fun AboutSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                         Icon(Icons.Rounded.SystemUpdate, null, Modifier.size(16.dp))
                     }
                     Spacer(Modifier.width(6.dp))
-                    Text("Check for updates")
+                    Text("Проверить обновления")
                 }
             }
         }
@@ -514,8 +513,8 @@ fun AboutSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
         AlertDialog(
             onDismissRequest = { vm.dismissUpdate() },
             icon  = { Icon(Icons.Rounded.SystemUpdate, null) },
-            title = { Text("Update available") },
-            text  = { Text("Version ${info.version} is available. You're on V${stringResource(R.string.app_version)}.") },
+            title = { Text("Доступно обновление") },
+            text  = { Text("Доступна версия ${info.version}. У вас V${stringResource(R.string.app_version)}.") },
             confirmButton = {
                 Button(onClick = {
                     runCatching {
@@ -525,9 +524,9 @@ fun AboutSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                         )
                     }
                     vm.dismissUpdate()
-                }) { Text("Download") }
+                }) { Text("Скачать") }
             },
-            dismissButton = { TextButton(onClick = { vm.dismissUpdate() }) { Text("Later") } },
+            dismissButton = { TextButton(onClick = { vm.dismissUpdate() }) { Text("Позже") } },
         )
     }
 }
@@ -546,18 +545,18 @@ private fun SplitTunnelContent(
     var showAppPicker by remember { mutableStateOf(false) }
     val onlyMode = settings.splitTunnelMode == SplitTunnelMode.ONLY
 
-    Text("Mode", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+    Text("Режим", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(
             selected = !onlyMode,
             onClick = { vm.updateAppSettings(settings.copy(splitTunnelMode = SplitTunnelMode.BYPASS)) },
-            label = { Text("Apps bypass VPN") },
+            label = { Text("Выбранные приложения обходят VPN") },
             leadingIcon = if (!onlyMode) { { Icon(Icons.Rounded.Check, null, Modifier.size(16.dp)) } } else null,
         )
         FilterChip(
             selected = onlyMode,
             onClick = { vm.updateAppSettings(settings.copy(splitTunnelMode = SplitTunnelMode.ONLY)) },
-            label = { Text("Only these use VPN") },
+            label = { Text("Только выбранные используют VPN") },
             leadingIcon = if (onlyMode) { { Icon(Icons.Rounded.Check, null, Modifier.size(16.dp)) } } else null,
         )
     }
@@ -585,7 +584,7 @@ private fun SplitTunnelContent(
                 )
             }
             if (settings.bypassPackages.size > 6) {
-                Text("+${settings.bypassPackages.size - 6} more", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Ещё: ${settings.bypassPackages.size - 6}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -598,13 +597,13 @@ private fun SplitTunnelContent(
         OutlinedButton(onClick = { vm.updateAppSettings(settings.copy(bypassPackages = emptyList())) }) {
             Icon(Icons.Rounded.Clear, null, Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Clear")
+            Text("Очистить")
         }
         Spacer(Modifier.width(8.dp))
         Button(onClick = { showAppPicker = true }) {
             Icon(Icons.Rounded.Apps, null, Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Choose Apps")
+            Text("Выбрать приложения")
         }
     }
 
@@ -625,15 +624,15 @@ private fun SplitTunnelContent(
 @Composable
 private fun StartupAutoUpdateContent(vm: MainViewModel, settings: AppSettings) {
     SettingRow(
-        title = "Auto-update subscriptions",
-        subtitle = "Refreshes subscriptions every ${settings.subscriptionUpdateIntervalHours}h when network is available.",
+        title = "Автообновление подписок",
+        subtitle = "Обновляет подписки каждые ${settings.subscriptionUpdateIntervalHours} ч при наличии сети.",
         checked = settings.autoUpdateSubscriptions,
         onChange = { vm.updateAppSettings(settings.copy(autoUpdateSubscriptions = it)) },
     )
     AnimatedVisibility(visible = settings.autoUpdateSubscriptions) {
         Column {
             Spacer(Modifier.height(12.dp))
-            Text("Update interval", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+            Text("Интервал обновления", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -642,7 +641,7 @@ private fun StartupAutoUpdateContent(vm: MainViewModel, settings: AppSettings) {
                     FilterChip(
                         selected = settings.subscriptionUpdateIntervalHours == hours,
                         onClick = { vm.updateAppSettings(settings.copy(subscriptionUpdateIntervalHours = hours)) },
-                        label = { Text("${hours}h") },
+                        label = { Text("${hours} ч") },
                         leadingIcon = if (settings.subscriptionUpdateIntervalHours == hours) {
                             { Icon(Icons.Rounded.Check, null, Modifier.size(16.dp)) }
                         } else null,
@@ -667,7 +666,7 @@ private fun RoutingSettingsContent(vm: MainViewModel, settings: AppSettings) {
     var fragInterval by remember(settings.fragmentInterval) { mutableStateOf(settings.fragmentInterval) }
 
     // Routing preset (#2) — applies immediately
-    Text("Routing mode", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+    Text("Режим маршрутизации", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         com.palazik.vpn.data.model.RoutingMode.values().forEach { mode ->
             val label = when (mode) {
@@ -688,7 +687,7 @@ private fun RoutingSettingsContent(vm: MainViewModel, settings: AppSettings) {
     HorizontalDivider(Modifier.padding(vertical = 10.dp))
 
     // Domain strategy (#7) — applies immediately
-    Text("Domain strategy", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+    Text("Стратегия доменов", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         com.palazik.vpn.data.model.DomainStrategy.values().forEach { ds ->
             FilterChip(
@@ -705,35 +704,35 @@ private fun RoutingSettingsContent(vm: MainViewModel, settings: AppSettings) {
 
     SettingRow(
         title = "FakeDNS",
-        subtitle = "Resolve via an internal fake-IP pool — faster routing and no DNS leaks",
+        subtitle = "Внутренний пул фиктивных IP: быстрее маршрутизация и без утечек DNS",
         checked = settings.enableFakeDns,
         onChange = { vm.updateAppSettings(settings.copy(enableFakeDns = it)) },
     )
     HorizontalDivider(Modifier.padding(vertical = 10.dp))
     SettingRow(
-        title = "Block ads",
-        subtitle = "Drop requests matching the ad/tracker domain list",
+        title = "Блокировать рекламу",
+        subtitle = "Отклонять запросы к рекламным и отслеживающим доменам",
         checked = settings.blockAds,
         onChange = { vm.updateAppSettings(settings.copy(blockAds = it)) },
     )
     HorizontalDivider(Modifier.padding(vertical = 10.dp))
     SettingRow(
-        title = "Bypass China",
-        subtitle = "Route mainland China domains & IPs directly (outside the proxy)",
+        title = "Обход для Китая",
+        subtitle = "Направлять китайские домены и IP напрямую",
         checked = settings.bypassChina,
         onChange = { vm.updateAppSettings(settings.copy(bypassChina = it)) },
     )
     HorizontalDivider(Modifier.padding(vertical = 10.dp))
     SettingRow(
-        title = "Route IPv6 through tunnel",
-        subtitle = "Off forces IPv4-only dialling. IPv6 is always captured to prevent leaks.",
+        title = "Направлять IPv6 через туннель",
+        subtitle = "Если выключено, исходящие соединения используют IPv4. IPv6 всё равно перехватывается для защиты от утечек.",
         checked = settings.enableIpv6,
         onChange = { vm.updateAppSettings(settings.copy(enableIpv6 = it)) },
     )
     HorizontalDivider(Modifier.padding(vertical = 10.dp))
     SettingRow(
-        title = "Kill switch (lockdown)",
-        subtitle = "Block traffic while the tunnel isn't ready. For full effect also enable Android's Always-on VPN.",
+        title = "Аварийная блокировка",
+        subtitle = "Блокирует трафик, пока туннель не готов. Для полной защиты включите в Android постоянный VPN.",
         checked = settings.lockdownMode,
         onChange = { vm.updateAppSettings(settings.copy(lockdownMode = it)) },
     )
@@ -741,8 +740,8 @@ private fun RoutingSettingsContent(vm: MainViewModel, settings: AppSettings) {
     OutlinedTextField(
         value = directDomains,
         onValueChange = { directDomains = it },
-        label = { Text("Direct domains") },
-        supportingText = { Text("Comma separated, e.g. geosite:google, example.com") },
+        label = { Text("Прямые домены") },
+        supportingText = { Text("Через запятую, например geosite:google, example.com") },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
     )
@@ -750,14 +749,14 @@ private fun RoutingSettingsContent(vm: MainViewModel, settings: AppSettings) {
     OutlinedTextField(
         value = blockedDomains,
         onValueChange = { blockedDomains = it },
-        label = { Text("Blocked domains") },
-        supportingText = { Text("Comma separated") },
+        label = { Text("Заблокированные домены") },
+        supportingText = { Text("Через запятую") },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
     )
 
     HorizontalDivider(Modifier.padding(vertical = 10.dp))
-    Text("TLS fragment (anti-DPI)", style = MaterialTheme.typography.titleSmall)
+    Text("Фрагментация TLS (anti-DPI)", style = MaterialTheme.typography.titleSmall)
     Text(
         "Global parameters. Enable per profile in its edit screen.",
         style = MaterialTheme.typography.bodySmall,
@@ -766,18 +765,18 @@ private fun RoutingSettingsContent(vm: MainViewModel, settings: AppSettings) {
     )
     OutlinedTextField(
         value = fragPackets, onValueChange = { fragPackets = it },
-        label = { Text("Packets") }, supportingText = { Text("e.g. tlshello or 1-3") },
+        label = { Text("Пакеты") }, supportingText = { Text("Например tlshello или 1-3") },
         modifier = Modifier.fillMaxWidth(), singleLine = true,
     )
     Spacer(Modifier.height(8.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(
             value = fragLength, onValueChange = { fragLength = it },
-            label = { Text("Length") }, modifier = Modifier.weight(1f), singleLine = true,
+            label = { Text("Длина") }, modifier = Modifier.weight(1f), singleLine = true,
         )
         OutlinedTextField(
             value = fragInterval, onValueChange = { fragInterval = it },
-            label = { Text("Interval") }, modifier = Modifier.weight(1f), singleLine = true,
+            label = { Text("Интервал") }, modifier = Modifier.weight(1f), singleLine = true,
         )
     }
 
@@ -794,7 +793,7 @@ private fun RoutingSettingsContent(vm: MainViewModel, settings: AppSettings) {
         }) {
             Icon(Icons.Rounded.Save, null, Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Save Routing")
+            Text("Сохранить маршруты")
         }
     }
 }
@@ -802,12 +801,12 @@ private fun RoutingSettingsContent(vm: MainViewModel, settings: AppSettings) {
 @Composable
 private fun SubscriptionUaContent(vm: MainViewModel, settings: AppSettings) {
     var ua by remember(settings.subscriptionUserAgent) { mutableStateOf(settings.subscriptionUserAgent) }
-    Text("Subscription fetch", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+    Text("Загрузка подписок", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
     OutlinedTextField(
         value = ua,
         onValueChange = { ua = it },
-        label = { Text("Subscription User-Agent") },
-        supportingText = { Text("Some providers serve configs based on this header") },
+        label = { Text("User-Agent для подписок") },
+        supportingText = { Text("Некоторые провайдеры выдают конфигурацию по этому заголовку") },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
     )
@@ -816,7 +815,7 @@ private fun SubscriptionUaContent(vm: MainViewModel, settings: AppSettings) {
         Button(onClick = { vm.updateAppSettings(settings.copy(subscriptionUserAgent = ua.trim())) }) {
             Icon(Icons.Rounded.Save, null, Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Save")
+            Text("Сохранить")
         }
     }
 }
@@ -864,13 +863,13 @@ private fun BackupSettingsContent(vm: MainViewModel) {
         OutlinedButton(onClick = { importLauncher.launch(arrayOf("text/plain", "*/*")) }) {
             Icon(Icons.Rounded.FileUpload, null, Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Import")
+            Text("Импорт")
         }
         Spacer(Modifier.width(8.dp))
         Button(onClick = { exportLauncher.launch("aetherlink-x-profiles.txt") }) {
             Icon(Icons.Rounded.FileDownload, null, Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Export")
+            Text("Экспорт")
         }
     }
 }
@@ -908,13 +907,13 @@ private fun AppPickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title  = { Text("Bypass Apps") },
+        title  = { Text("Приложения для обхода") },
         icon   = { Icon(Icons.Rounded.Apps, null) },
         text   = {
             Column {
                 OutlinedTextField(
                     value = query, onValueChange = { query = it },
-                    label = { Text("Search apps") },
+                    label = { Text("Поиск приложений") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
                 )
                 Spacer(Modifier.height(10.dp))
@@ -953,7 +952,7 @@ private fun AppPickerDialog(
                 }
             }
         },
-        confirmButton = { Button(onClick = { onSave(picked.toList()) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { Button(onClick = { onSave(picked.toList()) }) { Text("Сохранить") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
     )
 }

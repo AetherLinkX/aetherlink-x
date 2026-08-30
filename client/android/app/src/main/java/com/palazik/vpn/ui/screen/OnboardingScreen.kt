@@ -23,12 +23,12 @@ import kotlinx.coroutines.launch
 private data class OnboardPage(val icon: ImageVector, val title: String, val body: String)
 
 private val pages = listOf(
-    OnboardPage(Icons.Rounded.Bolt, "Welcome to AetherLink X",
-        "A fast, free and open proxy client. No accounts, no tracking — just your own servers."),
-    OnboardPage(Icons.Rounded.QrCode2, "Add a config",
-        "Paste a share link, scan a QR code, or add a subscription URL to import your servers."),
-    OnboardPage(Icons.Rounded.Shield, "Connect securely",
-        "Grant the VPN permission once and tap Connect. Split tunneling and a kill switch keep you in control."),
+    OnboardPage(Icons.Rounded.Bolt, "Добро пожаловать в AetherLink X",
+        "Быстрый VPN-клиент без учётных записей и отслеживания. Только ваши серверы."),
+    OnboardPage(Icons.Rounded.QrCode2, "Добавьте конфигурацию",
+        "Вставьте ссылку, отсканируйте QR-код или добавьте адрес подписки."),
+    OnboardPage(Icons.Rounded.Shield, "Защищённое подключение",
+        "Один раз разрешите создание VPN и нажмите «Подключить». Маршрутами и защитой от утечек управляете вы."),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,7 +46,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             .padding(24.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onFinish) { Text("Skip") }
+            TextButton(onClick = onFinish) { Text("Пропустить") }
         }
 
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
@@ -98,6 +98,6 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 else scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text(if (lastPage) "Get started" else "Next") }
+        ) { Text(if (lastPage) "Начать" else "Далее") }
     }
 }

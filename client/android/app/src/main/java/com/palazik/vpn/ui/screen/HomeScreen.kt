@@ -241,7 +241,7 @@ fun HomeScreen(
                         label = "lock_icon",
                     ) { connected ->
                         Icon(
-                            imageVector       = if (connected) Icons.Rounded.CheckCircle else Icons.Rounded.Close,
+                            imageVector       = if (connected) Icons.Rounded.CheckCircle else Icons.Rounded.Shield,
                             contentDescription = null,
                             modifier          = Modifier.size(40.dp),
                             tint              = if (connected || isTransition)

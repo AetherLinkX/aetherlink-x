@@ -62,7 +62,7 @@ private fun setAlxOption(raw: String, key: String, value: String): String =
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun ProfilesScreen(vm: MainViewModel) {
+fun ProfilesScreen(vm: MainViewModel, onOpenSubscriptions: () -> Unit = {}) {
     val ui        by vm.ui.collectAsState()
     val context   = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -100,9 +100,15 @@ fun ProfilesScreen(vm: MainViewModel) {
     }
 
     fun previewImport(raw: String) {
+        val scheme = runCatching { android.net.Uri.parse(raw.trim()).scheme?.lowercase() }.getOrNull()
+        if (scheme == "http" || scheme == "https") {
+            vm.importFromText(raw)
+            importText = ""
+            return
+        }
         val profile = ProfileCodec.decode(raw)
         if (profile == null) {
-            vm.importProfileFromLink(raw)
+            vm.importFromText(raw)
             return
         }
         previewProfile = profile
@@ -119,7 +125,7 @@ fun ProfilesScreen(vm: MainViewModel) {
                     importText = decoded
                     previewImport(decoded)
                 } else {
-                    vm.showSnack("No QR code found in image")
+                    vm.showSnack("На изображении нет QR-кода")
                 }
             }
         }
@@ -135,7 +141,7 @@ fun ProfilesScreen(vm: MainViewModel) {
                     importText = decoded
                     previewImport(decoded)
                 } else {
-                    vm.showSnack("No QR code found in photo")
+                    vm.showSnack("На фото нет QR-кода")
                 }
             }
         }
@@ -144,7 +150,7 @@ fun ProfilesScreen(vm: MainViewModel) {
     fun importFromClipboard() {
         val text = clipboard.getText()?.text?.trim().orEmpty()
         if (text.isBlank()) {
-            vm.showSnack("Clipboard is empty")
+            vm.showSnack("Буфер обмена пуст")
             return
         }
         importText = text
@@ -162,10 +168,10 @@ fun ProfilesScreen(vm: MainViewModel) {
         Column(
             Modifier.fillMaxWidth(),
         ) {
-            Text("Profiles", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Серверы", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             AnimatedVisibility(visible = ui.profiles.isNotEmpty()) {
                 Text(
-                    "${ui.profiles.size} profiles",
+                    "Профилей: ${ui.profiles.size}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
@@ -176,14 +182,17 @@ fun ProfilesScreen(vm: MainViewModel) {
                 horizontalArrangement = Arrangement.End,
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                IconButton(onClick = onOpenSubscriptions) {
+                    Icon(Icons.Rounded.Subscriptions, "Подписки")
+                }
                 AnimatedVisibility(visible = ui.profiles.isNotEmpty()) {
                     IconButton(onClick = { vm.pingAll() }) {
-                        Icon(Icons.Rounded.NetworkCheck, "Ping all")
+                        Icon(Icons.Rounded.NetworkCheck, "Проверить все")
                     }
                 }
                 AnimatedVisibility(visible = ui.activeProfile != null) {
                     IconButton(onClick = { vm.generateShareLink(); showShareLink = true }) {
-                        Icon(Icons.Rounded.Share, "Share active")
+                        Icon(Icons.Rounded.Share, "Поделиться активным")
                     }
                 }
                 Box {
@@ -193,7 +202,7 @@ fun ProfilesScreen(vm: MainViewModel) {
                     ) {
                         Icon(Icons.Rounded.Add, null, Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Import", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("Добавить", color = MaterialTheme.colorScheme.onSecondaryContainer)
                     }
                     ImportMenu(
                         expanded = importMenuExpanded,
@@ -237,7 +246,7 @@ fun ProfilesScreen(vm: MainViewModel) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    label = { Text("Search") },
+                    label = { Text("Поиск") },
                     leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp)) },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
@@ -245,7 +254,7 @@ fun ProfilesScreen(vm: MainViewModel) {
                 Box {
                     var sortExpanded by remember { mutableStateOf(false) }
                     IconButton(onClick = { sortExpanded = true }) {
-                        Icon(Icons.Rounded.Sort, "Sort profiles")
+                        Icon(Icons.Rounded.Sort, "Сортировать профили")
                     }
                     DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
                         ProfileSortMode.values().forEach { mode ->
@@ -293,7 +302,7 @@ fun ProfilesScreen(vm: MainViewModel) {
                         FilledTonalButton(onClick = { importMenuExpanded = true }) {
                             Icon(Icons.Rounded.Add, null, Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Import Profile", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Text("Импортировать профиль", color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
                     }
                 }
@@ -319,13 +328,13 @@ fun ProfilesScreen(vm: MainViewModel) {
     if (showImport) {
         AlertDialog(
             onDismissRequest = { showImport = false; importText = "" },
-            title = { Text("Import via Link") },
+            title = { Text("Импорт по ссылке") },
             icon  = { Icon(Icons.Rounded.Link, null) },
             text = {
                 OutlinedTextField(
                     value         = importText,
                     onValueChange = { importText = it },
-                    label         = { Text("Share link") },
+                    label         = { Text("Ссылка или конфигурация") },
                     placeholder   = { Text("vmess://, vless://, ss://…", style = MaterialTheme.typography.bodySmall) },
                     modifier      = Modifier.fillMaxWidth(),
                     minLines      = 3,
@@ -337,10 +346,10 @@ fun ProfilesScreen(vm: MainViewModel) {
                 Button(
                     onClick  = { previewImport(importText.trim()); showImport = false },
                     enabled  = importText.isNotBlank(),
-                ) { Text("Import") }
+                ) { Text("Импорт") }
             },
             dismissButton = {
-                TextButton(onClick = { showImport = false; importText = "" }) { Text("Cancel") }
+                TextButton(onClick = { showImport = false; importText = "" }) { Text("Отмена") }
             },
         )
     }
@@ -380,9 +389,9 @@ fun ProfilesScreen(vm: MainViewModel) {
     deleteProfile?.let { profile ->
         AlertDialog(
             onDismissRequest = { deleteProfile = null },
-            title = { Text("Delete Profile") },
+            title = { Text("Удалить профиль") },
             icon = { Icon(Icons.Rounded.Delete, null) },
-            text = { Text("Delete \"${profile.name}\"?") },
+            text = { Text("Удалить «${profile.name}»?") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -390,10 +399,10 @@ fun ProfilesScreen(vm: MainViewModel) {
                         deleteProfile = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                ) { Text("Delete") }
+                ) { Text("Удалить") }
             },
             dismissButton = {
-                TextButton(onClick = { deleteProfile = null }) { Text("Cancel") }
+                TextButton(onClick = { deleteProfile = null }) { Text("Отмена") }
             },
         )
     }
@@ -402,12 +411,12 @@ fun ProfilesScreen(vm: MainViewModel) {
     if (showShareLink && ui.shareLink != null) {
         AlertDialog(
             onDismissRequest = { showShareLink = false; vm.clearShareLink() },
-            title = { Text("Share Profile") },
+            title = { Text("Поделиться профилем") },
             icon  = { Icon(Icons.Rounded.Share, null) },
             text = {
                 Column {
                     Text(
-                        "Send this link to another AetherLink X device:",
+                        "Отправьте эту ссылку на другое устройство AetherLink X:",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -436,7 +445,7 @@ fun ProfilesScreen(vm: MainViewModel) {
                 }) {
                     Icon(Icons.Rounded.ContentCopy, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Copy")
+                    Text("Копировать")
                 }
             },
             dismissButton = {
@@ -446,7 +455,7 @@ fun ProfilesScreen(vm: MainViewModel) {
                         showShareLink = false
                         showQr = true
                     }) { Text("QR") }
-                    TextButton(onClick = { showShareLink = false; vm.clearShareLink() }) { Text("Close") }
+                    TextButton(onClick = { showShareLink = false; vm.clearShareLink() }) { Text("Закрыть") }
                 }
             },
         )
@@ -455,7 +464,7 @@ fun ProfilesScreen(vm: MainViewModel) {
     if (showQr && qrBitmap != null) {
         AlertDialog(
             onDismissRequest = { showQr = false; vm.clearShareLink() },
-            title = { Text("Profile QR") },
+            title = { Text("QR-код профиля") },
             icon = { Icon(Icons.Rounded.QrCode, null) },
             text = {
                 Image(
@@ -468,7 +477,7 @@ fun ProfilesScreen(vm: MainViewModel) {
                 )
             },
             confirmButton = {
-                Button(onClick = { showQr = false; vm.clearShareLink() }) { Text("Done") }
+                Button(onClick = { showQr = false; vm.clearShareLink() }) { Text("Готово") }
             },
         )
     }
@@ -490,33 +499,33 @@ private fun ImportMenu(
         onDismissRequest = onDismiss,
     ) {
         DropdownMenuItem(
-            text = { Text("Paste link") },
+            text = { Text("Вставить ссылку") },
             leadingIcon = { Icon(Icons.Rounded.Link, null) },
             onClick = onLink,
         )
         DropdownMenuItem(
-            text = { Text("Clipboard") },
+            text = { Text("Из буфера") },
             leadingIcon = { Icon(Icons.Rounded.ContentPaste, null) },
             onClick = onClipboard,
         )
         DropdownMenuItem(
-            text = { Text("Camera QR") },
+            text = { Text("QR с камеры") },
             leadingIcon = { Icon(Icons.Rounded.PhotoCamera, null) },
             onClick = onCameraQr,
         )
         DropdownMenuItem(
-            text = { Text("QR image") },
+            text = { Text("QR из изображения") },
             leadingIcon = { Icon(Icons.Rounded.ImageSearch, null) },
             onClick = onImageQr,
         )
         HorizontalDivider()
         DropdownMenuItem(
-            text = { Text("Manual profile") },
+            text = { Text("Ввести вручную") },
             leadingIcon = { Icon(Icons.Rounded.Edit, null) },
             onClick = onManual,
         )
         DropdownMenuItem(
-            text = { Text("Generate WARP") },
+            text = { Text("Создать WARP") },
             leadingIcon = { Icon(Icons.Rounded.Cloud, null) },
             onClick = onWarp,
         )
@@ -532,15 +541,15 @@ private fun ImportPreviewDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Import Preview") },
+        title = { Text("Проверка перед импортом") },
         icon = { Icon(if (errors.isEmpty()) Icons.Rounded.Preview else Icons.Rounded.Warning, null) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PreviewRow("Name", profile.name)
-                PreviewRow("Protocol", profile.protocol.name)
-                PreviewRow("Server", "${profile.address}:${profile.port}")
-                PreviewRow("Transport", profile.transport.name)
-                PreviewRow("Security", profile.security.name)
+                PreviewRow("Название", profile.name)
+                PreviewRow("Протокол", profile.protocol.name)
+                PreviewRow("Сервер", "${profile.address}:${profile.port}")
+                PreviewRow("Транспорт", profile.transport.name)
+                PreviewRow("Защита", profile.security.name)
                 if (profile.sni.isNotBlank()) PreviewRow("SNI", profile.sni)
                 if (errors.isNotEmpty()) {
                     HorizontalDivider()
@@ -551,10 +560,10 @@ private fun ImportPreviewDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onImport, enabled = errors.isEmpty()) { Text("Import") }
+            Button(onClick = onImport, enabled = errors.isEmpty()) { Text("Импорт") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("Отмена") }
         },
     )
 }
@@ -605,7 +614,7 @@ private fun GroupedProfilesList(
     val flatItems = remember(manualProfiles, subGroups, expandedGroups.toMap()) {
         buildList {
             if (manualProfiles.isNotEmpty()) {
-                add(ProfileListItem.Header("header_manual", "Manual", manualProfiles.size, null))
+                add(ProfileListItem.Header("header_manual", "Вручную", manualProfiles.size, null))
                 if (expandedGroups["manual"] != false) {
                     manualProfiles.forEach { add(ProfileListItem.Card(it)) }
                 }
@@ -730,7 +739,7 @@ private fun GroupHeader(
             if (onRefresh != null) {
                 Spacer(Modifier.width(8.dp))
                 IconButton(onClick = onRefresh, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Rounded.Refresh, "Refresh subscription", Modifier.size(18.dp),
+                    Icon(Icons.Rounded.Refresh, "Обновить подписку", Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.primary)
                 }
             }
@@ -813,7 +822,7 @@ private fun ProfileCard(
                 AnimatedVisibility(visible = isActive) {
                     Badge(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)) {
                         Text(
-                            "ACTIVE",
+                            "АКТИВЕН",
                             color      = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold,
                             style      = MaterialTheme.typography.labelSmall,
@@ -870,7 +879,7 @@ private fun ProfileCard(
             )
             if (profile.lastTested > 0L) {
                 Text(
-                    "Tested ${relativeTime(profile.lastTested)}",
+                    "Проверен ${relativeTime(profile.lastTested)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                 )
@@ -909,7 +918,7 @@ private fun ProfileCard(
                     TextButton(onClick = onPing, contentPadding = PaddingValues(horizontal = 8.dp)) {
                         Icon(Icons.Rounded.NetworkCheck, null, Modifier.size(15.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Ping", style = MaterialTheme.typography.labelMedium)
+                        Text("Пинг", style = MaterialTheme.typography.labelMedium)
                     }
                 }
                 Box {
@@ -921,28 +930,28 @@ private fun ProfileCard(
                         onDismissRequest = { actionsExpanded = false },
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Duplicate") },
+                            text = { Text("Дублировать") },
                             leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) },
                             onClick = { actionsExpanded = false; onDuplicate() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Export native link") },
+                            text = { Text("Экспорт ссылки") },
                             leadingIcon = { Icon(Icons.Rounded.Link, null) },
                             onClick = { actionsExpanded = false; onExportNative() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Export JSON") },
+                            text = { Text("Экспорт JSON") },
                             leadingIcon = { Icon(Icons.Rounded.DataObject, null) },
                             onClick = { actionsExpanded = false; onExportJson() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Edit") },
+                            text = { Text("Изменить") },
                             leadingIcon = { Icon(Icons.Rounded.Edit, null) },
                             onClick = { actionsExpanded = false; onEdit() },
                         )
                         HorizontalDivider()
                         DropdownMenuItem(
-                            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                            text = { Text("Удалить", color = MaterialTheme.colorScheme.error) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Rounded.Delete,
@@ -1020,7 +1029,7 @@ private fun ManualProfileDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isEdit) "Edit Profile" else "Add Profile") },
+        title = { Text(if (isEdit) "Изменить профиль" else "Добавить профиль") },
         text = {
             Column(
                 Modifier
@@ -1029,12 +1038,12 @@ private fun ManualProfileDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Profile Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Название профиля") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
 
                 ExposedDropdownMenuBox(expanded = protoExpanded, onExpandedChange = { protoExpanded = it }) {
                     OutlinedTextField(
                         value = protocol.name, onValueChange = {}, readOnly = true,
-                        label = { Text("Protocol") },
+                        label = { Text("Протокол") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(protoExpanded) },
                         modifier = Modifier.fillMaxWidth().menuAnchor(),
                     )
@@ -1048,20 +1057,20 @@ private fun ManualProfileDialog(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Address") }, modifier = Modifier.weight(1f), singleLine = true)
-                    OutlinedTextField(value = port, onValueChange = { port = it }, label = { Text("Port") }, modifier = Modifier.width(88.dp), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Адрес") }, modifier = Modifier.weight(1f), singleLine = true)
+                    OutlinedTextField(value = port, onValueChange = { port = it }, label = { Text("Порт") }, modifier = Modifier.width(88.dp), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 }
 
                 // Protocol-specific fields
                 when (protocol) {
                     Protocol.AETHERLINK_X, Protocol.VMESS, Protocol.VLESS, Protocol.TROJAN, Protocol.SOCKS5, Protocol.HTTP, Protocol.TUIC, Protocol.ANYTLS -> {
                         if (protocol == Protocol.TROJAN || protocol == Protocol.ANYTLS) {
-                            SecretTextField(value = uuid, onValueChange = { uuid = it }, label = "Password")
+                            SecretTextField(value = uuid, onValueChange = { uuid = it }, label = "Пароль")
                         } else if (protocol == Protocol.SOCKS5 || protocol == Protocol.HTTP) {
                             OutlinedTextField(
                                 value = uuid,
                                 onValueChange = { uuid = it },
-                                label = { Text("Username:password (optional)") },
+                                label = { Text("Логин:пароль (необязательно)") },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                             )
@@ -1080,24 +1089,24 @@ private fun ManualProfileDialog(
                         // BUG FIX: TUIC needs a password too — without this field, manual TUIC
                         // profiles always failed validation ("TUIC password is required").
                         if (protocol == Protocol.TUIC) {
-                            SecretTextField(value = ssPassword, onValueChange = { ssPassword = it }, label = "Password")
+                            SecretTextField(value = ssPassword, onValueChange = { ssPassword = it }, label = "Пароль")
                         }
                         if (protocol == Protocol.AETHERLINK_X) {
-                            SecretTextField(value = alxSecret, onValueChange = { alxSecret = it }, label = "AetherLink X secret")
+                            SecretTextField(value = alxSecret, onValueChange = { alxSecret = it }, label = "Секрет AetherLink X")
                         }
                     }
                     Protocol.SHADOWSOCKS -> {
-                        OutlinedTextField(value = ssMethod,   onValueChange = { ssMethod   = it }, label = { Text("Cipher")   }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                        SecretTextField(value = ssPassword, onValueChange = { ssPassword = it }, label = "Password")
+                        OutlinedTextField(value = ssMethod,   onValueChange = { ssMethod   = it }, label = { Text("Шифр")   }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        SecretTextField(value = ssPassword, onValueChange = { ssPassword = it }, label = "Пароль")
                     }
                     Protocol.HYSTERIA2 -> {
-                        SecretTextField(value = hystPwd, onValueChange = { hystPwd = it }, label = "Password")
+                        SecretTextField(value = hystPwd, onValueChange = { hystPwd = it }, label = "Пароль")
                     }
                     Protocol.WIREGUARD -> {
-                        SecretTextField(value = wgPrivKey, onValueChange = { wgPrivKey = it }, label = "Private Key")
-                        OutlinedTextField(value = wgPubKey,  onValueChange = { wgPubKey  = it }, label = { Text("Peer Public Key") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                        SecretTextField(value = wgPsk, onValueChange = { wgPsk = it }, label = "Pre-Shared Key (optional)")
-                        OutlinedTextField(value = wgEndpoint, onValueChange = { wgEndpoint = it }, label = { Text("Endpoint") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        SecretTextField(value = wgPrivKey, onValueChange = { wgPrivKey = it }, label = "Закрытый ключ")
+                        OutlinedTextField(value = wgPubKey,  onValueChange = { wgPubKey  = it }, label = { Text("Открытый ключ узла") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        SecretTextField(value = wgPsk, onValueChange = { wgPsk = it }, label = "Предварительный ключ (необязательно)")
+                        OutlinedTextField(value = wgEndpoint, onValueChange = { wgEndpoint = it }, label = { Text("Конечная точка") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(value = wgDns, onValueChange = { wgDns = it }, label = { Text("DNS") }, modifier = Modifier.weight(1f), singleLine = true)
                             OutlinedTextField(value = wgMtu, onValueChange = { wgMtu = it }, label = { Text("MTU") }, modifier = Modifier.width(88.dp), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
@@ -1105,7 +1114,7 @@ private fun ManualProfileDialog(
                         OutlinedTextField(
                             value = wgReserved,
                             onValueChange = { wgReserved = it },
-                            label = { Text("Reserved (WARP, optional)") },
+                            label = { Text("Резерв WARP (необязательно)") },
                             placeholder = { Text("e.g. 12,34,56") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
@@ -1120,7 +1129,7 @@ private fun ManualProfileDialog(
                         ExposedDropdownMenuBox(expanded = transportExpanded, onExpandedChange = { transportExpanded = it }) {
                             OutlinedTextField(
                                 value = transport.name, onValueChange = {}, readOnly = true,
-                                label = { Text("Transport") },
+                                label = { Text("Транспорт") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(transportExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor(),
                             )
@@ -1132,8 +1141,8 @@ private fun ManualProfileDialog(
                         }
                         AnimatedVisibility(visible = transport in listOf(Transport.WS, Transport.H2, Transport.XHTTP, Transport.GRPC)) {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                OutlinedTextField(value = path, onValueChange = { path = it }, label = { Text(if (transport == Transport.GRPC) "Service Name" else "Path") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                                OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("Host") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = path, onValueChange = { path = it }, label = { Text(if (transport == Transport.GRPC) "Имя службы" else "Путь") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("Хост") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                             }
                         }
                     }
@@ -1145,7 +1154,7 @@ private fun ManualProfileDialog(
                         ExposedDropdownMenuBox(expanded = securityExpanded, onExpandedChange = { securityExpanded = it }) {
                             OutlinedTextField(
                                 value = security.name, onValueChange = {}, readOnly = true,
-                                label = { Text("Security") },
+                                label = { Text("Защита") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(securityExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor(),
                             )
@@ -1158,13 +1167,13 @@ private fun ManualProfileDialog(
                         AnimatedVisibility(visible = security != Security.NONE) {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 OutlinedTextField(value = sni,         onValueChange = { sni         = it }, label = { Text("SNI") },         modifier = Modifier.fillMaxWidth(), singleLine = true)
-                                OutlinedTextField(value = fingerprint, onValueChange = { fingerprint = it }, label = { Text("Fingerprint") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = fingerprint, onValueChange = { fingerprint = it }, label = { Text("Отпечаток") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                             }
                         }
                         AnimatedVisibility(visible = security == Security.REALITY) {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                OutlinedTextField(value = publicKey, onValueChange = { publicKey = it }, label = { Text("Public Key (pbk)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                                OutlinedTextField(value = shortId,   onValueChange = { shortId   = it }, label = { Text("Short ID (sid)") },  modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = publicKey, onValueChange = { publicKey = it }, label = { Text("Открытый ключ (pbk)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = shortId,   onValueChange = { shortId   = it }, label = { Text("Короткий ID (sid)") },  modifier = Modifier.fillMaxWidth(), singleLine = true)
                             }
                         }
                         // Allow insecure (skip cert verification) — for TLS-based security only
@@ -1175,9 +1184,9 @@ private fun ManualProfileDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Allow insecure", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Разрешить незащищённое", style = MaterialTheme.typography.bodyMedium)
                                     Text(
-                                        "Skip TLS certificate verification (self-signed servers)",
+                                        "Не проверять TLS-сертификат (для самоподписанных серверов)",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -1193,7 +1202,7 @@ private fun ManualProfileDialog(
                     ExposedDropdownMenuBox(expanded = vmessCipherExpanded, onExpandedChange = { vmessCipherExpanded = it }) {
                         OutlinedTextField(
                             value = vmessSecurity, onValueChange = {}, readOnly = true,
-                            label = { Text("VMess Cipher") },
+                            label = { Text("Шифр VMess") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(vmessCipherExpanded) },
                             modifier = Modifier.fillMaxWidth().menuAnchor(),
                         )
@@ -1210,18 +1219,18 @@ private fun ManualProfileDialog(
                 AnimatedVisibility(visible = protocol == Protocol.AETHERLINK_X) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         ProfileToggleRow(
-                            title = "AetherLink Turbo (Game Mode)",
-                            subtitle = "Low-latency UDP deadlines, header cache and transport tuning.",
+                            title = "AetherLink Turbo (игровой режим)",
+                            subtitle = "Минимальная задержка UDP, кэш заголовков и настройка транспорта.",
                             checked = alxOptionEnabled(alxTurboJson),
                             onChange = { alxTurboJson = setAlxOption(alxTurboJson, "enabled", it) },
                         )
                         ProfileToggleRow(
-                            title = "Inner AEAD",
-                            subtitle = "Authenticated ChaCha20-Poly1305 records inside TLS/REALITY.",
+                            title = "Внутреннее AEAD",
+                            subtitle = "Защищённые записи ChaCha20-Poly1305 внутри TLS/REALITY.",
                             checked = alxOptionEnabled(alxSecurityJson, "innerAead"),
                             onChange = { alxSecurityJson = setAlxOption(alxSecurityJson, "innerAead", it) },
                         )
-                        Text("Post-quantum X-Wing", style = MaterialTheme.typography.bodyMedium)
+                        Text("Постквантовый X-Wing", style = MaterialTheme.typography.bodyMedium)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("off", "prefer", "required").forEach { mode ->
                                 FilterChip(
@@ -1233,14 +1242,14 @@ private fun ManualProfileDialog(
                             }
                         }
                         ProfileToggleRow(
-                            title = "Stealth Mode",
-                            subtitle = "Randomized chunk sizes and bounded padding for traffic shaping.",
+                            title = "Скрытый режим",
+                            subtitle = "Случайные размеры блоков и маскирующее дополнение трафика.",
                             checked = alxOptionEnabled(alxStealthJson),
                             onChange = { alxStealthJson = setAlxOption(alxStealthJson, "enabled", it) },
                         )
                         ProfileToggleRow(
-                            title = "Allow insecure ALX transport",
-                            subtitle = "Testing only. Keep disabled when TLS or REALITY is available.",
+                            title = "Разрешить незащищённый ALX",
+                            subtitle = "Только для тестов. Оставьте выключенным при TLS или REALITY.",
                             checked = alxAllowInsecureTransport,
                             onChange = { alxAllowInsecureTransport = it },
                         )
@@ -1254,7 +1263,7 @@ private fun ManualProfileDialog(
                         OutlinedTextField(
                             value = alxSecurityJson,
                             onValueChange = { alxSecurityJson = it },
-                            label = { Text("ALX PQ/security JSON") },
+                            label = { Text("ALX PQ/защита JSON") },
                             modifier = Modifier.fillMaxWidth(),
                             minLines = 2,
                         )
@@ -1268,14 +1277,14 @@ private fun ManualProfileDialog(
                     }
                 }
                 ProfileToggleRow(
-                    title = "Multiplexing (mux)",
-                    subtitle = "Reuse one connection for many streams. Ignored for protocols that don't support it.",
+                    title = "Мультиплексирование (mux)",
+                    subtitle = "Одно соединение для нескольких потоков. Игнорируется неподдерживаемыми протоколами.",
                     checked = muxEnabled,
                     onChange = { muxEnabled = it },
                 )
                 ProfileToggleRow(
-                    title = "TLS fragment (anti-DPI)",
-                    subtitle = "Split the TLS handshake to bypass DPI. Configure sizes in Routing & Privacy.",
+                    title = "Фрагментация TLS (anti-DPI)",
+                    subtitle = "Разделение TLS-рукопожатия. Размеры задаются в разделе маршрутизации.",
                     checked = fragmentEnabled,
                     onChange = { fragmentEnabled = it },
                 )
@@ -1285,7 +1294,7 @@ private fun ManualProfileDialog(
             Button(
                 onClick = {
                     onSave((initial ?: VpnProfile()).copy(
-                        name            = name.ifBlank { "Unnamed" },
+                        name            = name.ifBlank { "Без названия" },
                         protocol        = protocol,
                         address         = address.trim(),
                         port            = port.toIntOrNull() ?: 443,
@@ -1320,9 +1329,9 @@ private fun ManualProfileDialog(
                     ))
                 },
                 enabled = address.isNotBlank(),
-            ) { Text(if (isEdit) "Save" else "Add") }
+            ) { Text(if (isEdit) "Сохранить" else "Добавить") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
     )
 }
 
@@ -1375,17 +1384,17 @@ private fun SecretTextField(
 }
 
 private enum class ProfileSortMode(val label: String) {
-    DEFAULT("Default order"),
-    NAME("Name (A–Z)"),
-    LATENCY("Latency (fastest)"),
+    DEFAULT("Обычный порядок"),
+    NAME("Название (А–Я)"),
+    LATENCY("Задержка (сначала быстрые)"),
 }
 
 private fun relativeTime(epochMs: Long): String {
     val diff = System.currentTimeMillis() - epochMs
     return when {
-        diff < 60_000      -> "just now"
-        diff < 3_600_000   -> "${diff / 60_000}m ago"
-        diff < 86_400_000  -> "${diff / 3_600_000}h ago"
-        else               -> "${diff / 86_400_000}d ago"
+        diff < 60_000      -> "только что"
+        diff < 3_600_000   -> "${diff / 60_000} мин назад"
+        diff < 86_400_000  -> "${diff / 3_600_000} ч назад"
+        else               -> "${diff / 86_400_000} дн. назад"
     }
 }

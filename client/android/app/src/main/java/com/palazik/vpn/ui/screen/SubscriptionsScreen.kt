@@ -52,10 +52,10 @@ fun SubscriptionsScreen(vm: MainViewModel) {
         Column(
             Modifier.fillMaxWidth(),
         ) {
-            Text("Subscriptions", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Подписки", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             AnimatedVisibility(visible = ui.subscriptions.isNotEmpty()) {
                 Text(
-                    "${ui.subscriptions.size} active",
+                    "Активных: ${ui.subscriptions.size}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
@@ -73,13 +73,13 @@ fun SubscriptionsScreen(vm: MainViewModel) {
                     ) {
                         Icon(Icons.Rounded.Refresh, null, Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Update All")
+                        Text("Обновить все")
                     }
                 }
                 FilledTonalButton(onClick = { showAdd = true }) {
                     Icon(Icons.Rounded.Add, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Add", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    Text("Добавить", color = MaterialTheme.colorScheme.onSecondaryContainer)
                 }
             }
         }
@@ -101,13 +101,13 @@ fun SubscriptionsScreen(vm: MainViewModel) {
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "No subscriptions yet",
+                            "Подписок пока нет",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Add a subscription URL to import profiles automatically.",
+                            "Добавьте ссылку на подписку, чтобы автоматически загрузить профили.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline,
                         )
@@ -115,7 +115,7 @@ fun SubscriptionsScreen(vm: MainViewModel) {
                         FilledTonalButton(onClick = { showAdd = true }) {
                             Icon(Icons.Rounded.Add, null, Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Add Subscription", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Text("Добавить подписку", color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
                     }
                 }
@@ -148,22 +148,22 @@ fun SubscriptionsScreen(vm: MainViewModel) {
     if (showAdd) {
         AlertDialog(
             onDismissRequest = { showAdd = false; subName = ""; subUrl = "" },
-            title = { Text("Add Subscription") },
+            title = { Text("Добавить подписку") },
             icon  = { Icon(Icons.Rounded.Subscriptions, null) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value         = subName,
                         onValueChange = { subName = it },
-                        label         = { Text("Name") },
-                        placeholder   = { Text("My Server") },
+                        label         = { Text("Название") },
+                        placeholder   = { Text("Мой сервер") },
                         modifier      = Modifier.fillMaxWidth(),
                         singleLine    = true,
                     )
                     OutlinedTextField(
                         value         = subUrl,
                         onValueChange = { subUrl = it },
-                        label         = { Text("Subscription URL") },
+                        label         = { Text("Ссылка на подписку") },
                         placeholder   = { Text("https://…") },
                         modifier      = Modifier.fillMaxWidth(),
                         singleLine    = true,
@@ -174,15 +174,15 @@ fun SubscriptionsScreen(vm: MainViewModel) {
                 Button(
                     onClick  = {
                         if (subUrl.isNotBlank()) {
-                            vm.addSubscription(subName.ifBlank { "Subscription" }, subUrl.trim())
+                            vm.addSubscription(subName.ifBlank { "Подписка" }, subUrl.trim())
                             showAdd = false; subName = ""; subUrl = ""
                         }
                     },
                     enabled = subUrl.isNotBlank(),
-                ) { Text("Add & Fetch") }
+                ) { Text("Добавить и загрузить") }
             },
             dismissButton = {
-                TextButton(onClick = { showAdd = false; subName = ""; subUrl = "" }) { Text("Cancel") }
+                TextButton(onClick = { showAdd = false; subName = ""; subUrl = "" }) { Text("Отмена") }
             },
         )
     }
@@ -190,9 +190,9 @@ fun SubscriptionsScreen(vm: MainViewModel) {
     deleteSub?.let { sub ->
         AlertDialog(
             onDismissRequest = { deleteSub = null },
-            title = { Text("Delete Subscription") },
+            title = { Text("Удалить подписку") },
             icon = { Icon(Icons.Rounded.Delete, null) },
-            text = { Text("Delete \"${sub.name}\" and all profiles from it?") },
+            text = { Text("Удалить «${sub.name}» и все её профили?") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -200,10 +200,10 @@ fun SubscriptionsScreen(vm: MainViewModel) {
                         deleteSub = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                ) { Text("Delete") }
+                ) { Text("Удалить") }
             },
             dismissButton = {
-                TextButton(onClick = { deleteSub = null }) { Text("Cancel") }
+                TextButton(onClick = { deleteSub = null }) { Text("Отмена") }
             },
         )
     }
@@ -307,7 +307,7 @@ private fun SubscriptionCard(
                         shape = CircleShape,
                     ) {
                         Text(
-                            "Updated ${sdf.format(Date(sub.lastUpdated))}",
+                            "Обновлено ${sdf.format(Date(sub.lastUpdated))}",
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                             style    = MaterialTheme.typography.labelSmall,
                             color    = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -354,7 +354,7 @@ private fun SubscriptionCard(
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 when {
-                                    expired  -> "Expired"
+                                    expired  -> "Истекла"
                                     else     -> "${expDateFmt.format(Date(sub.expireEpochSec * 1000))} ($daysLeft d)"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
@@ -381,7 +381,7 @@ private fun SubscriptionCard(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            if (autoUpdateEnabled) "Auto ${updateIntervalHours}h" else "Manual",
+                            if (autoUpdateEnabled) "Авто: ${updateIntervalHours} ч" else "Вручную",
                             style = MaterialTheme.typography.labelSmall,
                             color = if (autoUpdateEnabled) MaterialTheme.colorScheme.tertiary
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -409,7 +409,7 @@ private fun SubscriptionCard(
                 ) {
                     Icon(Icons.Rounded.Speed, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Best", style = MaterialTheme.typography.labelMedium)
+                    Text("Лучший", style = MaterialTheme.typography.labelMedium)
                 }
                 TextButton(
                     onClick = onUpdate,
@@ -439,7 +439,7 @@ private fun SubscriptionCard(
                         transitionSpec = { fadeIn(tween(120)) togetherWith fadeOut(tween(90)) },
                         label = "sub_update_label_${sub.id}",
                     ) { updating ->
-                        Text(if (updating) "Updating" else "Update", style = MaterialTheme.typography.labelMedium)
+                        Text(if (updating) "Обновление" else "Обновить", style = MaterialTheme.typography.labelMedium)
                     }
                 }
                 TextButton(
@@ -450,7 +450,7 @@ private fun SubscriptionCard(
                 ) {
                     Icon(Icons.Rounded.Delete, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Delete", style = MaterialTheme.typography.labelMedium)
+                    Text("Удалить", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

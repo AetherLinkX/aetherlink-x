@@ -132,7 +132,7 @@ class MainViewModel @Inject constructor(
     fun prepareVpn(): Intent? = VpnService.prepare(context)
 
     fun connect() {
-        val profile = _ui.value.activeProfile ?: run { snack("Select a profile first"); return }
+        val profile = _ui.value.activeProfile ?: run { snack("Сначала выберите профиль"); return }
         // Pass full profile object to service companion — the service needs it to build xray config
         palazikVpnService.activeProfile = profile
         context.startForegroundService(
@@ -172,10 +172,37 @@ class MainViewModel @Inject constructor(
                 return
             }
             repo.addProfile(profile)
-            snack("Profile \"${profile.name}\" imported")
+            snack("Профиль «${profile.name}» импортирован")
         } else {
-            snack("Could not parse link")
+            snack("Не удалось распознать ссылку")
         }
+    }
+
+    /** One entry point for clipboard, QR, deep links, share links and backup bodies. */
+    fun importFromText(raw: String) {
+        val text = raw.trim()
+        if (text.isBlank()) {
+            snack("Вставьте ссылку или конфигурацию")
+            return
+        }
+        val uri = runCatching { android.net.Uri.parse(text) }.getOrNull()
+        if (uri?.scheme.equals("http", true) || uri?.scheme.equals("https", true)) {
+            importSubscriptionFromUrl(text)
+            return
+        }
+        ProfileCodec.decode(text)?.let {
+            importProfileFromLink(text)
+            return
+        }
+        val profiles = ProfileCodec.decodeSubscriptionBody(text)
+            .filter { ProfileValidator.validate(it).isEmpty() }
+        if (profiles.isEmpty()) {
+            snack("Формат не поддерживается. Проверьте ссылку или QR-код")
+            return
+        }
+        profiles.forEach(repo::addProfile)
+        syncServiceActiveProfile()
+        snack("Импортировано профилей: ${profiles.size}")
     }
 
     fun addManualProfile(profile: VpnProfile): Boolean {
@@ -185,7 +212,7 @@ class MainViewModel @Inject constructor(
             return false
         }
         repo.addProfile(profile)
-        snack("Profile \"${profile.name}\" added")
+        snack("Профиль «${profile.name}» добавлен")
         return true
     }
 
@@ -200,7 +227,7 @@ class MainViewModel @Inject constructor(
         if (palazikVpnService.activeProfile?.id == profile.id) {
             palazikVpnService.activeProfile = profile
         }
-        snack("Profile \"${profile.name}\" updated")
+        snack("Профиль «${profile.name}» обновлён")
         return true
     }
 
@@ -212,20 +239,20 @@ class MainViewModel @Inject constructor(
             palazikVpnService.activeProfile = null
         }
         repo.removeProfile(id)
-        snack("Profile deleted", "Undo")
+        snack("Профиль удалён", "Отменить")
     }
 
     fun undoSnackAction() {
         deletedProfile?.let {
             repo.addProfile(it)
-            snack("Profile restored")
+            snack("Профиль восстановлен")
         }
         deletedProfile = null
     }
 
     fun selectProfile(id: String) {
         if (_ui.value.vpnState != VpnState.DISCONNECTED && _ui.value.vpnState != VpnState.ERROR) {
-            snack("Disconnect before switching profiles")
+            snack("Отключите VPN перед сменой профиля")
             return
         }
         repo.setActiveProfile(id)
@@ -241,11 +268,11 @@ class MainViewModel @Inject constructor(
             addedAt = System.currentTimeMillis(),
         )
         repo.addProfile(copy)
-        snack("Profile duplicated")
+        snack("Копия профиля создана")
     }
 
     fun generateShareLink() {
-        val profile = _ui.value.activeProfile ?: run { snack("No active profile"); return }
+        val profile = _ui.value.activeProfile ?: run { snack("Нет активного профиля"); return }
         _ui.update { it.copy(shareLink = ProfileCodec.encodePalazik(profile)) }
     }
 
@@ -268,7 +295,7 @@ class MainViewModel @Inject constructor(
     fun importProfilesText(body: String) {
         val added = repo.importProfilesText(body)
         syncServiceActiveProfile()
-        snack(if (added > 0) "Imported $added profiles" else "No new profiles found")
+        snack(if (added > 0) "Импортировано профилей: $added" else "Новые профили не найдены")
     }
 
     // ── Ping ─────────────────────────────────────────────────────────────────
@@ -279,26 +306,26 @@ class MainViewModel @Inject constructor(
             // for the currently active profile while connected. TCP works for any profile.
             if (_ui.value.pingMode != PingMode.TCP) {
                 if (_ui.value.vpnState != VpnState.CONNECTED) {
-                    snack("Connect VPN first for HTTP ping")
+                    snack("Для HTTP-пинга сначала подключите VPN")
                     return@launch
                 }
                 if (profile.id != _ui.value.activeProfile?.id) {
-                    snack("HTTP ping measures the active profile only — use TCP mode to test others")
+                    snack("HTTP-пинг измеряет только активный профиль; для других выберите TCP")
                     return@launch
                 }
             }
-            snack("Pinging ${profile.name}…")
+            snack("Проверяем ${profile.name}…")
             val ms = repo.pingProfile(profile)
-            snack(if (ms >= 0) "${profile.name}: ${ms}ms" else "${profile.name}: timeout")
+            snack(if (ms >= 0) "${profile.name}: ${ms} мс" else "${profile.name}: нет ответа")
         }
     }
 
     fun pingAll() {
         viewModelScope.launch {
             // pingProfiles always uses TCP (per-server) — no VPN required, no HTTP gate.
-            snack("Pinging ${_ui.value.profiles.size} profiles…")
+            snack("Проверяем профили: ${_ui.value.profiles.size}…")
             repo.pingProfiles(_ui.value.profiles)
-            snack("Ping complete")
+            snack("Проверка завершена")
         }
     }
 
@@ -311,8 +338,8 @@ class MainViewModel @Inject constructor(
      */
     fun importSubscriptionFromUrl(rawUrl: String) {
         val uri = runCatching { android.net.Uri.parse(rawUrl.trim()) }.getOrNull()
-        if (uri?.scheme != "https" || uri.host.isNullOrBlank()) {
-            snack("Only HTTPS subscription links are supported")
+        if ((uri?.scheme != "https" && uri?.scheme != "http") || uri.host.isNullOrBlank()) {
+            snack("Нужна HTTP- или HTTPS-ссылка на подписку")
             return
         }
         val normalizedUrl = uri.toString()
@@ -332,11 +359,11 @@ class MainViewModel @Inject constructor(
                         repo.setActiveProfile(imported.id)
                         palazikVpnService.activeProfile = imported.copy(isActive = true)
                     }
-                    snack("Imported and activated $count profiles")
+                    snack("Импортировано и активировано профилей: $count")
                 },
                 onFailure = {
                     if (existing == null) repo.removeSubscription(sub.id)
-                    snack("Failed to import subscription")
+                    snack("Не удалось загрузить подписку")
                 },
             )
             SubscriptionUpdateScheduler.sync(context, repo.settings.value)
@@ -350,10 +377,10 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             _ui.update { it.copy(isUpdatingSubscriptions = true) }
             repo.updateSubscription(sub).fold(
-                onSuccess = { count -> snack("Loaded $count profiles from \"$name\"") },
+                onSuccess = { count -> snack("Из «$name» загружено профилей: $count") },
                 onFailure = {
                     repo.removeSubscription(sub.id)
-                    snack("Failed to fetch subscription")
+                    snack("Не удалось загрузить подписку")
                 },
             )
             syncServiceActiveProfile()
@@ -373,13 +400,13 @@ class MainViewModel @Inject constructor(
     fun updateSubscription(sub: Subscription) {
         viewModelScope.launch {
             _ui.update { it.copy(updatingSubscriptionIds = it.updatingSubscriptionIds + sub.id) }
-            snack("Updating \"${sub.name}\"…")
+            snack("Обновляем «${sub.name}»…")
             repo.updateSubscription(sub).fold(
                 onSuccess = { count ->
                     syncServiceActiveProfile()
-                    snack("Updated: $count profiles")
+                    snack("Обновлено профилей: $count")
                 },
-                onFailure = { snack("Update failed") },
+                onFailure = { snack("Обновление не удалось") },
             )
             _ui.update { it.copy(updatingSubscriptionIds = it.updatingSubscriptionIds - sub.id) }
         }
@@ -392,17 +419,17 @@ class MainViewModel @Inject constructor(
             // required the VPN to be CONNECTED for HTTP modes, which can never both hold, so
             // this path always returned early.
             if (_ui.value.vpnState != VpnState.DISCONNECTED && _ui.value.vpnState != VpnState.ERROR) {
-                snack("Disconnect before switching profiles")
+                snack("Отключите VPN перед сменой профиля")
                 return@launch
             }
             val candidates = _ui.value.profiles.filter { it.subscriptionId == sub.id }
             if (candidates.isEmpty()) {
-                snack("No profiles in \"${sub.name}\"")
+                snack("В «${sub.name}» нет профилей")
                 return@launch
             }
             _ui.update { it.copy(updatingSubscriptionIds = it.updatingSubscriptionIds + sub.id) }
             try {
-                snack("Testing \"${sub.name}\" profiles…")
+                snack("Проверяем профили «${sub.name}»…")
                 // Ping concurrently, then read fresh latencies off the updated list
                 repo.pingProfiles(candidates)
                 val best = repo.profiles.value
@@ -411,9 +438,9 @@ class MainViewModel @Inject constructor(
                 if (best != null) {
                     repo.setActiveProfile(best.id)
                     palazikVpnService.activeProfile = repo.profiles.value.firstOrNull { it.id == best.id }
-                    snack("Best profile selected: ${best.latencyMs}ms")
+                    snack("Выбран лучший профиль: ${best.latencyMs} мс")
                 } else {
-                    snack("All profiles timed out")
+                    snack("Все профили не ответили")
                 }
             } finally {
                 _ui.update { it.copy(updatingSubscriptionIds = it.updatingSubscriptionIds - sub.id) }
@@ -424,12 +451,12 @@ class MainViewModel @Inject constructor(
     fun updateAllSubscriptions() {
         viewModelScope.launch {
             _ui.update { it.copy(isUpdatingSubscriptions = true) }
-            snack("Updating all subscriptions…")
+            snack("Обновляем все подписки…")
             val results = repo.updateAllSubscriptions()
             syncServiceActiveProfile()
             val failed = results.count { it.isFailure }
             val updated = results.sumOf { it.getOrDefault(0) }
-            snack(if (failed == 0) "Updated $updated profiles" else "Updated $updated profiles, $failed failed")
+            snack(if (failed == 0) "Обновлено профилей: $updated" else "Обновлено: $updated, ошибок: $failed")
             _ui.update { it.copy(isUpdatingSubscriptions = false) }
         }
     }
@@ -471,10 +498,10 @@ class MainViewModel @Inject constructor(
 
     fun generateWarpProfile() {
         viewModelScope.launch {
-            snack("Setting up Cloudflare WARP…")
+            snack("Настраиваем Cloudflare WARP…")
             repo.provisionWarp().fold(
-                onSuccess = { snack("WARP profile added") },
-                onFailure = { snack(it.message ?: "WARP setup failed") },
+                onSuccess = { snack("Профиль WARP добавлен") },
+                onFailure = { snack(it.message ?: "Не удалось настроить WARP") },
             )
         }
     }
@@ -488,9 +515,9 @@ class MainViewModel @Inject constructor(
             repo.checkForUpdate(current).fold(
                 onSuccess = { info ->
                     if (info != null) _ui.update { it.copy(updateAvailable = info) }
-                    else snack("You're on the latest version")
+                    else snack("У вас актуальная версия")
                 },
-                onFailure = { snack("Update check failed") },
+                onFailure = { snack("Не удалось проверить обновления") },
             )
             _ui.update { it.copy(checkingUpdate = false) }
         }
@@ -500,10 +527,10 @@ class MainViewModel @Inject constructor(
 
     fun updateGeoFiles() {
         viewModelScope.launch {
-            snack("Downloading geo files…")
+            snack("Загружаем гео-файлы…")
             repo.updateGeoFiles().fold(
-                onSuccess = { count -> snack("Updated $count geo file(s) — reconnect to apply") },
-                onFailure = { snack(it.message ?: "Geo update failed") },
+                onSuccess = { count -> snack("Обновлено гео-файлов: $count. Переподключите VPN") },
+                onFailure = { snack(it.message ?: "Не удалось обновить гео-файлы") },
             )
         }
     }

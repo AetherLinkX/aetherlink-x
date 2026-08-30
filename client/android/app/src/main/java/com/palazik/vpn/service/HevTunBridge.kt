@@ -11,14 +11,14 @@ import java.io.File
  */
 class HevTunBridge(private val context: Context) {
 
-    fun start(vpnInterface: ParcelFileDescriptor, enableIpv6: Boolean, mtu: Int = 1500) {
+    fun start(vpnInterface: ParcelFileDescriptor, enableIpv6: Boolean, socksPort: Int, mtu: Int = 1500) {
         val config = buildString {
             appendLine("tunnel:")
             appendLine("  mtu: $mtu")
             appendLine("  ipv4: 10.10.14.1")
             if (enableIpv6) appendLine("  ipv6: 'fd66:6ca7:14e7::1'")
             appendLine("socks5:")
-            appendLine("  port: 10808")
+            appendLine("  port: $socksPort")
             appendLine("  address: 127.0.0.1")
             appendLine("  udp: 'udp'")
             appendLine("misc:")
