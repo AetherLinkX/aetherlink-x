@@ -119,8 +119,10 @@
       },
       "node": {
         "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2",
-        "tag": "sha-e1f9593",
-        "digest": "sha256:a78608f87774dadd01ae48657eafc80e0d219dde3f516a5b16c6653a7a63c93b",
+        "tag": "sha-eb469f9",
+        "digest": "sha256:afadb69691678846ccc8b85ad0e654fe1421ed601339d6791f76cff63a95fe5d",
+        "sourceCommit": "eb469f942068e0ee071c0883b347f1623ea158d5",
+        "workflowRun": "https://github.com/AetherLinkX/aetherlink-x/actions/runs/33280206949",
         "status": "live-deployed"
       },
       "status": "live-deployed"
@@ -154,10 +156,10 @@
     "remnawaveBackend274RuntimeBranchCheck": "passed: REMNAWAVE_BRANCH=main is accepted by the pinned 2.7.4 runtime schema",
     "remnawaveBrowserWasmBuild": "passed",
     "linuxCrossBuilds": "passed",
-    "remnawaveDockerBuild": "passed: GitHub Actions runs 33241158963, 33256675094 and 33270878989; static and managed linux/amd64 + linux/arm64 images published to GHCR",
+    "remnawaveDockerBuild": "passed: GitHub Actions runs 33241158963, 33256675094, 33270878989 and 33280206949; static and managed linux/amd64 + linux/arm64 images published to GHCR",
     "remnawaveBackend274LiveDeployment": "passed: sha-6a091c7 on Panel 2.7.4, container healthy and static ALX profile persisted after reload",
     "remnawaveManagedBackend274LiveDeployment": "passed: sha-e1f9593 on Panel 2.7.4, container healthy, dashboard HTTP 200 and no fatal startup log entries",
-    "remnawaveManagedNode322LiveDeployment": "passed: sha-e1f9593 on FI Node 3.2.2 via in-place Compose image replacement; Xray 26.7.28 Custom, restart count 0, Node API and all 8 pre-existing inbound ports preserved, port 8443 free, no critical startup log entries",
+    "remnawaveManagedNode322LiveDeployment": "passed: sha-eb469f9 (sha256:afadb69691678846ccc8b85ad0e654fe1421ed601339d6791f76cff63a95fe5d) on FI Node 3.2.2 via in-place Compose image replacement; prepared ALX+REALITY+X-Wing server config accepted by Xray 26.7.28 Custom; restart count 0, Node API and all 8 pre-existing inbound ports preserved, port 8443 reserved for the managed inbound",
     "raceDetector": "not run: portable Windows toolchain has no CGO C compiler"
   },
   "securityNotice": "Not independently audited. Use TLS or REALITY on untrusted networks."

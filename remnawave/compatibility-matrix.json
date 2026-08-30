@@ -35,10 +35,10 @@
       "digest": "sha256:a530289aebfbda41f5d2593954f8c0250b9402afb54b44420d59d73313a117f1",
       "status": "build-tested",
       "managedMode": {
-        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2:sha-e1f9593",
-        "digest": "sha256:a78608f87774dadd01ae48657eafc80e0d219dde3f516a5b16c6653a7a63c93b",
+        "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-node-managed-3.2.2:sha-eb469f9",
+        "digest": "sha256:afadb69691678846ccc8b85ad0e654fe1421ed601339d6791f76cff63a95fe5d",
         "status": "live-tested",
-        "validation": "FI Node in-place deployment; Xray 26.7.28 Custom; restart count 0; Node API and 8 existing inbound listeners preserved; no critical startup errors"
+        "validation": "FI Node in-place deployment; prepared ALX+REALITY+X-Wing server config accepted by Xray 26.7.28 Custom; restart count 0; Node API and 8 existing inbound listeners preserved"
       }
     },
     "3.3.2": {
