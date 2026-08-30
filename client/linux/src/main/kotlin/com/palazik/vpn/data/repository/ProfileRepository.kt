@@ -369,7 +369,7 @@ object ProfileRepository {
 
     // ── Backup / restore ────────────────────────────────────────────────────────
 
-    /** Export all profiles as palazikvpn:// links, one per line (for backup/share). */
+    /** Export all profiles as alxclient:// links, one per line (for backup/share). */
     fun exportProfilesText(): String =
         _profiles.value.joinToString("\n") { ProfileCodec.encodePalazik(it) }
 

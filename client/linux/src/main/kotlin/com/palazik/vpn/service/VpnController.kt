@@ -11,6 +11,8 @@ import org.json.JSONObject
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.TimeUnit
 
 /**
@@ -42,6 +44,7 @@ object VpnController {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var xrayProcess: Process? = null
     private var xrayBinary: File? = null
+    private var activeConfigFile: File? = null
     private var statsJob: Job? = null
     private var logJob: Job? = null
     private var systemProxyApplied = false
@@ -75,6 +78,10 @@ object VpnController {
                 val config = XrayConfigBuilder.build(profile, settings)
                 val configFile = File(AppDirs.runDir, "config.json")
                 configFile.writeText(config)
+                runCatching {
+                    Files.setPosixFilePermissions(configFile.toPath(), PosixFilePermissions.fromString("rw-------"))
+                }
+                activeConfigFile = configFile
 
                 val proc = ProcessBuilder(xray.absolutePath, "run", "-c", configFile.absolutePath)
                     .redirectErrorStream(true)
@@ -172,6 +179,12 @@ object VpnController {
             if (!proc.waitFor(2, TimeUnit.SECONDS)) proc.destroyForcibly()
         }
         xrayProcess = null
+        activeConfigFile?.let { config ->
+            runCatching {
+                if (config.exists() && !config.delete()) config.writeText("")
+            }
+        }
+        activeConfigFile = null
     }
 
     private fun failVpn() {

@@ -8,6 +8,7 @@ import com.palazik.vpn.service.XrayConfigBuilder
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class AetherLinkXCodecTest {
 
@@ -17,7 +18,7 @@ class AetherLinkXCodecTest {
             .encodeToString(value.toByteArray())
 
         val link = "aetherlinkx://018f3f89-01be-7b44-8a7f-23e54f92ea00@alx.example.com:8443" +
-            "?secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
+            "?secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE" +
             "&allowInsecureTransport=0&type=raw&security=reality" +
             "&sni=www.example.com&fp=chrome&pbk=public-key&sid=0123456789abcdef" +
             "&turbo=${option("""{"enabled":true,"maxDatagramAgeMs":35}""")}" +
@@ -78,5 +79,19 @@ class AetherLinkXCodecTest {
         assertEquals("alx", profile.path)
         assertEquals("www.example.com", profile.sni)
         assertTrue(profile.alxTurboJson.contains("enabled"))
+    }
+
+    @Test
+    fun invalidAccountSecretsFailBeforeCoreStartup() {
+        val validBase = requireNotNull(ProfileCodec.decode(
+            "aetherlinkx://018f3f89-01be-7b44-8a7f-23e54f92ea00@alx.example.com:443" +
+                "?secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE" +
+                "&allowInsecureTransport=1#test"
+        ))
+        assertTrue(ProfileValidator.validate(validBase).isEmpty())
+        assertFalse(ProfileValidator.validate(validBase.copy(alxSecret = "short")).isEmpty())
+        assertFalse(ProfileValidator.validate(validBase.copy(
+            alxSecret = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        )).isEmpty())
     }
 }

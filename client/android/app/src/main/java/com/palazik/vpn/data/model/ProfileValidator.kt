@@ -15,6 +15,12 @@ object ProfileValidator {
         "2022-blake3-chacha20-poly1305",
     )
 
+    private fun isValidAetherLinkSecret(value: String): Boolean = runCatching {
+        val raw = value.trim()
+        val padded = raw.padEnd(raw.length + (4 - raw.length % 4) % 4, '=')
+        java.util.Base64.getUrlDecoder().decode(padded)
+    }.getOrNull()?.let { decoded -> decoded.size == 32 && decoded.any { it.toInt() != 0 } } == true
+
     fun validate(profile: VpnProfile): List<String> {
         val errors = mutableListOf<String>()
 
@@ -25,7 +31,9 @@ object ProfileValidator {
         when (profile.protocol) {
             Protocol.AETHERLINK_X -> {
                 if (!uuidRegex.matches(profile.uuid)) errors += "AetherLink X requires a valid UUID"
-                if (profile.alxSecret.isBlank()) errors += "AetherLink X secret is required"
+                if (!isValidAetherLinkSecret(profile.alxSecret)) {
+                    errors += "AetherLink X secret must be 32 non-zero bytes encoded as Base64URL"
+                }
                 if (!profile.alxAllowInsecureTransport && profile.security == Security.NONE) {
                     errors += "AetherLink X requires TLS/REALITY unless insecure transport is explicitly enabled"
                 }

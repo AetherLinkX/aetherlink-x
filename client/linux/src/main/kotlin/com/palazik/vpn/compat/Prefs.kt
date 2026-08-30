@@ -3,6 +3,9 @@ package com.palazik.vpn.compat
 import com.palazik.vpn.AppDirs
 import org.json.JSONObject
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.PosixFilePermissions
 
 /**
  * SharedPreferences replacement: one JSON file per pref name under the XDG
@@ -50,7 +53,18 @@ class Prefs(name: String) {
             file.parentFile?.mkdirs()
             val tmp = File(file.parentFile, "${file.name}.tmp")
             tmp.writeText(JSONObject(values as Map<*, *>).toString(2))
-            tmp.renameTo(file)
+            runCatching {
+                Files.setPosixFilePermissions(tmp.toPath(), PosixFilePermissions.fromString("rw-------"))
+            }
+            runCatching {
+                Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING)
+            }.recoverCatching {
+                Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }.getOrThrow()
+            runCatching {
+                Files.setPosixFilePermissions(file.toPath(), PosixFilePermissions.fromString("rw-------"))
+            }
         }
     }
 }

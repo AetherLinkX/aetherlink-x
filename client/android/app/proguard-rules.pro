@@ -18,3 +18,6 @@
 
 # Keep VpnService subclass
 -keep class com.palazik.vpn.service.palazikVpnService { *; }
+# Tink (used by AndroidX EncryptedSharedPreferences) carries Error Prone annotations
+# in its bytecode. They are compile-time metadata and have no Android runtime behavior.
+-dontwarn com.google.errorprone.annotations.**

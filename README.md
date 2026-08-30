@@ -67,6 +67,7 @@ Installer сначала выполняет `git apply --check`. Patch прим�
 - `source/proxy/aetherlinkx/README.md` — wire 1.1 и JSON-поля;
 - `source/proxy/aetherlinkx/SECURITY.md` — threat model и checklist;
 - `source/proxy/aetherlinkx/BENCHMARKS.md` — baseline производительности.
+- `docs/AETHERLINK_X_CLIENT_REMNAWAVE.md` — установка клиента и импорт подписки.
 
 ## AetherLink X Client
 

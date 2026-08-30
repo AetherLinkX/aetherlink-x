@@ -419,7 +419,7 @@ fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                         scope.launch {
                             val ok = withContext(Dispatchers.IO) {
                                 runCatching {
-                                    val target = saveFileDialog("palazikvpn-logs.txt")
+                                    val target = saveFileDialog("aetherlink-x-logs.txt")
                                     target?.writeText(diagnostics.joinToString("\n"))
                                     target != null
                                 }.getOrDefault(false)
@@ -724,7 +724,7 @@ private fun BackupSettingsContent(vm: MainViewModel) {
     val scope = rememberCoroutineScope()
 
     Text(
-        "Export all profiles to a .txt file (palazikvpn:// links), or import them back on another device.",
+        "Export all profiles to a .txt file (alxclient:// links), or import them back on another device.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -747,7 +747,7 @@ private fun BackupSettingsContent(vm: MainViewModel) {
             scope.launch {
                 val ok = withContext(Dispatchers.IO) {
                     runCatching {
-                        saveFileDialog("palazikvpn-profiles.txt")
+                        saveFileDialog("aetherlink-x-profiles.txt")
                             ?.writeText(vm.exportProfilesText()) != null
                     }.getOrDefault(false)
                 }

@@ -429,7 +429,7 @@ fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 OutlinedButton(
-                    onClick = { saveLauncher.launch("palazikvpn-logs.txt") },
+                    onClick = { saveLauncher.launch("aetherlink-x-logs.txt") },
                     enabled = diagnostics.isNotEmpty(),
                 ) {
                     Icon(Icons.Rounded.SaveAlt, null, Modifier.size(16.dp))
@@ -855,7 +855,7 @@ private fun BackupSettingsContent(vm: MainViewModel) {
     }
 
     Text(
-        "Export all profiles to a .txt file (palazikvpn:// links), or import them back on another device.",
+        "Export all profiles to a .txt file (alxclient:// links), or import them back on another device.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -867,7 +867,7 @@ private fun BackupSettingsContent(vm: MainViewModel) {
             Text("Import")
         }
         Spacer(Modifier.width(8.dp))
-        Button(onClick = { exportLauncher.launch("palazikvpn-profiles.txt") }) {
+        Button(onClick = { exportLauncher.launch("aetherlink-x-profiles.txt") }) {
             Icon(Icons.Rounded.FileDownload, null, Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text("Export")

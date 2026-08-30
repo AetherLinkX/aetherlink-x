@@ -17,6 +17,19 @@ GPLv3; source and build workflow are included in this repository.
 
 > Bring your own servers, or generate a free Cloudflare WARP profile in one tap.
 
+## Install the development build
+
+Successful `main` builds are attached to the
+[`client-dev` release](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-dev):
+
+- Android: install `aetherlink-x-client-android-universal-debug.apk` (Android 8+).
+- Linux x64: extract `aetherlink-x-client-linux-x64.tar.gz`, then run
+  `AetherLinkXClient/bin/AetherLinkXClient`.
+- Verify the downloaded file with its matching `SHA256SUMS.txt` asset.
+
+This release is an unsigned/alpha distribution channel. Android uses the standard debug
+signature, so a later store/release-signed APK will require uninstalling this alpha first.
+
 ## Highlights
 
 - **Material 3 Expressive UI** — with an optional Miuix-animations toggle for springy, Xiaomi-style list overscroll and animated theme transitions.

@@ -9,8 +9,12 @@ on:
       - "dist/linux-amd64/xray-aetherlinkx"
       - ".github/workflows/build-aetherlinkx-client-linux.yml"
 
+concurrency:
+  group: aetherlinkx-client-linux-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -73,3 +77,20 @@ jobs:
           path: |
             aetherlink-x-client-linux-x64.tar.gz
             client/linux/build/reports/tests/test/
+
+      - name: Publish Linux alpha
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha256sum aetherlink-x-client-linux-x64.tar.gz > aetherlink-x-client-linux-SHA256SUMS.txt
+          if ! gh release view client-dev >/dev/null 2>&1; then
+            gh release create client-dev --prerelease --target "$GITHUB_SHA" \
+              --title "AetherLink X Client — development build" \
+              --notes "Experimental Android/Linux client with the patched ALX core. Not independently security-audited."
+          fi
+          gh release upload client-dev \
+            aetherlink-x-client-linux-x64.tar.gz \
+            aetherlink-x-client-linux-SHA256SUMS.txt --clobber

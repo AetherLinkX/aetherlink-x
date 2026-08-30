@@ -238,7 +238,7 @@ class MainViewModel {
 
     // ── Backup / restore ───────────────────────────────────────────────────────
 
-    /** Serialize every profile as palazikvpn:// links for export to a file. */
+    /** Serialize every profile as alxclient:// links for export to a file. */
     fun exportProfilesText(): String = repo.exportProfilesText()
 
     /** Import profiles from a backup file body; reports how many were added. */
