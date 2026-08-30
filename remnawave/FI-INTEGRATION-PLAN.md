@@ -49,9 +49,23 @@ Static-режим остаётся только для ручного досту
 - изоляцию от static inbound через обязательный tag-префикс
   `AETHERLINK_X_MANAGED_`.
 
-Patch, Backend build и Node typecheck прошли локально. До завершения
-multi-arch container CI и end-to-end revoke-теста production squads не
-изменяются.
+Patch, Backend build, Node typecheck и multi-arch container CI завершены.
+Тест выдачи и revoke выполняется отдельным тестовым пользователем до массового
+добавления подписок.
+
+## Выполненное развёртывание FI
+
+- Panel 2.7.4 использует managed backend `sha-eb469f9` и проходит healthcheck.
+- FI Node 3.2.2 использует managed node `sha-eb469f9`; восемь старых listener
+  сохранены, restart count равен нулю.
+- Профиль `FI` содержит девять валидных inbound; новый tag —
+  `AETHERLINK_X_MANAGED_FI`, порт — `8443`.
+- Internal Squad `AetherLink X FI` содержит только новый inbound.
+- Host `saf.sinfor.fun:8443` привязан к новому inbound и `Obsis-Node-FI`.
+- Финальное сохранение карточки ноды оставлено оператору: открыть
+  `Obsis-Node-FI`, в секции профиля подтвердить `FI 9 / 9`, нажать
+  `Применить изменения`, затем `Сохранить`. До этого `8443` не слушает и
+  существующие восемь inbound продолжают работать.
 
 ## Откат
 

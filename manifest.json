@@ -106,15 +106,15 @@
       }
     },
     "managedCompatibility274_322": {
-      "workflowRun": "https://github.com/AetherLinkX/aetherlink-x/actions/runs/33270878989",
-      "sourceCommit": "e1f9593c5042b7b9c4eb2596ee1b6a67786cbe77",
+      "workflowRun": "https://github.com/AetherLinkX/aetherlink-x/actions/runs/33280206949",
+      "sourceCommit": "eb469f942068e0ee071c0883b347f1623ea158d5",
       "visibility": "public",
       "panelVersion": "2.7.4",
       "nodeVersion": "3.2.2",
       "backend": {
         "image": "ghcr.io/aetherlinkx/aetherlink-x-remnawave-backend-managed-2.7.4",
-        "tag": "sha-e1f9593",
-        "digest": "sha256:f203670f4f6e69ea1d96612d416f5c946404392bc499fa044dce128c9c92d95e",
+        "tag": "sha-eb469f9",
+        "digest": "sha256:9e6c9d3de8dae6dc2aa57723efcf1ca9c8e48f5f5081f5cc5ef741773346ee0a",
         "status": "live-deployed"
       },
       "node": {
@@ -152,14 +152,15 @@
     "remnawaveNodeInPlaceDeployHarness": "passed on Ubuntu 22.04: shell syntax, exact image replacement, SECRET_KEY preservation, dated backup and no override file",
     "remnawaveManagedSecretGoldenVector": "passed",
     "managedXWingControlPlaneKeyPair": "passed: a matching public key may be retained for client export, is verified against the private seed in constant time, and is discarded from server runtime settings; mismatched pairs fail closed",
-    "emptyManagedSquadConfig": "implemented, patch-checked and multi-arch container-built; live FI inbound test pending",
+    "emptyManagedSquadConfig": "implemented, patch-checked, multi-arch container-built and accepted by the live Panel 2.7.4 validator",
     "remnawaveBackend274RuntimeBranchCheck": "passed: REMNAWAVE_BRANCH=main is accepted by the pinned 2.7.4 runtime schema",
     "remnawaveBrowserWasmBuild": "passed",
     "linuxCrossBuilds": "passed",
     "remnawaveDockerBuild": "passed: GitHub Actions runs 33241158963, 33256675094, 33270878989 and 33280206949; static and managed linux/amd64 + linux/arm64 images published to GHCR",
     "remnawaveBackend274LiveDeployment": "passed: sha-6a091c7 on Panel 2.7.4, container healthy and static ALX profile persisted after reload",
-    "remnawaveManagedBackend274LiveDeployment": "passed: sha-e1f9593 on Panel 2.7.4, container healthy, dashboard HTTP 200 and no fatal startup log entries",
+    "remnawaveManagedBackend274LiveDeployment": "passed: sha-eb469f9 (sha256:9e6c9d3de8dae6dc2aa57723efcf1ca9c8e48f5f5081f5cc5ef741773346ee0a) on Panel 2.7.4, container healthy with restart count 0, dashboard HTTP 200, and live ALX+REALITY+X-Wing profile validation passed",
     "remnawaveManagedNode322LiveDeployment": "passed: sha-eb469f9 (sha256:afadb69691678846ccc8b85ad0e654fe1421ed601339d6791f76cff63a95fe5d) on FI Node 3.2.2 via in-place Compose image replacement; prepared ALX+REALITY+X-Wing server config accepted by Xray 26.7.28 Custom; restart count 0, Node API and all 8 pre-existing inbound ports preserved, port 8443 reserved for the managed inbound",
+    "remnawaveManagedFIControlPlane": "passed: FI profile persisted with 8 original VLESS inbounds plus AETHERLINK_X_MANAGED_FI on 8443, Internal Squad AetherLink X FI contains only the ALX inbound, and a visible saf.sinfor.fun:8443 host is bound to Obsis-Node-FI; final node-card Save is intentionally left to the operator",
     "raceDetector": "not run: portable Windows toolchain has no CGO C compiler"
   },
   "securityNotice": "Not independently audited. Use TLS or REALITY on untrusted networks."
