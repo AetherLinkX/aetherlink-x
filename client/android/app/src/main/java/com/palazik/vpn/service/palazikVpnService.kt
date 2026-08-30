@@ -480,8 +480,20 @@ class palazikVpnService : VpnService() {
                 delay(1000)
                 try {
                     val ctrl = coreController ?: break
-                    _bytesIn.value  += ctrl.queryStats("proxy", "downlink")
-                    _bytesOut.value += ctrl.queryStats("proxy", "uplink")
+                    // Current AndroidLibXrayLite exposes the aggregate API in its
+                    // gomobile surface. The payload is `tag,direction,value;...` and
+                    // reading it atomically resets the corresponding core counters.
+                    ctrl.queryAllOutboundTrafficStats()
+                        .split(';')
+                        .forEach { record ->
+                            val parts = record.split(',', limit = 3)
+                            if (parts.size != 3 || parts[0] != "proxy") return@forEach
+                            val value = parts[2].toLongOrNull()?.coerceAtLeast(0L) ?: return@forEach
+                            when (parts[1]) {
+                                "downlink" -> _bytesIn.value += value
+                                "uplink" -> _bytesOut.value += value
+                            }
+                        }
                 } catch (_: Exception) {}
             }
         }
