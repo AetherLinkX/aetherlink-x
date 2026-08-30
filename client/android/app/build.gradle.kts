@@ -123,6 +123,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.zxing.core)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.security.crypto)
     implementation(libs.miuix.ui)
     implementation(libs.miuix.preference)
 

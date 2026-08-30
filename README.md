@@ -73,12 +73,15 @@ Installer сначала выполняет `git apply --check`. Patch прим�
 Клиент находится в `client/` и поддерживает AetherLink X, VLESS, VMess,
 Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS5 и HTTP.
 ALX-ссылки `aetherlinkx://` импортируют account secret и полные Turbo,
-PQ/security и Stealth параметры из Remnawave.
+PQ/security и Stealth параметры из Remnawave. Также поддерживается прямой
+импорт ALX-outbound из полного Xray JSON, если панель выбрала этот формат.
 
 Workflow `build-aetherlinkx-client-android.yml` собирает собственный
 `libv2ray.aar` из Xray-core 26.7.28 с ALX patch, а затем APK. Workflow
 `build-aetherlinkx-client-linux.yml` упаковывает Linux-клиент с готовым
 `xray-aetherlinkx`. Исходная оболочка основана на xStarRay и сохраняет GPLv3.
+Android и Linux проходят отдельные CI-сборки. iOS-код пока является frontend-preview:
+до сборки собственного `LibXray.xcframework` он не считается ALX-совместимым.
 
 ## Remnawave
 

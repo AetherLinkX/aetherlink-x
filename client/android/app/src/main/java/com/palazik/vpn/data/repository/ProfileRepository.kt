@@ -1,6 +1,7 @@
 package com.palazik.vpn.data.repository
 
 import android.content.Context
+import com.palazik.vpn.data.SecurePreferences
 import com.palazik.vpn.data.codec.ProfileCodec
 import com.palazik.vpn.data.model.AppSettings
 import com.palazik.vpn.data.model.AppSettingsCodec
@@ -39,7 +40,7 @@ class ProfileRepository @Inject constructor(
     @Named("direct") private val directClient: OkHttpClient,
     @Named("proxy")  private val proxyClient:  OkHttpClient,
 ) {
-    private val prefs = context.getSharedPreferences("palazik_profiles", Context.MODE_PRIVATE)
+    private val prefs = SecurePreferences.get(context)
 
     private val _profiles      = MutableStateFlow<List<VpnProfile>>(emptyList())
     val profiles: StateFlow<List<VpnProfile>> = _profiles.asStateFlow()

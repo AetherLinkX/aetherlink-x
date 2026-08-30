@@ -14,6 +14,7 @@ lifecycleViewmodelCompose = "2.10.0"
 okhttp                 = "4.12.0"
 zxing                  = "3.5.3"
 workManager            = "2.11.2"
+securityCrypto         = "1.1.0"
 miuix                  = "0.9.1"
 junit                  = "4.13.2"
 junitAndroid           = "1.2.1"
@@ -41,6 +42,7 @@ androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle",        name
 okhttp                             = { group = "com.squareup.okhttp3",      name = "okhttp",                        version.ref = "okhttp" }
 zxing-core                         = { group = "com.google.zxing",          name = "core",                          version.ref = "zxing" }
 androidx-work-runtime-ktx          = { group = "androidx.work",             name = "work-runtime-ktx",              version.ref = "workManager" }
+androidx-security-crypto           = { group = "androidx.security",         name = "security-crypto",               version.ref = "securityCrypto" }
 miuix-ui                           = { group = "top.yukonga.miuix.kmp",     name = "miuix-ui-android",              version.ref = "miuix" }
 miuix-preference                   = { group = "top.yukonga.miuix.kmp",     name = "miuix-preference-android",      version.ref = "miuix" }
 androidx-material3-expressive      = { group = "androidx.compose.material3",name = "material3",                     version.ref = "material3Expressive" }

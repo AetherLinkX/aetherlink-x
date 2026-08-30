@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Build
 import com.palazik.vpn.data.model.AppSettings
 import com.palazik.vpn.data.model.AppSettingsCodec
+import com.palazik.vpn.data.SecurePreferences
 import com.palazik.vpn.data.repository.SubscriptionUpdateScheduler
 import com.palazik.vpn.service.palazikVpnService
 import com.palazik.vpn.widget.VpnWidgetProvider
@@ -47,7 +48,7 @@ class palazikVPNApp : Application() {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private fun loadAppSettings(): AppSettings {
-        val prefs = getSharedPreferences("palazik_profiles", Context.MODE_PRIVATE)
+        val prefs = SecurePreferences.get(this)
         return AppSettingsCodec.fromJson(prefs.getString(AppSettingsCodec.KEY, null))
     }
 }

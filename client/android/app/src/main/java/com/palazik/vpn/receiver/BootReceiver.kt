@@ -7,6 +7,7 @@ import android.net.VpnService
 import android.os.Build
 import android.util.Log
 import com.palazik.vpn.data.codec.ProfileCodec
+import com.palazik.vpn.data.SecurePreferences
 import com.palazik.vpn.service.palazikVpnService
 import org.json.JSONArray
 import org.json.JSONObject
@@ -18,7 +19,7 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        val prefs = context.getSharedPreferences("palazik_profiles", Context.MODE_PRIVATE)
+        val prefs = SecurePreferences.get(context)
         val settings = runCatching {
             JSONObject(prefs.getString("app_settings", null) ?: "{}")
                 .optBoolean("startOnBoot", false)

@@ -6,11 +6,10 @@
 ![Linux](https://img.shields.io/badge/Linux-x64-FCC624?logo=linux&logoColor=black)
 [![Protocol source](https://img.shields.io/badge/protocol-AetherLink%20X-00E5FF)](https://github.com/AetherLinkX/aetherlink-x)
 
-A clean, fast, open-source proxy client for Android, iOS and Linux. Built on Xray with a
-Jetpack Compose UI (Compose for Desktop on Linux), AetherLink X Client imports your servers,
-manages subscriptions, and runs a full-device tunnel — through Android's `VpnService`,
-iOS's Network Extension, or tun2socks on Linux. **No accounts, no telemetry** — your
-configs stay on your device.
+An open-source Xray client for Android and Linux with an iOS frontend under development.
+The Android and Linux builds bundle the patched AetherLink X core, import Remnawave
+subscriptions, and retain the standard Xray protocols. **No accounts and no telemetry** —
+your configs stay on your device.
 
 This is a modified GPLv3 build of [xStarRay](https://github.com/iliYF/xStarRay). The
 client was adapted for the experimental AetherLink X core on 2026-08-30. It remains
@@ -64,9 +63,9 @@ GPLv3; source and build workflow are included in this repository.
 
 ## Supported import schemes
 
-`vmess://` · `vless://` · `ss://` · `trojan://` · `hysteria2://` · `tuic://` ·
+`aetherlinkx://` · `vmess://` · `vless://` · `ss://` · `trojan://` · `hysteria2://` · `tuic://` ·
 `anytls://` · `wireguard://` · `socks5://` · `xhttp://` (VLESS + XHTTP transport) ·
-`httpproxy://` · `palazikvpn://`
+`httpproxy://` · `alxclient://` (legacy `palazikvpn://` backups are accepted)
 
 These open directly from a browser or file manager via deep links. Plain `http(s)://`
 links are treated as subscription URLs, not single profiles.
@@ -98,12 +97,9 @@ Some large runtime files are intentionally **not** committed and are fetched at 
 
 ### GitHub Actions (recommended)
 
-The **Android CI** workflow builds debug and release APKs from `android/` and uploads them as artifacts
-(run it from the **Actions** tab → **Android CI** → **Run workflow**). Per-ABI APKs are delivered to
-Telegram when `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` are set.
-
-To publish a GitHub Release, use the **Release** workflow instead: it builds Android, iOS and Linux
-in one run (Telegram delivery skipped) and attaches all artifacts to a release with your tag.
+The root **Build AetherLink X Client (Android)** workflow builds a patched
+`libv2ray.aar`, verifies that it contains the `aetherlinkx` module, runs tests and uploads
+debug/release APK artifacts. It can be started from the repository's **Actions** tab.
 
 The workflow downloads the runtime files, then builds ABI-split APKs (`arm64-v8a`,
 `armeabi-v7a`) plus a universal APK.
@@ -116,8 +112,8 @@ gradle wrapper --gradle-version=9.4.1
 chmod +x gradlew
 mkdir -p app/libs app/src/main/assets
 
-curl -fL -o app/libs/libv2ray.aar \
-  https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.5.3/libv2ray.aar
+# Build AndroidLibXrayLite against Xray-core v26.7.28 after applying
+# ../../patches/aetherlinkx-xray-core-v26.7.28.patch, then copy libv2ray.aar here.
 curl -fL -o app/src/main/assets/geoip.dat \
   https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
 curl -fL -o app/src/main/assets/geosite.dat \
@@ -126,12 +122,17 @@ curl -fL -o app/src/main/assets/geosite.dat \
 ./gradlew assembleDebug
 ```
 
-## Building — iOS
+## Building — iOS (frontend preview)
 
 The iOS app runs Xray-core in a `NEPacketTunnelProvider` via the
 [SwiftyXrayKit](https://github.com/dima-u/SwiftyXrayKit) Swift package (which bundles the
 `LibXray.xcframework` from [XTLS/libXray](https://github.com/XTLS/libXray)). Geo files are
 the same `.dat` files as Android, bundled into the extension.
+
+> The current iOS source can import and edit AetherLink X profiles, but its upstream
+> `LibXray.xcframework` does not contain the custom protocol yet. Do not distribute the
+> iOS build as ALX-capable until a patched XCFramework is built and its Network Extension
+> path passes a real-device connection test.
 
 The **iOS CI** workflow runs on a macOS runner: it installs XcodeGen, generates the Xcode
 project from `ios/project.yml`, builds an **unsigned** `.ipa`, and sends it to the maintainer
@@ -159,14 +160,9 @@ process, with two connection modes:
   bypasses the proxy server, handles DNS (systemd-resolved or resolv.conf), prevents IPv6
   leaks, and supports a kill switch. Privilege is requested per-connection with `pkexec`.
 
-The **Linux CI** workflow downloads the Gradle wrapper jar, geo files, the Xray core and
-tun2socks, builds a self-contained app image (bundled Java runtime — no dependencies to
-install), packages both a portable `palazikVPN-linux-x64.tar.gz` and a self-extracting
-installer `palazikVPN-linux-x64-installer.run`, uploads them as artifacts, uploads both
-to Pixeldrain, and sends the zipped installer to the project Telegram group (split into
-48 MB parts when it exceeds the bot's 50 MB cap — reassemble with
-`cat palazikVPN-linux-x64-installer.zip.part* > palazikVPN-linux-x64-installer.zip`),
-followed by the full commit message as a code block.
+The root **Build AetherLink X Client (Linux)** workflow bundles the tracked patched core,
+downloads tun2socks and geodata, runs the codec/config tests, creates a self-contained app
+image and uploads `aetherlink-x-client-linux-x64.tar.gz` as an artifact.
 
 ### Install (Arch Linux & any distro)
 
@@ -175,28 +171,13 @@ followed by the full commit message as a code block.
 cat palazikVPN-linux-x64-installer.zip.part* > palazikVPN-linux-x64-installer.zip
 unzip palazikVPN-linux-x64-installer.zip
 
-sh palazikVPN-linux-x64-installer.run   # asks for sudo, installs to /opt/palazikVPN
-palazikvpn                              # run it (also in your app launcher)
-```
-
-The installer creates the `palazikvpn` command, a desktop entry that also registers the
-`vmess://`, `vless://`, `ss://`, … deep-link handlers (click a share link in the browser to
-import it, like Android), and an uninstaller:
-
-```bash
-sudo /opt/palazikVPN/uninstall.sh       # profiles/settings in ~/.config/palazikVPN are kept
-```
-
-Prefer no installer? Use the portable archive instead:
-
-```bash
-sudo tar -C /opt -xzf palazikVPN-linux-x64.tar.gz
-/opt/palazikVPN/bin/palazikVPN
+tar -xzf aetherlink-x-client-linux-x64.tar.gz
+./AetherLinkXClient/bin/AetherLinkXClient
 ```
 
 TUN mode additionally needs `polkit` (for the `pkexec` prompt), which every desktop
 install already has. xray, tun2socks and the geo files are bundled inside the app image;
-if you delete them, the app falls back to `~/.local/share/palazikVPN/bin` and `$PATH`
+if you delete them, the app falls back to `~/.local/share/AetherLinkXClient/bin` and `$PATH`
 (e.g. `pacman -S xray`).
 
 ### Platform notes vs Android

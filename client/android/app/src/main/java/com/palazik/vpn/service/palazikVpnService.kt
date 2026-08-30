@@ -17,6 +17,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.palazik.vpn.R
+import com.palazik.vpn.data.SecurePreferences
 import com.palazik.vpn.data.model.AppSettings
 import com.palazik.vpn.data.model.SplitTunnelMode
 import com.palazik.vpn.data.model.VpnProfile
@@ -348,12 +349,12 @@ class palazikVpnService : VpnService() {
     }
 
     private fun loadAppSettings(): AppSettings {
-        val prefs = applicationContext.getSharedPreferences("palazik_profiles", Context.MODE_PRIVATE)
+        val prefs = SecurePreferences.get(applicationContext)
         return com.palazik.vpn.data.model.AppSettingsCodec.fromJson(prefs.getString("app_settings", null))
     }
 
     private fun loadActiveProfile(): VpnProfile? {
-        val prefs = applicationContext.getSharedPreferences("palazik_profiles", Context.MODE_PRIVATE)
+        val prefs = SecurePreferences.get(applicationContext)
         val links = runCatching { JSONArray(prefs.getString("profiles_links", "[]")) }.getOrNull() ?: return null
         val meta = runCatching { JSONArray(prefs.getString("profiles_meta", "[]")) }.getOrNull() ?: return null
         for (i in 0 until meta.length()) {
@@ -366,7 +367,7 @@ class palazikVpnService : VpnService() {
     }
 
     private fun loadProfileById(id: String): VpnProfile? {
-        val prefs = applicationContext.getSharedPreferences("palazik_profiles", Context.MODE_PRIVATE)
+        val prefs = SecurePreferences.get(applicationContext)
         val links = runCatching { JSONArray(prefs.getString("profiles_links", "[]")) }.getOrNull() ?: return null
         return loadProfileById(id, links)
     }

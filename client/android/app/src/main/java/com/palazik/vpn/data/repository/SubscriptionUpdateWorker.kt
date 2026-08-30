@@ -1,6 +1,7 @@
 package com.palazik.vpn.data.repository
 
 import android.content.Context
+import com.palazik.vpn.data.SecurePreferences
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.palazik.vpn.data.model.AppSettingsCodec
@@ -13,7 +14,7 @@ class SubscriptionUpdateWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        val prefs = applicationContext.getSharedPreferences("palazik_profiles", Context.MODE_PRIVATE)
+        val prefs = SecurePreferences.get(applicationContext)
         val settings = AppSettingsCodec.fromJson(prefs.getString(AppSettingsCodec.KEY, null))
         if (!settings.autoUpdateSubscriptions) return Result.success()
 
