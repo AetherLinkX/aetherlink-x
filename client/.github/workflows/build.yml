@@ -1,0 +1,265 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'android/**'
+      - '.github/workflows/build.yml'
+  # Called by release.yml — builds without spamming Telegram.
+  workflow_call:
+    inputs:
+      skip_telegram:
+        description: "Skip the Telegram delivery step"
+        type: boolean
+        default: false
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    # The Gradle project now lives in android/ — run every shell step from there.
+    defaults:
+      run:
+        working-directory: android
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
+      # Signing — exposed via env so `if:` step conditions can reference them
+      # (the `secrets` context is NOT allowed inside step `if:` expressions).
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Java ────────────────────────────────────────────────────────────────
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      # ── Gradle ──────────────────────────────────────────────────────────────
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Regenerate Gradle wrapper
+        run: |
+          gradle wrapper --gradle-version=9.4.1
+          chmod +x gradlew
+
+      # ── Android SDK ─────────────────────────────────────────────────────────
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
+
+      # ── ccache ──────────────────────────────────────────────────────────────
+      - name: Install ccache
+        run: sudo apt-get install -y ccache
+
+      - name: Cache ccache store
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ hashFiles('android/app/src/main/cpp/**') }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ hashFiles('android/app/src/main/cpp/**') }}-
+            ccache-${{ runner.os }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --max-size=2G
+          ccache --zero-stats
+          echo "CCACHE_EXEC=$(which ccache)" >> $GITHUB_ENV
+          echo "NDK_CCACHE=$(which ccache)"  >> $GITHUB_ENV
+
+      # ── Download libs + geodata (baked into APK assets) ─────────────────────
+      - name: Download libs and geo files
+        run: |
+          mkdir -p app/libs app/src/main/assets
+
+          curl -fL --retry 3 -o app/libs/libv2ray.aar \
+            https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.5.3/libv2ray.aar
+
+          curl -fL --retry 3 -o app/src/main/assets/geoip.dat \
+            https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
+
+          curl -fL --retry 3 -o app/src/main/assets/geosite.dat \
+            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
+
+          for file in app/libs/libv2ray.aar app/src/main/assets/geoip.dat app/src/main/assets/geosite.dat; do
+            if [ ! -s "$file" ]; then
+              echo "❌ $file is missing or empty"
+              exit 1
+            fi
+            echo "✓ $file ($(du -h $file | cut -f1))"
+          done
+
+      - name: Pre-build verification
+        run: |
+          echo "=== Assets ===" && ls -lh app/src/main/assets/
+          echo "=== Libs ===" && ls -lh app/libs/
+
+      # ── Build ───────────────────────────────────────────────────────────────
+      - name: Build Debug APKs
+        run: ./gradlew assembleDebug --no-daemon --no-configuration-cache --stacktrace
+
+      # Decode the base64 keystore from secrets (no-op if the secret is absent →
+      # the release build stays unsigned, same as before). KEYSTORE_FILE is exported
+      # so the next step's Gradle build picks up the signing config.
+      - name: Decode release keystore
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build Release APKs
+        run: ./gradlew assembleRelease --no-daemon --no-configuration-cache --stacktrace
+
+      - name: Print ccache stats
+        run: ccache --show-stats
+
+      # ── Verify ──────────────────────────────────────────────────────────────
+      - name: List produced APKs and sizes
+        run: |
+          echo "=== Debug APKs ==="
+          find app/build/outputs/apk/debug -name "*.apk" -exec sh -c 'echo "$(du -h "$1" | cut -f1)  $1"' _ {} \;
+          echo "=== Release APKs ==="
+          find app/build/outputs/apk/release -name "*.apk" -exec sh -c 'echo "$(du -h "$1" | cut -f1)  $1"' _ {} \;
+
+      # ── GitHub Artifacts ────────────────────────────────────────────────────
+      - name: Upload Debug APKs to Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: palazikVPN-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      - name: Upload Release APKs to Actions
+        uses: actions/upload-artifact@v4
+        with:
+          # Signed when KEYSTORE_BASE64 (+ passwords) secrets are configured; otherwise
+          # AGP still emits *-release-unsigned.apk and this captures both.
+          name: palazikVPN-release
+          path: android/app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      # ── Telegram ────────────────────────────────────────────────────────────
+      - name: Send release APK to Telegram
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' && inputs.skip_telegram != true }}
+        env:
+          # Passed via env (not shell interpolation) so quotes/backslashes in the
+          # commit message can't break or inject into the script.
+          RAW_COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # HTML parse mode: predictable, and the commit message survives intact
+          # inside <pre> once &/</> are escaped (legacy Markdown chokes on _ * [).
+          esc() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+          COMMIT_MSG="${RAW_COMMIT_MSG:-$(git log -1 --pretty=%B)}"
+
+          # Prefer arm64 (~40MB), well under Telegram's 50MB limit.
+          # Fall back to armeabi-v7a, then universal as last resort.
+          APK=$(find app/build/outputs/apk/release -name "*arm64*.apk" | head -1)
+          [ -z "$APK" ] && APK=$(find app/build/outputs/apk/release -name "*armeabi*.apk" | head -1)
+          [ -z "$APK" ] && APK=$(find app/build/outputs/apk/release -name "*universal*.apk" | head -1)
+
+          if [ -z "$APK" ]; then
+            echo "❌ No release APK found"
+            exit 1
+          fi
+
+          APK_SIZE=$(du -h "$APK" | cut -f1)
+          APK_NAME=$(basename "$APK")
+
+          # Zip only if over 45MB
+          APK_BYTES=$(stat -c%s "$APK")
+          if [ "$APK_BYTES" -gt 47185920 ]; then
+            ZIP_PATH="/tmp/${APK_NAME%.apk}.zip"
+            zip -j "$ZIP_PATH" "$APK"
+            SEND_FILE="$ZIP_PATH"
+            SEND_SIZE=$(du -h "$ZIP_PATH" | cut -f1)
+            SIZE_NOTE="${APK_SIZE} → zipped: ${SEND_SIZE}"
+          else
+            SEND_FILE="$APK"
+            SIZE_NOTE="${APK_SIZE}"
+          fi
+
+          SIGNED_NOTE="signed"
+          case "$APK_NAME" in *unsigned*) SIGNED_NOTE="unsigned" ;; esac
+
+          CAPTION=$(printf '%s\n' \
+            "<b>palazikVPN</b> — Release (${SIGNED_NOTE})" \
+            "Branch: <code>${{ github.ref_name }}</code>" \
+            "Commit: <code>${SHORT_SHA}</code>" \
+            "APK: <code>${APK_NAME}</code> ${SIZE_NOTE}" \
+            "Run: <a href=\"${RUN_URL}\">#${{ github.run_number }}</a>")
+
+          # Captions are hard-capped at 1024 chars: include the commit message
+          # (as a code block) when it fits, otherwise send it right after as its
+          # own message(s) — sendMessage allows 4096 chars.
+          WITH_MSG="${CAPTION}"$'\n'"<pre>$(esc "$COMMIT_MSG")</pre>"
+          if [ "${#WITH_MSG}" -le 1000 ]; then
+            CAPTION="$WITH_MSG"
+            COMMIT_MSG=""
+          fi
+
+          CURL_ARGS=(
+            -s
+            -X POST
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument"
+            -F "chat_id=${TELEGRAM_CHAT_ID}"
+            -F "document=@${SEND_FILE}"
+            --form-string "caption=${CAPTION}"
+            --form-string "parse_mode=HTML"
+          )
+          if [ -n "${TELEGRAM_TOPIC_ID}" ]; then
+            CURL_ARGS+=(-F "message_thread_id=${TELEGRAM_TOPIC_ID}")
+          fi
+
+          RESPONSE=$(curl "${CURL_ARGS[@]}")
+
+          if echo "$RESPONSE" | grep -q '"ok":true'; then
+            echo "✓ Sent ${APK_NAME} (${SIZE_NOTE})"
+          else
+            echo "❌ Failed — $RESPONSE"
+            exit 1
+          fi
+
+          # Full commit message as code-formatted follow-up message(s) —
+          # sendMessage allows 4096 chars; chunk longer messages.
+          while [ -n "$COMMIT_MSG" ]; do
+            CHUNK="$(esc "${COMMIT_MSG:0:3500}")"
+            COMMIT_MSG="${COMMIT_MSG:3500}"
+            MSG_ARGS=(
+              -s
+              -X POST
+              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
+              -d "chat_id=${TELEGRAM_CHAT_ID}"
+              --data-urlencode "text=<pre>${CHUNK}</pre>"
+              -d "parse_mode=HTML"
+            )
+            if [ -n "${TELEGRAM_TOPIC_ID}" ]; then
+              MSG_ARGS+=(-d "message_thread_id=${TELEGRAM_TOPIC_ID}")
+            fi
+            MSG_RESP=$(curl "${MSG_ARGS[@]}")
+            if echo "$MSG_RESP" | grep -q '"ok":true'; then
+              echo "✓ Sent commit message chunk"
+            else
+              echo "⚠ Commit message send failed — $MSG_RESP"
+            fi
+          done

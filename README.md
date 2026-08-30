@@ -1,6 +1,6 @@
 # AetherLink X — автономный комплект
 
-Эта папка содержит всё, что относится к новому протоколу: исходники, точки интеграции с Xray-core, переносимый patch, документацию, конфигурации, тесты, готовые Windows/Linux-бинарники и интеграцию с Remnawave Node.
+Эта папка содержит всё, что относится к новому протоколу: исходники, точки интеграции с Xray-core, переносимый patch, документацию, конфигурации, тесты, готовые Windows/Linux-бинарники, интеграцию с Remnawave Node и исходники собственного клиента.
 
 Готовый архив для переноса: `dist/AetherLink-X-0.4.0-experimental.zip`; его SHA-256 находится в одноимённом `.sha256` файле.
 
@@ -14,6 +14,7 @@
   docs/               архитектурный анализ и проектирование
   tools/              установка, сборка, проверка и генерация конфигов
   remnawave/          custom Node image, deploy script и Config Profile
+  client/             AetherLink X Client для Android/iOS/Linux (GPLv3)
   .github/workflows/  сборка multi-arch Remnawave Backend и Node в GHCR
   dist/               готовые Windows/Linux-бинарники и архив
   manifest.json       версия, совместимость и результаты проверок
@@ -66,6 +67,18 @@ Installer сначала выполняет `git apply --check`. Patch прим�
 - `source/proxy/aetherlinkx/README.md` — wire 1.1 и JSON-поля;
 - `source/proxy/aetherlinkx/SECURITY.md` — threat model и checklist;
 - `source/proxy/aetherlinkx/BENCHMARKS.md` — baseline производительности.
+
+## AetherLink X Client
+
+Клиент находится в `client/` и поддерживает AetherLink X, VLESS, VMess,
+Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS5 и HTTP.
+ALX-ссылки `aetherlinkx://` импортируют account secret и полные Turbo,
+PQ/security и Stealth параметры из Remnawave.
+
+Workflow `build-aetherlinkx-client-android.yml` собирает собственный
+`libv2ray.aar` из Xray-core 26.7.28 с ALX patch, а затем APK. Workflow
+`build-aetherlinkx-client-linux.yml` упаковывает Linux-клиент с готовым
+`xray-aetherlinkx`. Исходная оболочка основана на xStarRay и сохраняет GPLv3.
 
 ## Remnawave
 

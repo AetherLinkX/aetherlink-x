@@ -1,0 +1,55 @@
+name: AetherLinkXClient
+options:
+  bundleIdPrefix: io.aetherlinkx.client
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+
+packages:
+  SwiftyXrayKit:
+    url: https://github.com/dima-u/SwiftyXrayKit
+    from: "2.0.0"
+
+targets:
+  palazikVPN:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Shared
+    # Use the committed Info.plist / entitlements as-is — do NOT let XcodeGen
+    # generate them (that would drop NSExtension + the NE/App-Group entitlements).
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.aetherlinkx.client
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/palazikVPN.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+    dependencies:
+      - target: PacketTunnel
+
+  PacketTunnel:
+    type: app-extension
+    platform: iOS
+    sources:
+      - PacketTunnel
+      - Shared
+      - Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.aetherlinkx.client.PacketTunnel
+        INFOPLIST_FILE: PacketTunnel/Info.plist
+        CODE_SIGN_ENTITLEMENTS: PacketTunnel/PacketTunnel.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+    dependencies:
+      - package: SwiftyXrayKit
+        product: SwiftyXrayKit

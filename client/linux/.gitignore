@@ -1,0 +1,14 @@
+# Build outputs
+build/
+.gradle/
+.kotlin/
+
+# The wrapper jar is downloaded by CI / gradle, never committed
+gradle/wrapper/gradle-wrapper.jar
+
+# Runtime assets downloaded by CI (xray, tun2socks, geo files)
+/resources/
+
+# IDE
+.idea/
+*.iml

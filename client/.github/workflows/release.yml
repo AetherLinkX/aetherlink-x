@@ -1,0 +1,70 @@
+name: Release
+
+# Manual-only: builds Android + iOS + Linux in one go (Telegram delivery
+# skipped) and optionally publishes everything as a GitHub Release.
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag, e.g. v2.0.2"
+        type: string
+        required: true
+      create_release:
+        description: "Create the GitHub Release after building"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Android
+    uses: ./.github/workflows/build.yml
+    with:
+      skip_telegram: true
+    secrets: inherit
+
+  ios:
+    name: iOS
+    uses: ./.github/workflows/ios.yml
+    with:
+      skip_telegram: true
+    secrets: inherit
+
+  linux:
+    name: Linux
+    uses: ./.github/workflows/linux.yml
+    with:
+      skip_telegram: true
+    secrets: inherit
+
+  release:
+    name: Publish GitHub Release
+    if: ${{ inputs.create_release }}
+    needs: [android, ios, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Artifacts uploaded by the called workflows belong to this same run.
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -lhR dist
+          FILES=$(find dist -type f \( -name "*.apk" -o -name "*.ipa" -o -name "*.run" -o -name "*.tar.gz" \) ! -name "*debug*")
+          if [ -z "$FILES" ]; then echo "❌ No build artifacts found"; exit 1; fi
+          gh release create "${{ inputs.tag_name }}" \
+            --title "palazikVPN ${{ inputs.tag_name }}" \
+            --generate-notes \
+            $FILES

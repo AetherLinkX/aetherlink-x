@@ -1,0 +1,109 @@
+name: Build AetherLink X Client (Android)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "client/android/**"
+      - "source/proxy/aetherlinkx/**"
+      - "integration/**"
+      - "patches/aetherlinkx-xray-core-v26.7.28.patch"
+      - ".github/workflows/build-aetherlinkx-client-android.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      XRAY_TAG: v26.7.28
+      ANDROIDLIB_REPO: https://github.com/2dust/AndroidLibXrayLite.git
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.0"
+          cache: false
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          sdkmanager "ndk;29.0.14206865"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - name: Build ALX-capable Android core
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$RUNNER_TEMP/Xray-core"
+          WRAPPER="$RUNNER_TEMP/AndroidLibXrayLite"
+          git clone --depth 1 --branch "$XRAY_TAG" https://github.com/XTLS/Xray-core.git "$CORE"
+          git -C "$CORE" apply --check "$GITHUB_WORKSPACE/patches/aetherlinkx-xray-core-v26.7.28.patch"
+          git -C "$CORE" apply "$GITHUB_WORKSPACE/patches/aetherlinkx-xray-core-v26.7.28.patch"
+          git clone --depth 1 "$ANDROIDLIB_REPO" "$WRAPPER"
+          cd "$WRAPPER"
+          go mod edit -replace "github.com/xtls/xray-core=$CORE"
+          go mod tidy
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          "$(go env GOPATH)/bin/gomobile" init
+          "$(go env GOPATH)/bin/gomobile" bind -v -androidapi 24 -trimpath \
+            -ldflags='-s -w -buildid= -checklinkname=0' ./
+          install -d "$GITHUB_WORKSPACE/client/android/app/libs"
+          install -m 0644 libv2ray.aar "$GITHUB_WORKSPACE/client/android/app/libs/libv2ray.aar"
+          install -m 0644 libv2ray-sources.jar "$GITHUB_WORKSPACE/client/android/app/libs/libv2ray-sources.jar"
+
+      - name: Verify ALX module is inside the AAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -p client/android/app/libs/libv2ray.aar jni/arm64-v8a/libgojni.so \
+            | strings | grep -F -m1 "aetherlinkx" >/dev/null
+
+      - name: Download GeoData
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p client/android/app/src/main/assets
+          curl -fL --retry 3 -o client/android/app/src/main/assets/geoip.dat \
+            https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
+          curl -fL --retry 3 -o client/android/app/src/main/assets/geosite.dat \
+            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Generate Gradle wrapper
+        working-directory: client/android
+        run: gradle wrapper --gradle-version=9.4.1
+
+      - name: Test and assemble
+        working-directory: client/android
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest assembleDebug assembleRelease --no-daemon --stacktrace
+
+      - name: Upload APKs and core
+        uses: actions/upload-artifact@v4
+        with:
+          name: aetherlink-x-client-android
+          retention-days: 30
+          path: |
+            client/android/app/build/outputs/apk/debug/*.apk
+            client/android/app/build/outputs/apk/release/*.apk
+            client/android/app/libs/libv2ray.aar

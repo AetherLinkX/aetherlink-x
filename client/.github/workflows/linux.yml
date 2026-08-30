@@ -1,0 +1,314 @@
+name: Linux CI
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'linux/**'
+      - '.github/workflows/linux.yml'
+  # Called by release.yml — builds without spamming Telegram.
+  workflow_call:
+    inputs:
+      skip_telegram:
+        description: "Skip the Telegram delivery step"
+        type: boolean
+        default: false
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Linux app
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      PIXELDRAIN_API_KEY: ${{ secrets.PIXELDRAIN_API_KEY }}
+      # Linux builds go to the same project group as Android, into the Linux topic.
+      TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TG_TOPIC_ID: "145"
+      # Staging DM for multi-part uploads: Telegram caps one request at 50 MB, so
+      # parts are uploaded here one by one, then posted to the group as a single
+      # media-group message by file_id (and the staging messages get deleted).
+      TG_STAGING_CHAT_ID: "6939377982"
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Java ────────────────────────────────────────────────────────────────
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The wrapper jar is never committed — fetch the one matching
+      # gradle/wrapper/gradle-wrapper.properties (9.4.1).
+      - name: Download gradle-wrapper.jar
+        run: |
+          curl -fL --retry 3 -o gradle/wrapper/gradle-wrapper.jar \
+            https://raw.githubusercontent.com/gradle/gradle/v9.4.1/gradle/wrapper/gradle-wrapper.jar
+
+      # ── Runtime assets bundled into the app (resources/linux-x64) ───────────
+      # Geo files are the same .dat sources Android and iOS use.
+      - name: Download geo files
+        run: |
+          mkdir -p resources/linux-x64
+          curl -fL --retry 3 -o resources/linux-x64/geoip.dat \
+            https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
+          curl -fL --retry 3 -o resources/linux-x64/geosite.dat \
+            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
+
+      - name: Download xray core
+        run: |
+          curl -fL --retry 3 -o /tmp/xray.zip \
+            https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
+          unzip -o /tmp/xray.zip -d /tmp/xray
+          install -m 755 /tmp/xray/xray resources/linux-x64/xray
+          resources/linux-x64/xray version
+
+      - name: Download tun2socks
+        run: |
+          curl -fL --retry 3 -o /tmp/tun2socks.zip \
+            https://github.com/xjasonlyu/tun2socks/releases/latest/download/tun2socks-linux-amd64.zip
+          unzip -o /tmp/tun2socks.zip -d /tmp/tun2socks
+          install -m 755 "$(find /tmp/tun2socks -type f -name 'tun2socks*' | head -1)" \
+            resources/linux-x64/tun2socks
+
+      # ── Build ────────────────────────────────────────────────────────────────
+      - name: Build distributable
+        run: ./gradlew --no-daemon createReleaseDistributable
+
+      - name: Package tar.gz
+        run: |
+          APP_DIR=$(find build/compose/binaries -maxdepth 3 -type d -name "palazikVPN" | head -1)
+          if [ -z "$APP_DIR" ]; then echo "❌ No app image produced"; exit 1; fi
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+          tar -C "$(dirname "$APP_DIR")" -czf palazikVPN-linux-x64.tar.gz "$(basename "$APP_DIR")"
+          ls -lh palazikVPN-linux-x64.tar.gz
+
+      # Self-extracting installer: extracts the app image and runs installer/install.sh
+      # (installs to /opt, creates the `palazikvpn` command, desktop entry with
+      # proxy-scheme deep links, and an uninstaller).
+      - name: Build installer (.run)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q makeself
+          STAGE=$(mktemp -d)
+          cp -r "$APP_DIR" "$STAGE/palazikVPN"
+          install -m 755 installer/install.sh "$STAGE/install.sh"
+          # xz compresses the bundled runtime far better than gzip — smaller
+          # download and fewer Telegram parts.
+          makeself --xz --complevel 9 "$STAGE" palazikVPN-linux-x64-installer.run \
+            "palazikVPN Linux installer" ./install.sh
+          ls -lh palazikVPN-linux-x64-installer.run
+
+      # Full-size downloads without Telegram's 50 MB cap. Links land in GITHUB_ENV
+      # and are included in the Telegram messages below.
+      - name: Upload to Pixeldrain
+        if: ${{ env.PIXELDRAIN_API_KEY != '' }}
+        run: |
+          upload() {
+            curl -sf -T "$1" -u ":${PIXELDRAIN_API_KEY}" "https://pixeldrain.com/api/file/" \
+              | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4
+          }
+          INSTALLER_ID=$(upload palazikVPN-linux-x64-installer.run) || true
+          TARGZ_ID=$(upload palazikVPN-linux-x64.tar.gz) || true
+          if [ -n "$INSTALLER_ID" ]; then
+            echo "PIXELDRAIN_INSTALLER_URL=https://pixeldrain.com/u/${INSTALLER_ID}" >> "$GITHUB_ENV"
+            echo "✓ Installer: https://pixeldrain.com/u/${INSTALLER_ID}"
+          else
+            echo "❌ Pixeldrain installer upload failed"; exit 1
+          fi
+          if [ -n "$TARGZ_ID" ]; then
+            echo "PIXELDRAIN_TARGZ_URL=https://pixeldrain.com/u/${TARGZ_ID}" >> "$GITHUB_ENV"
+            echo "✓ tar.gz: https://pixeldrain.com/u/${TARGZ_ID}"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: palazikVPN-linux-x64
+          path: |
+            linux/palazikVPN-linux-x64.tar.gz
+            linux/palazikVPN-linux-x64-installer.run
+          retention-days: 30
+
+      # Telegram bots cap uploads at 50 MB and captions at 1024 chars. The installer
+      # is zipped, split into 48 MB parts when needed (reassemble with:
+      # cat palazikVPN-linux-x64-installer.zip.part* > palazikVPN-linux-x64-installer.zip),
+      # and the FULL commit message goes as separate code-formatted message(s).
+      - name: Send build to Telegram group
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' && inputs.skip_telegram != true }}
+        env:
+          # Passed via env (not shell interpolation) so quotes/backslashes in the
+          # commit message can't break or inject into the script.
+          RAW_COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          send_doc() {
+            local FILE="$1" CAPTION="$2"
+            RESP=$(curl -s -X POST \
+              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+              -F "chat_id=${TG_CHAT_ID}" \
+              -F "message_thread_id=${TG_TOPIC_ID}" \
+              -F "document=@${FILE}" \
+              --form-string "caption=${CAPTION}" \
+              --form-string "parse_mode=HTML")
+            if echo "$RESP" | grep -q '"ok":true'; then
+              echo "✓ Sent ${FILE}"
+            else
+              echo "❌ Telegram failed — $RESP"
+              exit 1
+            fi
+          }
+
+          send_text() {
+            RESP=$(curl -s -X POST \
+              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TG_CHAT_ID}" \
+              -d "message_thread_id=${TG_TOPIC_ID}" \
+              --data-urlencode "text=$1" \
+              -d "parse_mode=HTML")
+            if echo "$RESP" | grep -q '"ok":true'; then
+              echo "✓ Sent message"
+            else
+              echo "⚠ Message send failed — $RESP"
+            fi
+          }
+
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # HTML parse mode: predictable, and the commit message survives intact
+          # inside <pre> once &/</> are escaped (legacy Markdown chokes on _ * [).
+          esc() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+          COMMIT_MSG="${RAW_COMMIT_MSG:-$(git -C "$GITHUB_WORKSPACE" log -1 --pretty=%B)}"
+
+          ZIP=palazikVPN-linux-x64-installer.zip
+          zip -q -9 -j "$ZIP" palazikVPN-linux-x64-installer.run
+          SIZE=$(stat -c%s "$ZIP")
+          ZIP_SIZE=$(du -h "$ZIP" | cut -f1)
+          LIMIT=$((49 * 1024 * 1024))
+
+          # Append the commit message (as a code block) to a caption when the
+          # 1024-char cap allows; returns via the CAPTION/COMMIT_MSG globals.
+          merge_commit_msg() {
+            local WITH_MSG="${CAPTION}"$'\n'"<pre>$(esc "$COMMIT_MSG")</pre>"
+            if [ "${#WITH_MSG}" -le 1000 ]; then
+              CAPTION="$WITH_MSG"
+              COMMIT_MSG=""
+            fi
+          }
+
+          if [ "$SIZE" -le "$LIMIT" ]; then
+            CAPTION=$(printf '%s\n' \
+              "<b>palazikVPN</b> — Linux x64 installer" \
+              "Branch: <code>${{ github.ref_name }}</code>" \
+              "Commit: <code>${SHORT_SHA}</code>" \
+              "File: <code>${ZIP}</code> ${ZIP_SIZE}" \
+              "Install: unzip, then <code>sh palazikVPN-linux-x64-installer.run</code>" \
+              "Run: <a href=\"${RUN_URL}\">#${{ github.run_number }}</a>")
+            merge_commit_msg
+            send_doc "$ZIP" "$CAPTION"
+          else
+            # One single message for all parts: a media-group "album" of documents.
+            split -b 48M -d "$ZIP" "${ZIP}.part"
+            CAPTION=$(printf '%s\n' \
+              "<b>palazikVPN</b> — Linux x64 installer" \
+              "Branch: <code>${{ github.ref_name }}</code>" \
+              "Commit: <code>${SHORT_SHA}</code>" \
+              "File: <code>${ZIP}</code> ${ZIP_SIZE}" \
+              "Install: <code>cat ${ZIP}.part* &gt; ${ZIP}</code>, unzip, then <code>sh palazikVPN-linux-x64-installer.run</code>" \
+              "Run: <a href=\"${RUN_URL}\">#${{ github.run_number }}</a>")
+            merge_commit_msg
+            CAPTION_JSON=$(printf '%s' "$CAPTION" | jq -Rs .)
+
+            # Step 1: upload each part to the staging DM (one request each stays
+            # under the 50 MB per-request cap) and collect file_ids.
+            FILE_IDS=()
+            STAGE_MSG_IDS=()
+            for PART in ${ZIP}.part*; do
+              RESP=$(curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+                -F "chat_id=${TG_STAGING_CHAT_ID}" \
+                -F "document=@${PART}" \
+                -F "disable_notification=true")
+              if ! echo "$RESP" | grep -q '"ok":true'; then
+                echo "❌ Staging upload failed (press Start on the bot once) — $RESP"
+                exit 1
+              fi
+              FILE_IDS+=("$(echo "$RESP" | jq -r '.result.document.file_id')")
+              STAGE_MSG_IDS+=("$(echo "$RESP" | jq -r '.result.message_id')")
+              echo "✓ Staged ${PART}"
+            done
+
+            # Step 2: post all parts to the group as ONE media-group message,
+            # referencing the uploaded file_ids (caption lives on the last item).
+            PARTS=${#FILE_IDS[@]}
+            MEDIA="["
+            i=0
+            for FID in "${FILE_IDS[@]}"; do
+              i=$((i + 1))
+              [ "$i" -gt 1 ] && MEDIA="${MEDIA},"
+              if [ "$i" -eq "$PARTS" ]; then
+                MEDIA="${MEDIA}{\"type\":\"document\",\"media\":\"${FID}\",\"caption\":${CAPTION_JSON},\"parse_mode\":\"HTML\"}"
+              else
+                MEDIA="${MEDIA}{\"type\":\"document\",\"media\":\"${FID}\"}"
+              fi
+            done
+            MEDIA="${MEDIA}]"
+
+            RESP=$(curl -s -X POST \
+              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMediaGroup" \
+              -d "chat_id=${TG_CHAT_ID}" \
+              -d "message_thread_id=${TG_TOPIC_ID}" \
+              --data-urlencode "media=${MEDIA}")
+            if echo "$RESP" | grep -q '"ok":true'; then
+              echo "✓ Sent ${PARTS} parts as one media-group message"
+            else
+              echo "❌ Telegram failed — $RESP"
+              exit 1
+            fi
+
+            # Step 3: clean the staging DM.
+            for MID in "${STAGE_MSG_IDS[@]}"; do
+              DEL_RESP=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteMessage" \
+                -d "chat_id=${TG_STAGING_CHAT_ID}" -d "message_id=${MID}")
+              if echo "$DEL_RESP" | grep -q '"ok":true'; then
+                echo "✓ Deleted staging message ${MID}"
+              else
+                echo "⚠ Could not delete staging message ${MID} — $DEL_RESP"
+              fi
+            done
+          fi
+
+          # The PM gets just the single-file Pixeldrain link (no parts to glue).
+          if [ -n "${PIXELDRAIN_INSTALLER_URL:-}" ]; then
+            PM_TEXT=$(printf '%s\n' \
+              "<b>palazikVPN</b> — Linux x64 installer (<code>${SHORT_SHA}</code>)" \
+              "Download: ${PIXELDRAIN_INSTALLER_URL}")
+            [ -n "${PIXELDRAIN_TARGZ_URL:-}" ] && PM_TEXT="${PM_TEXT}"$'\n'"Portable: ${PIXELDRAIN_TARGZ_URL}"
+            PM_RESP=$(curl -s -X POST \
+              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TG_STAGING_CHAT_ID}" \
+              --data-urlencode "text=${PM_TEXT}" \
+              -d "parse_mode=HTML")
+            if echo "$PM_RESP" | grep -q '"ok":true'; then
+              echo "✓ Sent Pixeldrain link to PM"
+            else
+              echo "⚠ PM link send failed — $PM_RESP"
+            fi
+          fi
+
+          # Only commit messages too big for any caption end up here, as
+          # code-formatted message(s) — sendMessage allows 4096 chars.
+          while [ -n "$COMMIT_MSG" ]; do
+            CHUNK="$(esc "${COMMIT_MSG:0:3500}")"
+            COMMIT_MSG="${COMMIT_MSG:3500}"
+            send_text "<pre>${CHUNK}</pre>"
+          done

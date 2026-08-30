@@ -34,7 +34,10 @@
     "remnawaveManagedNode322Dockerfile": "remnawave/Dockerfile.node-managed-3.2.2",
     "remnawaveManagedNode322Patch": "remnawave/node-managed-alx-3.2.2.patch",
     "remnawaveCompatibilityMatrix": "remnawave/compatibility-matrix.json",
-    "remnawaveWorkflow": ".github/workflows/build-remnawave-images.yml"
+    "remnawaveWorkflow": ".github/workflows/build-remnawave-images.yml",
+    "clientSource": "client",
+    "androidClientWorkflow": ".github/workflows/build-aetherlinkx-client-android.yml",
+    "linuxClientWorkflow": ".github/workflows/build-aetherlinkx-client-linux.yml"
   },
   "artifacts": {
     "binarySha256": "ACD04EEA5394E65A3DB0208CB72BCC36433501CEDBA6A9687D16A02C2424B304",

@@ -1,0 +1,159 @@
+name: iOS CI
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  # Called by release.yml — builds without spamming Telegram.
+  workflow_call:
+    inputs:
+      skip_telegram:
+        description: "Skip the Telegram delivery step"
+        type: boolean
+        default: false
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    # macos-26 carries Xcode 26 + the current iOS SDK.
+    runs-on: macos-26
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      # iOS builds go to the same project group as Android, into the iOS topic.
+      TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TG_TOPIC_ID: "126"
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -z "$XCODE" ] && XCODE=/Applications/Xcode.app
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Ensure iOS SDK
+        run: |
+          sudo xcodebuild -runFirstLaunch || true
+          xcodebuild -downloadPlatform iOS || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # Geo files are the same .dat used on Android; bundled into the tunnel extension.
+      - name: Download geo files
+        run: |
+          mkdir -p Resources
+          curl -fL --retry 3 -o Resources/geoip.dat \
+            https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
+          curl -fL --retry 3 -o Resources/geosite.dat \
+            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Resolve Swift packages
+        run: xcodebuild -project palazikVPN.xcodeproj -resolvePackageDependencies
+
+      - name: Build (unsigned)
+        run: |
+          xcodebuild \
+            -project palazikVPN.xcodeproj \
+            -scheme palazikVPN \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
+
+      - name: Package IPA
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP" ]; then echo "❌ No .app produced"; exit 1; fi
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qr palazikVPN-unsigned.ipa Payload
+          ls -lh palazikVPN-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: palazikVPN-ios-unsigned
+          path: ios/palazikVPN-unsigned.ipa
+          retention-days: 30
+
+      - name: Send IPA to Telegram group
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' && inputs.skip_telegram != true }}
+        env:
+          # Passed via env (not shell interpolation) so quotes/backslashes in the
+          # commit message can't break or inject into the script.
+          RAW_COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # HTML parse mode: predictable, and the commit message survives intact
+          # inside <pre> once &/</> are escaped (legacy Markdown chokes on _ * [).
+          esc() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+          COMMIT_MSG="${RAW_COMMIT_MSG:-$(git log -1 --pretty=%B)}"
+
+          IPA_SIZE=$(du -h palazikVPN-unsigned.ipa | cut -f1 | tr -d ' ')
+
+          # Same layout as the Android release message.
+          CAPTION=$(printf '%s\n' \
+            "<b>palazikVPN</b> — iOS (unsigned)" \
+            "Branch: <code>${{ github.ref_name }}</code>" \
+            "Commit: <code>${SHORT_SHA}</code>" \
+            "IPA: <code>palazikVPN-unsigned.ipa</code> ${IPA_SIZE}" \
+            "Run: <a href=\"${RUN_URL}\">#${{ github.run_number }}</a>" \
+            "Sideload via AltStore/Sideloadly; the VPN needs your own Apple signing + Network Extension entitlement.")
+
+          # Captions are hard-capped at 1024 chars: include the commit message
+          # (as a code block) when it fits, otherwise send it right after as its
+          # own message(s) — sendMessage allows 4096 chars.
+          WITH_MSG="${CAPTION}"$'\n'"<pre>$(esc "$COMMIT_MSG")</pre>"
+          if [ "${#WITH_MSG}" -le 1000 ]; then
+            CAPTION="$WITH_MSG"
+            COMMIT_MSG=""
+          fi
+
+          RESP=$(curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+            -F "chat_id=${TG_CHAT_ID}" \
+            -F "message_thread_id=${TG_TOPIC_ID}" \
+            -F "document=@palazikVPN-unsigned.ipa" \
+            --form-string "caption=${CAPTION}" \
+            --form-string "parse_mode=HTML")
+          if echo "$RESP" | grep -q '"ok":true'; then
+            echo "✓ Sent IPA to group"
+          else
+            echo "❌ Telegram failed — $RESP"
+            exit 1
+          fi
+
+          # Full commit message (when it didn't fit in the caption) as
+          # code-formatted message(s).
+          while [ -n "$COMMIT_MSG" ]; do
+            CHUNK="$(esc "${COMMIT_MSG:0:3500}")"
+            COMMIT_MSG="${COMMIT_MSG:3500}"
+            MSG_RESP=$(curl -s -X POST \
+              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TG_CHAT_ID}" \
+              -d "message_thread_id=${TG_TOPIC_ID}" \
+              --data-urlencode "text=<pre>${CHUNK}</pre>" \
+              -d "parse_mode=HTML")
+            if echo "$MSG_RESP" | grep -q '"ok":true'; then
+              echo "✓ Sent commit message chunk"
+            else
+              echo "⚠ Commit message send failed — $MSG_RESP"
+            fi
+          done
