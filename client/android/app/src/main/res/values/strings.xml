@@ -1,10 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AetherLink X</string>
-    <string name="app_version">0.1.0 Alpha</string>
+    <string name="app_version">0.2.0 Alpha</string>
     <string name="connect">Connect</string>
     <string name="disconnect">Disconnect</string>
     <string name="connecting">Connecting…</string>
+    <string name="stopping">Stopping…</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="no_profile_selected">No profile selected</string>
+    <string name="connection_error">Connection error</string>
+    <string name="connection_failed">Connection failed</string>
+    <string name="retry">Retry</string>
+    <string name="home_ping_profile">Ping %1$s</string>
+    <string name="home_download">↓ Download</string>
+    <string name="home_upload">↑ Upload</string>
+    <string name="home_connected_summary">Connected %1$s • %2$s total</string>
     <string name="channel_vpn_name">AetherLink X Service</string>
     <string name="notification_title">AetherLink X Active</string>
     <string name="notification_text">Tap to manage your connection</string>
@@ -34,7 +45,7 @@
     <string name="settings_connection">Connection</string>
     <string name="settings_connection_summary">Ping test mode</string>
     <string name="settings_dns">DNS</string>
-    <string name="settings_dns_summary">VPN, remote and direct DNS</string>
+    <string name="settings_dns_summary">VPN and leak-safe remote DNS</string>
     <string name="settings_routing">Routing &amp; Privacy</string>
     <string name="settings_routing_summary">Ad block, bypass China, IPv6, kill switch</string>
     <string name="settings_geo">Geo files</string>

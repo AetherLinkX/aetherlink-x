@@ -70,6 +70,7 @@ class palazikVpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var coreController: CoreController? = null
+    private var hevTunBridge: HevTunBridge? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
 
@@ -82,6 +83,7 @@ class palazikVpnService : VpnService() {
         NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             .build()
     }
 
@@ -201,9 +203,12 @@ class palazikVpnService : VpnService() {
                 })
                 coreController = controller
 
-                // Pass actual TUN fd — xray reads packets from it via the "tun" inbound.
-                // v2rayNG: tunFd = vpnInterface?.fd ?: 0
-                controller.startLoop(config, iface.fd)
+                // Xray owns only the loopback SOCKS listener. HEV owns the Android TUN fd
+                // and converts every IP packet (TCP/UDP/DNS) to that listener.
+                controller.startLoop(config, 0)
+                val bridge = HevTunBridge(applicationContext)
+                hevTunBridge = bridge
+                bridge.start(iface, settings.enableIpv6)
 
                 _connectionState.value = ServiceState.RUNNING
                 _connectedSince.value = System.currentTimeMillis()
@@ -409,10 +414,12 @@ class palazikVpnService : VpnService() {
         }
     }
 
-    /** Blocking: stop the native core, wait briefly, then close the TUN. */
+    /** Blocking: stop packet intake, then the native core, and finally close the TUN. */
     private fun teardownCore() {
-        // v2rayNG: stopLoop() before closing the interface, otherwise the core fails to
-        // stop and subsequent startLoop calls report "port in use".
+        try { hevTunBridge?.stop() } catch (e: Exception) { Log.w(TAG, "HEV stop: ${e.message}") }
+        hevTunBridge = null
+
+        // Stop Xray only after HEV has stopped feeding its SOCKS listener.
         try { coreController?.stopLoop() } catch (e: Exception) { Log.w(TAG, "stopLoop: ${e.message}") }
         coreController = null
 
@@ -441,6 +448,8 @@ class palazikVpnService : VpnService() {
             try { connectivity.unregisterNetworkCallback(defaultNetworkCallback) } catch (_: Exception) {}
         }
 
+        try { hevTunBridge?.stop() } catch (e: Exception) { Log.w(TAG, "HEV stop: ${e.message}") }
+        hevTunBridge = null
         try { coreController?.stopLoop() } catch (e: Exception) { Log.w(TAG, "stopLoop: ${e.message}") }
         coreController = null
         try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
@@ -479,22 +488,19 @@ class palazikVpnService : VpnService() {
             while (isActive) {
                 delay(1000)
                 try {
-                    val ctrl = coreController ?: break
-                    // Current AndroidLibXrayLite exposes the aggregate API in its
-                    // gomobile surface. The payload is `tag,direction,value;...` and
-                    // reading it atomically resets the corresponding core counters.
-                    ctrl.queryAllOutboundTrafficStats()
-                        .split(';')
-                        .forEach { record ->
-                            val parts = record.split(',', limit = 3)
-                            if (parts.size != 3 || parts[0] != "proxy") return@forEach
-                            val value = parts[2].toLongOrNull()?.coerceAtLeast(0L) ?: return@forEach
-                            when (parts[1]) {
-                                "downlink" -> _bytesIn.value += value
-                                "uplink" -> _bytesOut.value += value
-                            }
-                        }
-                } catch (_: Exception) {}
+                    val bridge = hevTunBridge ?: break
+                    check(bridge.isRunning()) { "HEV tun2socks stopped unexpectedly" }
+                    val stats = bridge.stats()
+                    if (stats.size >= 4) {
+                        _bytesOut.value = stats[1].coerceAtLeast(0L)
+                        _bytesIn.value = stats[3].coerceAtLeast(0L)
+                    }
+                } catch (e: Exception) {
+                    _lastError.value = e.message ?: "Tunnel health check failed"
+                    addDiagnostic("Tunnel health check failed")
+                    withContext(Dispatchers.Main) { failVpn() }
+                    break
+                }
             }
         }
     }

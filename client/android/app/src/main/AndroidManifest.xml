@@ -72,6 +72,17 @@
                 <data android:scheme="xhttp" />
                 <data android:scheme="httpproxy" />
             </intent-filter>
+            <!-- Remnawave subscription App Link. Domain verification becomes automatic
+                 once s.obsa.su serves the documented /.well-known/assetlinks.json. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="s.obsa.su"
+                    android:pathPrefix="/sub/" />
+            </intent-filter>
         </activity>
 
         <service

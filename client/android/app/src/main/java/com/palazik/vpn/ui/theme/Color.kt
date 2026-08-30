@@ -3,16 +3,16 @@ package com.palazik.vpn.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ── Cyber (default) ──────────────────────────────────────────────────────────
-val CyberPrimary        = Color(0xFF00E5FF)
-val CyberOnPrimary      = Color(0xFF003640)
-val CyberPrimaryContainer   = Color(0xFF004D5C)
-val CyberOnPrimaryContainer = Color(0xFF9EEFFF)
-val CyberSecondary      = Color(0xFF7C4DFF)
-val CyberBackground     = Color(0xFF0A0E1A)
-val CyberSurface        = Color(0xFF111827)
-val CyberSurfaceVariant = Color(0xFF1E2A3A)
-val CyberOnSurface      = Color(0xFFE2E8F0)
-val CyberOutline        = Color(0xFF2D3748)
+val CyberPrimary        = Color(0xFFA020F0)
+val CyberOnPrimary      = Color(0xFFFFFFFF)
+val CyberPrimaryContainer   = Color(0xFF451064)
+val CyberOnPrimaryContainer = Color(0xFFF4D9FF)
+val CyberSecondary      = Color(0xFFFF3CAC)
+val CyberBackground     = Color(0xFF05030A)
+val CyberSurface        = Color(0xFF100B18)
+val CyberSurfaceVariant = Color(0xFF21152D)
+val CyberOnSurface      = Color(0xFFF4ECFA)
+val CyberOutline        = Color(0xFF654576)
 
 // ── Ocean ─────────────────────────────────────────────────────────────────────
 val OceanPrimary        = Color(0xFF0077B6)

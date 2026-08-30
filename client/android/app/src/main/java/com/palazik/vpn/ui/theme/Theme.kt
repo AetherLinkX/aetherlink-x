@@ -17,7 +17,7 @@ enum class AppTheme { CYBER, OCEAN, FOREST, SUNSET, ROSE, VIOLET, AMOLED, DYNAMI
 enum class DarkModePreference { SYSTEM, ALWAYS_DARK, ALWAYS_LIGHT }
 
 val LocalAppTheme      = compositionLocalOf { AppTheme.CYBER }
-val LocalDarkMode      = compositionLocalOf { DarkModePreference.SYSTEM }
+val LocalDarkMode      = compositionLocalOf { DarkModePreference.ALWAYS_DARK }
 val LocalDesignSystem  = compositionLocalOf { DesignSystem.MD3 }
 
 // ── MD3 color schemes ───────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ private fun cyberDarkScheme() = darkColorScheme(
     primaryContainer   = CyberPrimaryContainer,
     onPrimaryContainer = CyberOnPrimaryContainer,
     secondary          = CyberSecondary,
+    tertiary           = Color(0xFF00D4FF),
     background         = CyberBackground,
     surface            = CyberSurface,
     surfaceVariant     = CyberSurfaceVariant,
@@ -41,6 +42,7 @@ private fun cyberLightScheme() = lightColorScheme(
     primaryContainer   = CyberPrimary,
     onPrimaryContainer = CyberBackground,
     secondary          = CyberSecondary,
+    tertiary           = Color(0xFF0066CC),
     background         = Color(0xFFF0FDFF),
     surface            = Color(0xFFFFFFFF),
     onSurface          = CyberBackground,
@@ -198,7 +200,7 @@ fun Modifier.miuixSpringScroll(): Modifier {
 @Composable
 fun palazikVPNTheme(
     appTheme: AppTheme = AppTheme.CYBER,
-    darkModePreference: DarkModePreference = DarkModePreference.SYSTEM,
+    darkModePreference: DarkModePreference = DarkModePreference.ALWAYS_DARK,
     useMiuix: Boolean = false,
     content: @Composable () -> Unit,
 ) {

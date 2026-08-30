@@ -25,6 +25,8 @@ jobs:
     env:
       XRAY_TAG: v26.7.28
       ANDROIDLIB_REPO: https://github.com/2dust/AndroidLibXrayLite.git
+      HEV_REPO: https://github.com/heiher/hev-socks5-tunnel.git
+      HEV_COMMIT: 64cc609f945253b0e9ebc56317d544268f3c68c1
 
     steps:
       - uses: actions/checkout@v7
@@ -70,12 +72,25 @@ jobs:
           install -m 0644 libv2ray.aar "$GITHUB_WORKSPACE/client/android/app/libs/libv2ray.aar"
           install -m 0644 libv2ray-sources.jar "$GITHUB_WORKSPACE/client/android/app/libs/libv2ray-sources.jar"
 
+      - name: Build HEV Android TUN bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEV="$RUNNER_TEMP/hev-socks5-tunnel"
+          git clone "$HEV_REPO" "$HEV"
+          git -C "$HEV" checkout --detach "$HEV_COMMIT"
+          git -C "$HEV" submodule update --init --recursive
+          bash client/android/scripts/build-hev-tun.sh \
+            "$HEV" client/android/app/src/main/jniLibs
+
       - name: Verify ALX module is inside the AAR
         shell: bash
         run: |
           set -euo pipefail
           unzip -p client/android/app/libs/libv2ray.aar jni/arm64-v8a/libgojni.so \
             | strings | grep -F -m1 "aetherlinkx" >/dev/null
+          test -s client/android/app/src/main/jniLibs/arm64-v8a/libhev-socks5-tunnel.so
+          test -s client/android/app/src/main/jniLibs/armeabi-v7a/libhev-socks5-tunnel.so
 
       - name: Download GeoData
         shell: bash

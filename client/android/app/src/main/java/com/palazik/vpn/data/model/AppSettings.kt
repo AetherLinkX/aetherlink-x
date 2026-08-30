@@ -48,7 +48,7 @@ data class AppSettings(
     val lockdownMode: Boolean = false,          // block traffic while VPN handler not ready (kill switch)
 
     // ── Routing & DNS (advanced) ─────────────────────────────────────────────────
-    val routingMode: RoutingMode = RoutingMode.RULE_BASED,        // #2 switchable presets
+    val routingMode: RoutingMode = RoutingMode.GLOBAL,            // New installs tunnel all traffic by default
     val domainStrategy: DomainStrategy = DomainStrategy.IPIfNonMatch, // #7 routing match strategy
     val enableFakeDns: Boolean = false,         // #6 FakeDNS/FakeIP for faster, leak-free routing
 

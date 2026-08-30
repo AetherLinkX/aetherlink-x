@@ -3,6 +3,17 @@
     <string name="connect">Подключить</string>
     <string name="disconnect">Отключить</string>
     <string name="connecting">Подключение…</string>
+    <string name="stopping">Отключение…</string>
+    <string name="connected">Подключено</string>
+    <string name="disconnected">Отключено</string>
+    <string name="no_profile_selected">Профиль не выбран</string>
+    <string name="connection_error">Ошибка подключения</string>
+    <string name="connection_failed">Не удалось подключиться</string>
+    <string name="retry">Повторить</string>
+    <string name="home_ping_profile">Пинг %1$s</string>
+    <string name="home_download">↓ Получено</string>
+    <string name="home_upload">↑ Отправлено</string>
+    <string name="home_connected_summary">Подключено %1$s • всего %2$s</string>
     <string name="notification_title">AetherLink X активен</string>
     <string name="notification_text">Нажмите, чтобы управлять подключением</string>
 
@@ -31,7 +42,7 @@
     <string name="settings_connection">Подключение</string>
     <string name="settings_connection_summary">Режим проверки пинга</string>
     <string name="settings_dns">DNS</string>
-    <string name="settings_dns_summary">VPN, удалённый и прямой DNS</string>
+    <string name="settings_dns_summary">VPN и защищённый удалённый DNS</string>
     <string name="settings_routing">Маршрутизация и приватность</string>
     <string name="settings_routing_summary">Блокировка рекламы, обход Китая, IPv6, аварийный выключатель</string>
     <string name="settings_geo">Гео-файлы</string>

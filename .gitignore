@@ -2,3 +2,4 @@
 generated/
 *.tmp
 *.log
+client/android/app/src/main/jniLibs/

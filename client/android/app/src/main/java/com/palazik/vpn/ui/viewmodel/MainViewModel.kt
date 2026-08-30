@@ -33,7 +33,7 @@ data class UiState(
     val profiles: List<VpnProfile>        = emptyList(),
     val subscriptions: List<Subscription> = emptyList(),
     val appTheme: AppTheme                = AppTheme.CYBER,
-    val darkMode: DarkModePreference      = DarkModePreference.SYSTEM,
+    val darkMode: DarkModePreference      = DarkModePreference.ALWAYS_DARK,
     val designSystem: DesignSystem        = DesignSystem.MD3,
     val language: AppLanguage             = AppLanguage.ENGLISH,
     val pingMode: PingMode                = PingMode.TCP,
@@ -77,11 +77,11 @@ class MainViewModel @Inject constructor(
     init {
         // Restore persisted theme on startup
         val savedTheme  = themePrefs.getString(KEY_THEME,         AppTheme.CYBER.name)
-        val savedDark   = themePrefs.getString(KEY_DARKMODE,      DarkModePreference.SYSTEM.name)
+        val savedDark   = themePrefs.getString(KEY_DARKMODE,      DarkModePreference.ALWAYS_DARK.name)
         val savedDesign = themePrefs.getString(KEY_DESIGN_SYSTEM, DesignSystem.MD3.name)
         _ui.update { it.copy(
             appTheme     = runCatching { AppTheme.valueOf(savedTheme ?: "") }.getOrDefault(AppTheme.CYBER),
-            darkMode     = runCatching { DarkModePreference.valueOf(savedDark ?: "") }.getOrDefault(DarkModePreference.SYSTEM),
+            darkMode     = runCatching { DarkModePreference.valueOf(savedDark ?: "") }.getOrDefault(DarkModePreference.ALWAYS_DARK),
             designSystem = runCatching { DesignSystem.valueOf(savedDesign ?: "") }.getOrDefault(DesignSystem.MD3),
             language     = LocaleHelper.savedLanguage(context),
         ) }
@@ -303,6 +303,46 @@ class MainViewModel @Inject constructor(
     }
 
     // ── Subscriptions ─────────────────────────────────────────────────────────
+
+    /**
+     * Import an HTTPS subscription opened as an Android App Link. Existing URLs are
+     * refreshed instead of duplicated; the first successfully parsed profile becomes
+     * active as required by one-tap subscription import.
+     */
+    fun importSubscriptionFromUrl(rawUrl: String) {
+        val uri = runCatching { android.net.Uri.parse(rawUrl.trim()) }.getOrNull()
+        if (uri?.scheme != "https" || uri.host.isNullOrBlank()) {
+            snack("Only HTTPS subscription links are supported")
+            return
+        }
+        val normalizedUrl = uri.toString()
+        val existing = repo.subscriptions.value.firstOrNull { it.url == normalizedUrl }
+        val name = existing?.name ?: uri.host.orEmpty() + (uri.lastPathSegment?.let { " · $it" } ?: "")
+        val sub = existing ?: Subscription(name = name, url = normalizedUrl).also(repo::addSubscription)
+
+        viewModelScope.launch {
+            _ui.update { it.copy(isUpdatingSubscriptions = true) }
+            repo.updateSubscription(sub).fold(
+                onSuccess = { count ->
+                    val imported = repo.profiles.value.firstOrNull { it.subscriptionId == sub.id }
+                    if (imported != null) {
+                        if (_ui.value.vpnState == VpnState.CONNECTED || _ui.value.vpnState == VpnState.CONNECTING) {
+                            disconnect()
+                        }
+                        repo.setActiveProfile(imported.id)
+                        palazikVpnService.activeProfile = imported.copy(isActive = true)
+                    }
+                    snack("Imported and activated $count profiles")
+                },
+                onFailure = {
+                    if (existing == null) repo.removeSubscription(sub.id)
+                    snack("Failed to import subscription")
+                },
+            )
+            SubscriptionUpdateScheduler.sync(context, repo.settings.value)
+            _ui.update { it.copy(isUpdatingSubscriptions = false) }
+        }
+    }
 
     fun addSubscription(name: String, url: String) {
         val sub = Subscription(name = name, url = url)

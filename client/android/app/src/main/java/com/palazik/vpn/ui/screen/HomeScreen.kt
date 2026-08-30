@@ -19,10 +19,12 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.palazik.vpn.data.model.VpnState
+import com.palazik.vpn.R
 import com.palazik.vpn.ui.viewmodel.MainViewModel
 import java.text.DecimalFormat
 
@@ -117,7 +119,15 @@ fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color(0xFF030207),
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                        Color(0xFF080311),
+                    )
+                )
+            )
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
@@ -231,7 +241,7 @@ fun HomeScreen(
                         label = "lock_icon",
                     ) { connected ->
                         Icon(
-                            imageVector       = if (connected) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                            imageVector       = if (connected) Icons.Rounded.CheckCircle else Icons.Rounded.Close,
                             contentDescription = null,
                             modifier          = Modifier.size(40.dp),
                             tint              = if (connected || isTransition)
@@ -250,10 +260,10 @@ fun HomeScreen(
                     ) { state ->
                         Text(
                             text  = when (state) {
-                                VpnState.CONNECTED     -> "Disconnect"
-                                VpnState.CONNECTING    -> "Connecting"
-                                VpnState.DISCONNECTING -> "Stopping"
-                                else                   -> "Connect"
+                                VpnState.CONNECTED     -> stringResource(R.string.disconnect)
+                                VpnState.CONNECTING    -> stringResource(R.string.connecting)
+                                VpnState.DISCONNECTING -> stringResource(R.string.stopping)
+                                else                   -> stringResource(R.string.connect)
                             },
                             style = MaterialTheme.typography.labelLarge,
                             color = if (isConnected || isTransition)
@@ -296,7 +306,12 @@ fun HomeScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text  = state.name.replace('_', ' '),
+                        text  = when (state) {
+                            VpnState.CONNECTED -> stringResource(R.string.connected)
+                            VpnState.CONNECTING -> stringResource(R.string.connecting)
+                            VpnState.DISCONNECTING -> stringResource(R.string.stopping)
+                            else -> stringResource(R.string.disconnected)
+                        },
                         style = MaterialTheme.typography.labelLarge,
                         color = statusColor,
                     )
@@ -310,7 +325,7 @@ fun HomeScreen(
             exit = fadeOut(tween(150)) + shrinkVertically(),
         ) {
             ErrorCard(
-                message = ui.lastError ?: "Connection failed",
+                message = ui.lastError ?: stringResource(R.string.connection_failed),
                 onRetry = { vm.toggleVpn(permLauncher) },
             )
         }
@@ -339,7 +354,7 @@ fun HomeScreen(
                 ) {
                     Icon(Icons.Rounded.NetworkCheck, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Ping  ${profile.name}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(stringResource(R.string.home_ping_profile, profile.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     AnimatedVisibility(
                         visible = profile.latencyMs >= 0,
                         enter   = fadeIn() + scaleIn(EaseOutBack.toAnimationSpec(300)),
@@ -371,7 +386,7 @@ fun HomeScreen(
 private fun HomeProfilePill(profileName: String?, endpoint: String?) {
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
     ) {
         Row(
             Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -386,7 +401,7 @@ private fun HomeProfilePill(profileName: String?, endpoint: String?) {
             Spacer(Modifier.width(8.dp))
             Column(Modifier.widthIn(max = 240.dp)) {
                 Text(
-                    profileName ?: "No profile selected",
+                    profileName ?: stringResource(R.string.no_profile_selected),
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -424,7 +439,7 @@ private fun ErrorCard(message: String, onRetry: () -> Unit) {
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "Connection Error",
+                    stringResource(R.string.connection_error),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
@@ -440,7 +455,7 @@ private fun ErrorCard(message: String, onRetry: () -> Unit) {
                 TextButton(onClick = onRetry) {
                     Icon(Icons.Rounded.Refresh, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Retry")
+                    Text(stringResource(R.string.retry))
                 }
             }
         }
@@ -476,8 +491,8 @@ private fun ConnectedStats(vm: MainViewModel, profileName: String, isConnected: 
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            TrafficCard(Modifier.weight(1f), "↓  Download", bytesIn)
-            TrafficCard(Modifier.weight(1f), "↑  Upload",   bytesOut)
+            TrafficCard(Modifier.weight(1f), stringResource(R.string.home_download), bytesIn)
+            TrafficCard(Modifier.weight(1f), stringResource(R.string.home_upload), bytesOut)
         }
     }
 }
@@ -504,7 +519,7 @@ private fun ConnectionHealthCard(profileName: String, connectedFor: String, tota
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "Connected $connectedFor • ${formatBytes(total)} total",
+                    stringResource(R.string.home_connected_summary, connectedFor, formatBytes(total)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

@@ -120,6 +120,11 @@ class MainActivity : ComponentActivity() {
             // Other proxy schemes opened from a browser / file manager
             "aetherlinkx", "vmess", "vless", "ss", "trojan", "hysteria2", "wireguard", "socks5", "tuic", "anytls", "xhttp", "httpproxy" ->
                 vm.importProfileFromLink(data.toString())
+            "https" -> if (data.host.equals("s.obsa.su", ignoreCase = true) &&
+                data.path?.startsWith("/sub/") == true
+            ) {
+                vm.importSubscriptionFromUrl(data.toString())
+            }
         }
     }
 

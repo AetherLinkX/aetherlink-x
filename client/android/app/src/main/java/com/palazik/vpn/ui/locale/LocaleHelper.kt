@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 import java.util.Locale
 
-/** App UI language. The app always forces one of these (no system auto-detect). */
+/** App UI language. Unsupported system locales deliberately fall back to English. */
 enum class AppLanguage(val tag: String) {
     ENGLISH("en"),
     RUSSIAN("ru");
@@ -27,10 +27,17 @@ object LocaleHelper {
     private const val KEY_LANGUAGE = "app_language"
 
     fun savedLanguage(context: Context): AppLanguage {
-        val raw = context.getSharedPreferences(THEME_PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_LANGUAGE, AppLanguage.ENGLISH.name)
-        return AppLanguage.fromName(raw)
+        val prefs = context.getSharedPreferences(THEME_PREFS, Context.MODE_PRIVATE)
+        if (prefs.contains(KEY_LANGUAGE)) {
+            return AppLanguage.fromName(prefs.getString(KEY_LANGUAGE, null))
+        }
+        val detected = languageForSystemTag(Locale.getDefault().language)
+        prefs.edit().putString(KEY_LANGUAGE, detected.name).apply()
+        return detected
     }
+
+    internal fun languageForSystemTag(language: String?): AppLanguage =
+        if (language.equals("ru", ignoreCase = true)) AppLanguage.RUSSIAN else AppLanguage.ENGLISH
 
     fun persistLanguage(context: Context, language: AppLanguage) {
         context.getSharedPreferences(THEME_PREFS, Context.MODE_PRIVATE)
