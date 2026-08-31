@@ -53,33 +53,33 @@ object ProfileValidator {
                 }
             }
             Protocol.TROJAN -> {
-                if (profile.uuid.isBlank()) errors += "Trojan password is required"
+                if (profile.uuid.isBlank()) errors += "Укажите пароль Trojan"
             }
             Protocol.SHADOWSOCKS -> {
-                if (profile.ssMethod.isBlank()) errors += "Shadowsocks cipher is required"
-                if (profile.ssPassword.isBlank()) errors += "Shadowsocks password is required"
+                if (profile.ssMethod.isBlank()) errors += "Укажите шифр Shadowsocks"
+                if (profile.ssPassword.isBlank()) errors += "Укажите пароль Shadowsocks"
                 if (profile.ssMethod.isNotBlank() && profile.ssMethod !in shadowsocksMethods) {
-                    errors += "Unsupported Shadowsocks cipher: ${profile.ssMethod}"
+                    errors += "Шифр Shadowsocks не поддерживается: ${profile.ssMethod}"
                 }
             }
             Protocol.HYSTERIA2 -> {
-                if (profile.hystPassword.isBlank()) errors += "Hysteria2 password is required"
+                if (profile.hystPassword.isBlank()) errors += "Укажите пароль Hysteria2"
             }
             Protocol.WIREGUARD -> {
-                if (profile.wgPrivateKey.isBlank()) errors += "WireGuard private key is required"
-                if (profile.wgPeerPublicKey.isBlank()) errors += "WireGuard peer public key is required"
+                if (profile.wgPrivateKey.isBlank()) errors += "Укажите закрытый ключ WireGuard"
+                if (profile.wgPeerPublicKey.isBlank()) errors += "Укажите открытый ключ узла WireGuard"
                 if (profile.wgEndpoint.isBlank() && profile.address.isBlank()) {
-                    errors += "WireGuard endpoint is required"
+                    errors += "Укажите конечную точку WireGuard"
                 }
             }
             Protocol.SOCKS5 -> Unit
             Protocol.TUIC -> {
-                if (!uuidRegex.matches(profile.uuid)) errors += "TUIC requires a valid UUID"
-                if (profile.ssPassword.isBlank()) errors += "TUIC password is required"
+                if (!uuidRegex.matches(profile.uuid)) errors += "Для TUIC нужен корректный UUID"
+                if (profile.ssPassword.isBlank()) errors += "Укажите пароль TUIC"
             }
             Protocol.HTTP -> Unit
             Protocol.ANYTLS -> {
-                if (profile.uuid.isBlank()) errors += "AnyTLS password is required"
+                if (profile.uuid.isBlank()) errors += "Укажите пароль AnyTLS"
             }
         }
 

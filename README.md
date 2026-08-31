@@ -16,7 +16,6 @@
   .github/workflows/  сборка multi-arch Remnawave Backend и Node в GHCR
   dist/               только небольшие smoke-конфиги; бинарники публикуются в Releases
   manifest.json       версия, совместимость и результаты проверок
-  SHA256SUMS          контрольные суммы комплекта
 ```
 
 Рабочая копия исходников также остаётся в `Xray-core-source/Xray-core-main/proxy/aetherlinkx`, поскольку Go/Xray требует пакет внутри дерева модуля. Удаление этой копии сломало бы текущую сборку. Канонический переносимый комплект — эта папка.
@@ -64,8 +63,8 @@ PQ/security и Stealth параметры из Remnawave. Также подде�
 импорт ALX-outbound из полного Xray JSON, если панель выбрала этот формат.
 
 Workflow `build-aetherlinkx-client-android.yml` собирает собственный
-`libv2ray.aar` из Xray-core 26.7.28 с ALX patch, а затем APK. Workflow
-Активно разрабатывается и публикуется только Android-клиент. Linux-клиент и его CI удалены.
+`libv2ray.aar` из Xray-core 26.7.28 с ALX patch, а затем APK. Активно
+разрабатывается и публикуется только Android-клиент. Linux-клиент и его CI удалены.
 
 ## Remnawave
 

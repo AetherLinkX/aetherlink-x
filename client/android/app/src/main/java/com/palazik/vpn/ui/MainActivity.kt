@@ -28,7 +28,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.palazik.vpn.data.model.DesignSystem
 import com.palazik.vpn.ui.screen.AppNavHost
 import com.palazik.vpn.ui.screen.OnboardingScreen
 import com.palazik.vpn.ui.theme.DarkModePreference

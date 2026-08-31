@@ -18,7 +18,7 @@
             android:layout_width="22dp"
             android:layout_height="22dp"
             android:src="@drawable/ic_vpn_key"
-            android:tint="#7FD8FF"
+            android:tint="#C05CFF"
             android:contentDescription="@string/app_name" />
 
         <TextView
@@ -67,7 +67,7 @@
         android:paddingBottom="8dp"
         android:gravity="center"
         android:text="@string/connect"
-        android:textColor="#7FD8FF"
+        android:textColor="#C05CFF"
         android:textSize="13sp"
         android:textStyle="bold" />
 </LinearLayout>

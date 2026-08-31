@@ -1120,7 +1120,7 @@ private fun ManualProfileDialog(
                             value = wgReserved,
                             onValueChange = { wgReserved = it },
                             label = { Text("Резерв WARP (необязательно)") },
-                            placeholder = { Text("e.g. 12,34,56") },
+                            placeholder = { Text("например 12,34,56") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                         )

@@ -442,7 +442,7 @@ fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                     }
                 }.isSuccess
             }
-            vm.showSnack(if (ok) "Logs saved" else "Save failed")
+            vm.showSnack(if (ok) "Журнал сохранён" else "Не удалось сохранить журнал")
         }
     }
 
@@ -599,8 +599,8 @@ private fun SplitTunnelContent(
     HorizontalDivider(Modifier.padding(vertical = 10.dp))
 
     Text(
-        if (onlyMode) "${settings.bypassPackages.size} apps use the VPN exclusively"
-        else "${settings.bypassPackages.size} apps bypass VPN",
+        if (onlyMode) "Только через VPN: ${settings.bypassPackages.size} приложений"
+        else "Обходят VPN: ${settings.bypassPackages.size} приложений",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -706,9 +706,9 @@ private fun RoutingSettingsContent(vm: MainViewModel, settings: AppSettings) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         com.palazik.vpn.data.model.RoutingMode.values().forEach { mode ->
             val label = when (mode) {
-                com.palazik.vpn.data.model.RoutingMode.RULE_BASED -> "Rule-based"
-                com.palazik.vpn.data.model.RoutingMode.GLOBAL     -> "Global"
-                com.palazik.vpn.data.model.RoutingMode.BYPASS_LAN -> "Bypass LAN"
+                com.palazik.vpn.data.model.RoutingMode.RULE_BASED -> "По правилам"
+                com.palazik.vpn.data.model.RoutingMode.GLOBAL     -> "Весь трафик"
+                com.palazik.vpn.data.model.RoutingMode.BYPASS_LAN -> "Обход локальной сети"
             }
             FilterChip(
                 selected = settings.routingMode == mode,
@@ -794,7 +794,7 @@ private fun RoutingSettingsContent(vm: MainViewModel, settings: AppSettings) {
     HorizontalDivider(Modifier.padding(vertical = 10.dp))
     Text("Фрагментация TLS (anti-DPI)", style = MaterialTheme.typography.titleSmall)
     Text(
-        "Global parameters. Enable per profile in its edit screen.",
+        "Общие параметры. Фрагментация включается отдельно в редакторе каждого профиля.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(bottom = 8.dp),
@@ -872,7 +872,7 @@ private fun BackupSettingsContent(vm: MainViewModel) {
                     }
                 }.isSuccess
             }
-            vm.showSnack(if (ok) "Profiles exported" else "Export failed")
+            vm.showSnack(if (ok) "Профили экспортированы" else "Не удалось экспортировать профили")
         }
     }
 
@@ -885,12 +885,12 @@ private fun BackupSettingsContent(vm: MainViewModel) {
                     context.contentResolver.openInputStream(uri)?.use { String(it.readBytes()) }
                 }.getOrNull()
             }
-            if (body != null) vm.importProfilesText(body) else vm.showSnack("Could not read file")
+            if (body != null) vm.importProfilesText(body) else vm.showSnack("Не удалось прочитать файл")
         }
     }
 
     Text(
-        "Export all profiles to a .txt file (alxclient:// links), or import them back on another device.",
+        "Экспортируйте все профили в файл .txt со ссылками alxclient:// или восстановите их на другом устройстве.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
