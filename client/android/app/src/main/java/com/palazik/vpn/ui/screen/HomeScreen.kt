@@ -24,7 +24,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
+import com.palazik.vpn.data.model.Subscription
+import com.palazik.vpn.data.model.VpnProfile
 import com.palazik.vpn.data.model.VpnState
 import com.palazik.vpn.data.model.PingDisplayMode
 import com.palazik.vpn.R
@@ -44,6 +47,14 @@ fun HomeScreen(
     val isConnected  = vpnState == VpnState.CONNECTED
     val isTransition = vpnState == VpnState.CONNECTING || vpnState == VpnState.DISCONNECTING
     val animationsEnabled = ui.settings.uiAnimationsEnabled
+    val activeSubscription = remember(ui.subscriptions, ui.activeProfile?.subscriptionId) {
+        ui.subscriptions.firstOrNull { it.id == ui.activeProfile?.subscriptionId }
+    }
+    val homeProfiles = remember(ui.profiles, ui.activeProfile?.subscriptionId) {
+        val subscriptionId = ui.activeProfile?.subscriptionId
+        if (subscriptionId == null) ui.profiles.filter { it.subscriptionId == null }
+        else ui.profiles.filter { it.subscriptionId == subscriptionId }
+    }
     // NOTE: per-second traffic/duration updates live in ConnectedStats so they don't
     // recompose this whole screen every second.
 
@@ -342,18 +353,12 @@ fun HomeScreen(
             )
         }
 
-        if (ui.profiles.isNotEmpty()) {
-            HomeServerSwitcher(
-                profiles = ui.profiles,
-                activeId = ui.activeProfile?.id,
-                switching = isTransition,
-                displayMode = ui.settings.pingDisplayMode,
-                onSelect = vm::selectProfile,
-                onPing = vm::pingProfile,
-            )
+        ui.activeProfile?.let { profile ->
+            ProviderSummaryCard(subscription = activeSubscription, profile = profile)
         }
 
-        // ── Traffic stats ─────────────────────────────────────────────────────
+        // Current connection stats stay immediately below the connect control and
+        // provider card; the potentially long location list follows afterwards.
         AnimatedVisibility(
             visible = isConnected,
             enter   = expandVertically(spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow)) +
@@ -361,6 +366,17 @@ fun HomeScreen(
             exit    = shrinkVertically(tween(250)) + fadeOut(tween(200)),
         ) {
             ConnectedStats(vm = vm, profileName = ui.activeProfile?.name ?: "", isConnected = isConnected)
+        }
+
+        if (homeProfiles.isNotEmpty()) {
+            HomeServerSwitcher(
+                profiles = homeProfiles,
+                activeId = ui.activeProfile?.id,
+                switching = isTransition,
+                displayMode = ui.settings.pingDisplayMode,
+                onSelect = vm::selectProfile,
+                onPing = vm::pingProfile,
+            )
         }
 
         // ── Quick ping ────────────────────────────────────────────────────────
@@ -403,12 +419,12 @@ fun HomeScreen(
 
 @Composable
 private fun HomeServerSwitcher(
-    profiles: List<com.palazik.vpn.data.model.VpnProfile>,
+    profiles: List<VpnProfile>,
     activeId: String?,
     switching: Boolean,
     displayMode: PingDisplayMode,
     onSelect: (String) -> Unit,
-    onPing: (com.palazik.vpn.data.model.VpnProfile) -> Unit,
+    onPing: (VpnProfile) -> Unit,
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -437,7 +453,7 @@ private fun HomeServerSwitcher(
                 }
             }
             Spacer(Modifier.height(10.dp))
-            profiles.take(8).forEachIndexed { index, profile ->
+            profiles.forEachIndexed { index, profile ->
                 val selected = profile.id == activeId
                 Surface(
                     onClick = { onSelect(profile.id) },
@@ -479,15 +495,87 @@ private fun HomeServerSwitcher(
                         if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                     }
                 }
-                if (index != minOf(profiles.size, 8) - 1) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                if (index != profiles.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
             }
-            if (profiles.size > 8) {
-                Text(
-                    "Ещё серверов: ${profiles.size - 8}. Полный список — во вкладке «Серверы».",
-                    modifier = Modifier.padding(top = 10.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        }
+    }
+}
+
+@Composable
+private fun ProviderSummaryCard(subscription: Subscription?, profile: VpnProfile) {
+    val uriHandler = LocalUriHandler.current
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+        ),
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                subscription?.displayName ?: "Локальный профиль",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Icon(Icons.Rounded.Public, null, Modifier.padding(10.dp).size(22.dp), tint = MaterialTheme.colorScheme.primary)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(profile.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "${profile.protocol.name.replace('_', ' ')} · ${profile.transport.name.replace('_', ' ')} · ${profile.security.name}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            subscription?.takeIf { it.hasUsageInfo }?.let { sub ->
+                val used = sub.usedBytes.coerceAtLeast(0L)
+                val total = sub.totalBytes
+                val fraction = if (total > 0) (used.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.fillMaxWidth().height(7.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Использовано ${formatBytes(used)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (total > 0) "из ${formatBytes(total)}" else "без лимита", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            if (subscription != null && (subscription.supportUrl.isNotBlank() || subscription.websiteUrl.isNotBlank())) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (subscription.supportUrl.isNotBlank()) {
+                        OutlinedButton(onClick = { runCatching { uriHandler.openUri(subscription.supportUrl) } }) {
+                            Icon(Icons.Rounded.HelpOutline, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Поддержка")
+                        }
+                    }
+                    if (subscription.websiteUrl.isNotBlank()) {
+                        OutlinedButton(onClick = { runCatching { uriHandler.openUri(subscription.websiteUrl) } }) {
+                            Icon(Icons.Rounded.Language, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Сайт")
+                        }
+                    }
+                }
+            }
+            subscription?.announcement?.takeIf { it.isNotBlank() }?.let { announcement ->
+                Text(announcement, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         }
     }

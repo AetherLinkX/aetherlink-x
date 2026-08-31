@@ -50,6 +50,9 @@ object ProfileCodec {
         else appendQueryParameter("path", p.path)
         appendQueryParameter("host", p.host)
         if (p.transportMode.isNotBlank()) appendQueryParameter("mode", p.transportMode)
+        if (p.transport == Transport.XHTTP && p.transportExtraJson.isNotBlank() && p.transportExtraJson != "{}") {
+            appendQueryParameter("extra", normalizeTransportExtra(p.transportExtraJson))
+        }
         if (p.transportHeader.isNotBlank() && p.transportHeader != "none") {
             appendQueryParameter("headerType", p.transportHeader)
         }
@@ -145,6 +148,7 @@ object ProfileCodec {
         }
         val reality = stream.optJSONObject("realitySettings")
         val tls = stream.optJSONObject("tlsSettings")
+        val tlsLayer = reality ?: tls
         val transportSettings = when (transport) {
             Transport.WS -> stream.optJSONObject("wsSettings")
             Transport.GRPC -> stream.optJSONObject("grpcSettings")
@@ -190,10 +194,15 @@ object ProfileCodec {
             alxSecurityJson = settings.optJSONObject("security")?.toString() ?: "{}",
             alxStealthJson = settings.optJSONObject("stealth")?.toString() ?: "{}",
             transportMode = transportSettings?.optString("mode").orEmpty(),
+            transportExtraJson = normalizeTransportExtra(transportSettings?.opt("extra")?.toString()),
             transportHeader = transportSettings?.optJSONObject("header")?.optString("type", "none") ?: "none",
             transportSeed = transportSettings?.optString("seed").orEmpty(),
             transportSecurity = transportSettings?.optString("security", "none") ?: "none",
             transportKey = transportSettings?.optString("key").orEmpty(),
+            alpn = tlsLayer?.optJSONArray("alpn")?.let { array ->
+                (0 until array.length()).mapNotNull { array.optString(it).takeIf { value -> value.isNotBlank() } }.joinToString(",")
+            }.orEmpty(),
+            spiderX = reality?.optString("spiderX").orEmpty(),
         )
     }
 
@@ -228,6 +237,7 @@ object ProfileCodec {
             put("path", p.path)
             put("host", p.host)
             put("transportMode", p.transportMode)
+            put("transportExtraJson", p.transportExtraJson)
             put("transportHeader", p.transportHeader)
             put("transportSeed", p.transportSeed)
             put("transportSecurity", p.transportSecurity)
@@ -235,8 +245,11 @@ object ProfileCodec {
             put("security", p.security.name)
             put("sni", p.sni)
             put("fp", p.fingerprint)
+            put("alpn", p.alpn)
             put("pubkey", p.publicKey)
             put("shortId", p.shortId)
+            put("spiderX", p.spiderX)
+            put("flow", p.flow)
             put("allowInsecure", p.allowInsecure)
             put("vmessScy", p.vmessSecurity)
             put("ssMethod", p.ssMethod)
@@ -287,6 +300,7 @@ object ProfileCodec {
             path        = json.optString("path", "/"),
             host        = json.optString("host"),
             transportMode = json.optString("transportMode"),
+            transportExtraJson = normalizeTransportExtra(json.optString("transportExtraJson", "{}")),
             transportHeader = json.optString("transportHeader", "none"),
             transportSeed = json.optString("transportSeed"),
             transportSecurity = json.optString("transportSecurity", "none"),
@@ -296,8 +310,11 @@ object ProfileCodec {
             }.getOrDefault(Security.TLS),
             sni         = json.optString("sni"),
             fingerprint = json.optString("fp", "chrome"),
+            alpn        = json.optString("alpn"),
             publicKey   = json.optString("pubkey"),
             shortId     = json.optString("shortId"),
+            spiderX     = json.optString("spiderX"),
+            flow        = json.optString("flow"),
             allowInsecure = json.optBoolean("allowInsecure", false),
             vmessSecurity = json.optString("vmessScy", "auto").ifBlank { "auto" },
             ssMethod    = json.optString("ssMethod", "chacha20-ietf-poly1305"),
@@ -344,12 +361,14 @@ object ProfileCodec {
             path      = json.optString("path", "/"),
             host      = json.optString("host"),
             transportMode = json.optString("mode"),
+            transportExtraJson = normalizeTransportExtra(json.opt("extra")?.toString()),
             transportHeader = json.optString("type", "none"),
             transportSeed = json.optString("seed"),
             transportSecurity = json.optString("quicSecurity", "none"),
             transportKey = json.optString("key"),
             security  = security,
             sni       = json.optString("sni"),
+            alpn      = json.optString("alpn"),
             // BUG FIX: honour the link's cipher (scy) instead of always "auto"
             vmessSecurity = json.optString("scy", "auto").ifBlank { "auto" },
             allowInsecure = json.optString("allowInsecure") == "1" ||
@@ -381,6 +400,7 @@ object ProfileCodec {
             },
             host        = params["host"] ?: "",
             transportMode = params["mode"] ?: "",
+            transportExtraJson = normalizeTransportExtra(params["extra"]),
             transportHeader = params["headerType"] ?: params["header"] ?: "none",
             transportSeed = params["seed"] ?: "",
             transportSecurity = params["quicSecurity"] ?: "none",
@@ -388,8 +408,11 @@ object ProfileCodec {
             security    = security,
             sni         = params["sni"] ?: "",
             fingerprint = params["fp"] ?: "chrome",
+            alpn        = params["alpn"] ?: "",
             publicKey   = params["pbk"] ?: "",
             shortId     = params["sid"] ?: "",
+            spiderX     = params["spx"] ?: "",
+            flow        = params["flow"] ?: "",
             allowInsecure = params["allowInsecure"] == "1" || params["allowInsecure"].equals("true", true),
         )
     }
@@ -423,6 +446,7 @@ object ProfileCodec {
             },
             host = params["host"] ?: "",
             transportMode = params["mode"] ?: "",
+            transportExtraJson = normalizeTransportExtra(params["extra"]),
             transportHeader = params["headerType"] ?: params["header"] ?: "none",
             transportSeed = params["seed"] ?: "",
             transportSecurity = params["quicSecurity"] ?: "none",
@@ -430,8 +454,11 @@ object ProfileCodec {
             security = security,
             sni = params["sni"] ?: "",
             fingerprint = params["fp"] ?: "chrome",
+            alpn = params["alpn"] ?: "",
             publicKey = params["pbk"] ?: params["password"] ?: "",
             shortId = params["sid"] ?: "",
+            spiderX = params["spx"] ?: "",
+            flow = params["flow"] ?: "",
             alxSecret = params["secret"] ?: "",
             alxAllowInsecureTransport = params["allowInsecureTransport"] == "1" ||
                 params["allowInsecureTransport"].equals("true", true),
@@ -508,6 +535,7 @@ object ProfileCodec {
             },
             host        = params["host"] ?: "",
             transportMode = params["mode"] ?: "",
+            transportExtraJson = normalizeTransportExtra(params["extra"]),
             transportHeader = params["headerType"] ?: params["header"] ?: "none",
             transportSeed = params["seed"] ?: "",
             transportSecurity = params["quicSecurity"] ?: "none",
@@ -515,8 +543,11 @@ object ProfileCodec {
             security    = security,
             sni         = params["sni"] ?: "",
             fingerprint = params["fp"]?.ifBlank { "chrome" } ?: "chrome",
+            alpn        = params["alpn"] ?: "",
             publicKey   = params["pbk"] ?: "",
             shortId     = params["sid"] ?: "",
+            spiderX     = params["spx"] ?: "",
+            flow        = params["flow"] ?: "",
             allowInsecure = params["allowInsecure"] == "1" || params["allowInsecure"].equals("true", true),
         )
     }
@@ -671,6 +702,8 @@ object ProfileCodec {
             // BUG FIX: always read path and host
             path      = params["path"] ?: "/",
             host      = params["host"] ?: "",
+            transportMode = params["mode"] ?: "",
+            transportExtraJson = normalizeTransportExtra(params["extra"]),
             security  = when {
                 params["security"].equals("tls", true) || params["tls"].equals("tls", true) -> Security.TLS
                 params["security"].equals("reality", true) -> Security.REALITY
@@ -679,8 +712,11 @@ object ProfileCodec {
             },
             sni       = params["sni"] ?: "",
             fingerprint = params["fp"] ?: "chrome",
+            alpn = params["alpn"] ?: "",
             publicKey = params["pbk"] ?: "",
             shortId = params["sid"] ?: "",
+            spiderX = params["spx"] ?: "",
+            flow = params["flow"] ?: "",
             allowInsecure = params["allowInsecure"] == "1" || params["allowInsecure"].equals("true", true),
         )
     }
@@ -730,13 +766,29 @@ object ProfileCodec {
         if (p.security == Security.REALITY) {
             b.appendQueryParameter("pbk", p.publicKey)
                 .appendQueryParameter("sid", p.shortId)
+                .appendQueryParameter("spx", p.spiderX)
         }
+        if (p.alpn.isNotBlank()) b.appendQueryParameter("alpn", p.alpn)
         return b.fragment(p.name).build().toString()
     }
 
     private fun normalizeOptionsJson(raw: String): String = runCatching {
         JSONObject(raw.ifBlank { "{}" }).toString()
     }.getOrDefault("{}")
+
+    /**
+     * XHTTP `extra` is transported as URI-escaped raw JSON by v2rayNG/Remnawave.
+     * Some generators instead use Base64URL. Preserve a valid object exactly and
+     * fail open to Xray defaults when a provider sends malformed optional tuning.
+     */
+    private fun normalizeTransportExtra(raw: String?): String {
+        val value = raw?.trim().orEmpty()
+        if (value.isBlank() || value == "null") return "{}"
+        fun parse(candidate: String): String? = runCatching { JSONObject(candidate).toString() }.getOrNull()
+        return parse(value)
+            ?: decodeBase64OrNull(value)?.let(::parse)
+            ?: "{}"
+    }
 
     private fun encodeVless(p: VpnProfile): String {
         val b = Uri.Builder().scheme("vless")
@@ -745,9 +797,12 @@ object ProfileCodec {
             .appendQueryParameter("security", p.security.name.lowercase())
             .appendQueryParameter("sni", p.sni)
             .appendQueryParameter("fp", p.fingerprint)
+        if (p.flow.isNotBlank()) b.appendQueryParameter("flow", p.flow)
+        if (p.alpn.isNotBlank()) b.appendQueryParameter("alpn", p.alpn)
         if (p.security == Security.REALITY) {
             b.appendQueryParameter("pbk", p.publicKey)
                 .appendQueryParameter("sid", p.shortId)
+                .appendQueryParameter("spx", p.spiderX)
         }
         if (p.allowInsecure) b.appendQueryParameter("allowInsecure", "1")
         b.fragment(p.name)

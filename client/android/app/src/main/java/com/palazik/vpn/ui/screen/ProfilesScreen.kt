@@ -990,6 +990,7 @@ private fun ManualProfileDialog(
     var path        by remember { mutableStateOf(initial?.path        ?: "/") }
     var host        by remember { mutableStateOf(initial?.host        ?: "") }
     var transportMode by remember { mutableStateOf(initial?.transportMode ?: "") }
+    var transportExtraJson by remember { mutableStateOf(initial?.transportExtraJson ?: "{}") }
     var transportHeader by remember { mutableStateOf(initial?.transportHeader ?: "none") }
     var transportSeed by remember { mutableStateOf(initial?.transportSeed ?: "") }
     var transportSecurity by remember { mutableStateOf(initial?.transportSecurity ?: "none") }
@@ -997,8 +998,11 @@ private fun ManualProfileDialog(
     var security    by remember { mutableStateOf(initial?.security    ?: Security.TLS) }
     var sni         by remember { mutableStateOf(initial?.sni         ?: "") }
     var fingerprint by remember { mutableStateOf(initial?.fingerprint ?: "chrome") }
+    var alpn        by remember { mutableStateOf(initial?.alpn ?: "") }
     var publicKey   by remember { mutableStateOf(initial?.publicKey   ?: "") }
     var shortId     by remember { mutableStateOf(initial?.shortId     ?: "") }
+    var spiderX     by remember { mutableStateOf(initial?.spiderX     ?: "") }
+    var flow        by remember { mutableStateOf(initial?.flow        ?: "") }
     var allowInsecure by remember { mutableStateOf(initial?.allowInsecure ?: false) }
     var vmessSecurity by remember { mutableStateOf(initial?.vmessSecurity ?: "auto") }
     var ssMethod    by remember { mutableStateOf(initial?.ssMethod    ?: "chacha20-ietf-poly1305") }
@@ -1160,6 +1164,14 @@ private fun ManualProfileDialog(
                                         modifier = Modifier.fillMaxWidth(),
                                         singleLine = true,
                                     )
+                                    OutlinedTextField(
+                                        value = transportExtraJson,
+                                        onValueChange = { transportExtraJson = it },
+                                        label = { Text("Дополнительные параметры XHTTP (JSON)") },
+                                        supportingText = { Text("Передаются ядру без изменений: padding, xmux, upload/download") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        minLines = 2,
+                                    )
                                 }
                             }
                         }
@@ -1192,13 +1204,25 @@ private fun ManualProfileDialog(
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 OutlinedTextField(value = sni,         onValueChange = { sni         = it }, label = { Text("SNI") },         modifier = Modifier.fillMaxWidth(), singleLine = true)
                                 OutlinedTextField(value = fingerprint, onValueChange = { fingerprint = it }, label = { Text("Отпечаток") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = alpn, onValueChange = { alpn = it }, label = { Text("ALPN (через запятую)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                             }
                         }
                         AnimatedVisibility(visible = security == Security.REALITY) {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 OutlinedTextField(value = publicKey, onValueChange = { publicKey = it }, label = { Text("Открытый ключ (pbk)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                                 OutlinedTextField(value = shortId,   onValueChange = { shortId   = it }, label = { Text("Короткий ID (sid)") },  modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = spiderX, onValueChange = { spiderX = it }, label = { Text("REALITY spiderX") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                             }
+                        }
+                        AnimatedVisibility(visible = protocol == Protocol.VLESS && transport == Transport.TCP) {
+                            OutlinedTextField(
+                                value = flow,
+                                onValueChange = { flow = it },
+                                label = { Text("VLESS flow") },
+                                supportingText = { Text("Например xtls-rprx-vision; пусто — не подставлять") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                            )
                         }
                         // Allow insecure (skip cert verification) — for TLS-based security only
                         AnimatedVisibility(visible = security == Security.TLS || security == Security.XTLS) {
@@ -1327,6 +1351,7 @@ private fun ManualProfileDialog(
                         path            = path.ifBlank { "/" },
                         host            = host.trim(),
                         transportMode   = transportMode.trim(),
+                        transportExtraJson = transportExtraJson.ifBlank { "{}" },
                         transportHeader = transportHeader.trim().ifBlank { "none" },
                         transportSeed   = transportSeed.trim(),
                         transportSecurity = transportSecurity.trim().ifBlank { "none" },
@@ -1334,8 +1359,11 @@ private fun ManualProfileDialog(
                         security        = security,
                         sni             = sni.trim(),
                         fingerprint     = fingerprint.trim(),
+                        alpn            = alpn.trim(),
                         publicKey       = publicKey.trim(),
                         shortId         = shortId.trim(),
+                        spiderX         = spiderX.trim(),
+                        flow            = flow.trim(),
                         allowInsecure   = allowInsecure,
                         vmessSecurity   = vmessSecurity,
                         ssMethod        = ssMethod.trim(),

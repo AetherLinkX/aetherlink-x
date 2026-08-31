@@ -29,6 +29,9 @@ import org.json.JSONObject
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.net.URI
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -146,8 +149,15 @@ class ProfileRepository @Inject constructor(
                     transport.name,
                     path,
                     host,
+                    transportMode,
+                    transportExtraJson,
                     security.name,
                     sni,
+                    alpn,
+                    flow,
+                    publicKey,
+                    shortId,
+                    spiderX,
                 ).joinToString("|")
                 val prevFingerprint = prevActive?.fingerprint()
                 var restoredActive = false
@@ -187,6 +197,12 @@ class ProfileRepository @Inject constructor(
                     downloadBytes  = usage?.download ?: sub.downloadBytes,
                     totalBytes     = usage?.total ?: sub.totalBytes,
                     expireEpochSec = usage?.expire ?: sub.expireEpochSec,
+                    serviceName = fetched.serviceName.ifBlank { sub.serviceName },
+                    supportUrl = fetched.supportUrl.ifBlank { sub.supportUrl },
+                    websiteUrl = fetched.websiteUrl.ifBlank { sub.websiteUrl },
+                    announcement = fetched.announcement.ifBlank { sub.announcement },
+                    preferredUpdateHours = fetched.preferredUpdateHours ?: sub.preferredUpdateHours,
+                    refillEpochSec = fetched.refillEpochSec ?: sub.refillEpochSec,
                 )
                 _subscriptions.value = _subscriptions.value.map { if (it.id == sub.id) updated else it }
                 saveSubscriptions()
@@ -459,6 +475,12 @@ class ProfileRepository @Inject constructor(
                 put("downloadBytes",  sub.downloadBytes)
                 put("totalBytes",     sub.totalBytes)
                 put("expireEpochSec", sub.expireEpochSec)
+                put("serviceName", sub.serviceName)
+                put("supportUrl", sub.supportUrl)
+                put("websiteUrl", sub.websiteUrl)
+                put("announcement", sub.announcement)
+                put("preferredUpdateHours", sub.preferredUpdateHours)
+                put("refillEpochSec", sub.refillEpochSec)
             })
         }
         prefs.edit().putString("subscriptions_json", arr.toString()).apply()
@@ -516,6 +538,12 @@ class ProfileRepository @Inject constructor(
                     downloadBytes  = o.optLong("downloadBytes", -1L),
                     totalBytes     = o.optLong("totalBytes", -1L),
                     expireEpochSec = o.optLong("expireEpochSec", -1L),
+                    serviceName = o.optString("serviceName"),
+                    supportUrl = o.optString("supportUrl"),
+                    websiteUrl = o.optString("websiteUrl"),
+                    announcement = o.optString("announcement"),
+                    preferredUpdateHours = o.optLong("preferredUpdateHours", -1L),
+                    refillEpochSec = o.optLong("refillEpochSec", -1L),
                 ))
             }
             _subscriptions.value = loaded
@@ -579,7 +607,7 @@ class ProfileRepository @Inject constructor(
                 if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
                 val body = resp.body?.string()?.takeIf { it.isNotBlank() }
                     ?: throw Exception("Empty body")
-                SubscriptionFetch(body, resp.header("Subscription-Userinfo"))
+                subscriptionFetch(body, resp.headers.toMultimap())
             }
         }
         if (proxyResult.isSuccess) return proxyResult.getOrThrow()
@@ -589,11 +617,54 @@ class ProfileRepository @Inject constructor(
             if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
             val body = resp.body?.string()?.takeIf { it.isNotBlank() }
                 ?: throw Exception("Empty body from direct fetch")
-            SubscriptionFetch(body, resp.header("Subscription-Userinfo"))
+            subscriptionFetch(body, resp.headers.toMultimap())
         }
     }
 
-    private data class SubscriptionFetch(val body: String, val userInfo: String?)
+    private data class SubscriptionFetch(
+        val body: String,
+        val userInfo: String?,
+        val serviceName: String,
+        val supportUrl: String,
+        val websiteUrl: String,
+        val announcement: String,
+        val preferredUpdateHours: Long?,
+        val refillEpochSec: Long?,
+    )
+
+    private fun subscriptionFetch(body: String, headers: Map<String, List<String>>): SubscriptionFetch {
+        val normalized = headers.mapKeys { it.key.lowercase() }.mapValues { it.value.firstOrNull().orEmpty() }
+        return SubscriptionFetch(
+            body = body,
+            userInfo = normalized["subscription-userinfo"],
+            serviceName = decodeProviderText(normalized["profile-title"]),
+            supportUrl = safeProviderUrl(normalized["support-url"]),
+            websiteUrl = safeProviderUrl(normalized["profile-web-page-url"]),
+            announcement = decodeProviderText(normalized["announce"]),
+            preferredUpdateHours = normalized["profile-update-interval"]?.trim()?.toLongOrNull()
+                ?.takeIf { it in 1..8_760 },
+            refillEpochSec = normalized["subscription-refill-date"]?.trim()?.toLongOrNull()
+                ?.takeIf { it > 0 },
+        )
+    }
+
+    private fun decodeProviderText(raw: String?): String {
+        val value = raw?.trim().orEmpty()
+        if (value.isBlank()) return ""
+        if (!value.startsWith("base64:", ignoreCase = true)) return value.take(256)
+        return runCatching {
+            String(Base64.getDecoder().decode(value.substringAfter(':')), StandardCharsets.UTF_8)
+                .trim().take(256)
+        }.getOrDefault("")
+    }
+
+    private fun safeProviderUrl(raw: String?): String {
+        val value = raw?.trim().orEmpty()
+        return runCatching {
+            val parsed = URI(value)
+            if (parsed.scheme?.lowercase() in listOf("http", "https") && !parsed.host.isNullOrBlank()) value else ""
+        }.getOrDefault("")
+    }
 
     private fun activeProxyClient(): OkHttpClient {
         val proxy = LocalProxyEndpoint.proxyOrNull()

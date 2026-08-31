@@ -203,15 +203,10 @@ object XrayConfigBuilder {
                         put(JSONObject().apply {
                             put("id", p.uuid)
                             put("encryption", "none")
-                            // BUG FIX: xtls-rprx-vision flow is only valid on raw/TCP transport.
-                            // Setting it on WS/gRPC/XHTTP/H2/QUIC makes xray reject the outbound,
-                            // so only apply flow for REALITY/XTLS over TCP.
-                            val flow = when {
-                                p.transport == Transport.TCP &&
-                                    (p.security == Security.REALITY || p.security == Security.XTLS) ->
-                                    "xtls-rprx-vision"
-                                else -> ""
-                            }
+                            // Preserve the server-provided flow. Inventing Vision for a link
+                            // whose flow is empty breaks non-Vision REALITY inbounds. Vision is
+                            // only emitted on RAW/TCP, where the current core accepts it.
+                            val flow = p.flow.trim().takeIf { p.transport == Transport.TCP }.orEmpty()
                             if (flow.isNotEmpty()) put("flow", flow)
                         })
                     })
@@ -406,10 +401,11 @@ object XrayConfigBuilder {
         when (p.transport) {
             Transport.XHTTP, Transport.H2, Transport.QUIC -> put("xhttpSettings", JSONObject().apply {
                 put("path", p.path.ifEmpty { "/" })
-                put("host", p.host.ifEmpty { p.sni.ifEmpty { p.address } })
+                if (p.host.isNotEmpty()) put("host", p.host)
                 put("mode", p.transportMode.ifBlank {
                     if (p.transport in listOf(Transport.H2, Transport.QUIC)) "stream-one" else "auto"
                 })
+                optionsObject(p.transportExtraJson)?.let { put("extra", it) }
             })
             Transport.WS -> put("wsSettings", JSONObject().apply {
                 put("path", p.path.ifEmpty { "/" })
@@ -473,11 +469,16 @@ object XrayConfigBuilder {
                     put("allowInsecure", p.allowInsecure)
                     if (p.fingerprint.isNotEmpty()) put("fingerprint", p.fingerprint)
                     put("alpn", JSONArray().apply {
-                        when (p.transport) {
-                            Transport.GRPC, Transport.H2 -> put("h2")
-                            Transport.QUIC -> put("h3")
-                            Transport.WS, Transport.HTTP_UPGRADE -> put("http/1.1")
-                            else -> { put("h2"); put("http/1.1") }
+                        val configured = p.alpn.split(",").map(String::trim).filter(String::isNotBlank)
+                        if (configured.isNotEmpty()) {
+                            configured.forEach(::put)
+                        } else {
+                            when (p.transport) {
+                                Transport.GRPC, Transport.H2 -> put("h2")
+                                Transport.QUIC -> put("h3")
+                                Transport.WS, Transport.HTTP_UPGRADE -> put("http/1.1")
+                                else -> { put("h2"); put("http/1.1") }
+                            }
                         }
                     })
                 })
@@ -489,7 +490,7 @@ object XrayConfigBuilder {
                     put("fingerprint", p.fingerprint.ifEmpty { "chrome" })
                     put("shortId",     p.shortId)
                     put("publicKey",   p.publicKey)
-                    put("spiderX",     "")
+                    put("spiderX",     p.spiderX)
                 })
             }
             Security.XTLS -> {

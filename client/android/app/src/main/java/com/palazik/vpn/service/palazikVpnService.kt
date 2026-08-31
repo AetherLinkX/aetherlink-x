@@ -76,6 +76,8 @@ class palazikVpnService : VpnService() {
     private var localSocksPort: Int = 0
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
+    private val networkLock = Any()
+    private val underlyingNetworks = linkedSetOf<Network>()
 
     // v2rayNG: registerDefaultNetworkCallback returns our VPN interface, so we use
     // requestNetwork with a specific request to get the real underlying network,
@@ -93,15 +95,26 @@ class palazikVpnService : VpnService() {
     private val defaultNetworkCallback by lazy {
         object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                setUnderlyingNetworks(arrayOf(network))
+                updateUnderlyingNetwork(network, available = true)
             }
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                setUnderlyingNetworks(arrayOf(network))
+                updateUnderlyingNetwork(network, available = true)
             }
             override fun onLost(network: Network) {
-                setUnderlyingNetworks(null)
+                updateUnderlyingNetwork(network, available = false)
             }
         }
+    }
+
+    private fun updateUnderlyingNetwork(network: Network, available: Boolean) {
+        val snapshot = synchronized(networkLock) {
+            if (available) underlyingNetworks.add(network) else underlyingNetworks.remove(network)
+            underlyingNetworks.toTypedArray()
+        }
+        // Keep a newly available LTE/Wi-Fi network when Android reports the old one
+        // lost a moment later. Clearing everything here caused intermittent routing
+        // back into our own TUN during network handoff.
+        setUnderlyingNetworks(snapshot.takeIf { it.isNotEmpty() })
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -452,6 +465,8 @@ class palazikVpnService : VpnService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try { connectivity.unregisterNetworkCallback(defaultNetworkCallback) } catch (_: Exception) {}
         }
+        synchronized(networkLock) { underlyingNetworks.clear() }
+        setUnderlyingNetworks(null)
     }
 
     private fun failVpn() {
@@ -505,6 +520,7 @@ class palazikVpnService : VpnService() {
     private fun startStatsPolling() {
         statsJob?.cancel()
         statsJob = scope.launch {
+            var transientFailures = 0
             while (isActive) {
                 delay(1000)
                 try {
@@ -515,11 +531,15 @@ class palazikVpnService : VpnService() {
                         _bytesOut.value = stats[1].coerceAtLeast(0L)
                         _bytesIn.value = stats[3].coerceAtLeast(0L)
                     }
+                    transientFailures = 0
                 } catch (e: Exception) {
-                    _lastError.value = "Туннель неожиданно остановился. Повторите подключение"
-                    addDiagnostic("Tunnel health check failed")
-                    withContext(Dispatchers.Main) { failVpn() }
-                    break
+                    transientFailures++
+                    addDiagnostic("Tunnel health check failed ($transientFailures/3)")
+                    if (transientFailures >= 3 || hevTunBridge?.isRunning() != true) {
+                        _lastError.value = "Туннель неожиданно остановился. Повторите подключение"
+                        withContext(Dispatchers.Main) { failVpn() }
+                        break
+                    }
                 }
             }
         }

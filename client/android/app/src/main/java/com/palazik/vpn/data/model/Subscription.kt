@@ -16,6 +16,14 @@ data class Subscription(
     val downloadBytes: Long = -1L,
     val totalBytes: Long = -1L,
     val expireEpochSec: Long = -1L,
+
+    // Provider metadata exposed by Remnawave-compatible subscription responses.
+    val serviceName: String = "",
+    val supportUrl: String = "",
+    val websiteUrl: String = "",
+    val announcement: String = "",
+    val preferredUpdateHours: Long = -1L,
+    val refillEpochSec: Long = -1L,
 ) {
     /** Bytes consumed so far (upload + download), or -1 if the provider didn't report it. */
     val usedBytes: Long
@@ -24,4 +32,5 @@ data class Subscription(
 
     val hasUsageInfo: Boolean get() = usedBytes >= 0 || totalBytes >= 0
     val hasExpiry: Boolean get() = expireEpochSec > 0
+    val displayName: String get() = serviceName.ifBlank { name }
 }

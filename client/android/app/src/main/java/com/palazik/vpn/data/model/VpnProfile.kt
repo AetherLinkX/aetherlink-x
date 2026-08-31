@@ -38,6 +38,7 @@ data class VpnProfile(
     val path: String      = "/",
     val host: String      = "",
     val transportMode: String = "",       // XHTTP: auto / packet-up / stream-up / stream-one
+    val transportExtraJson: String = "{}", // XHTTP: padding, xmux and upload tuning
     val transportHeader: String = "none", // mKCP/legacy QUIC header type
     val transportSeed: String = "",       // mKCP seed
     val transportSecurity: String = "none", // legacy QUIC packet cipher
@@ -47,9 +48,14 @@ data class VpnProfile(
     val security: Security   = Security.TLS,
     val sni: String       = "",
     val fingerprint: String = "chrome",
+    val alpn: String       = "",       // comma-separated TLS ALPN values from the share link
     val publicKey: String = "",       // reality / wireguard
     val shortId: String   = "",       // reality
+    val spiderX: String   = "",       // REALITY spider path
     val allowInsecure: Boolean = false, // skip TLS cert verification (self-signed servers)
+
+    // ── VLESS ───────────────────────────────────────────────────────────────
+    val flow: String      = "",       // preserve the server-provided flow; never invent Vision
 
     // ── VMess ────────────────────────────────────────────────────────────────
     val vmessSecurity: String = "auto", // vmess cipher: auto / aes-128-gcm / chacha20-poly1305 / none
