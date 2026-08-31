@@ -93,7 +93,8 @@ object ProfileCodec {
 
     /** Decode a subscription body (newline-separated or base64-encoded links) */
     fun decodeSubscriptionBody(body: String): List<VpnProfile> {
-        val trimmed = body.trim()
+        val trimmed = body.trim().removePrefix("\uFEFF").trim()
+        if (trimmed.isEmpty()) return emptyList()
 
         // Remnawave can return a complete Xray JSON document instead of share links.
         // Keep this path before Base64 decoding so a valid JSON document is never
@@ -102,17 +103,27 @@ object ProfileCodec {
 
         // Try base64 first (many providers serve a base64 blob of newline-separated links).
         val fromBase64 = listOf(Base64.DEFAULT, Base64.URL_SAFE).firstNotNullOfOrNull { flags ->
-            runCatching { String(Base64.decode(trimmed, flags)) }.getOrNull()
-                ?.lines()
-                ?.mapNotNull { decode(it.trim()) }
-                ?.takeIf { it.isNotEmpty() }
+            runCatching { String(Base64.decode(trimmed, flags), Charsets.UTF_8) }.getOrNull()
+                ?.trim()
+                ?.removePrefix("\uFEFF")
+                ?.let { decoded ->
+                    decodeXrayJsonSubscription(decoded).takeIf { it.isNotEmpty() }
+                        ?: decodeSubscriptionLines(decoded).takeIf { it.isNotEmpty() }
+                }
         }
         if (fromBase64 != null) return fromBase64
 
         // BUG FIX: a plain-text body can still be "Base64-decodable" into garbage, which
         // previously yielded zero profiles. Fall back to parsing the original lines.
-        return trimmed.lines().mapNotNull { decode(it.trim()) }
+        return decodeSubscriptionLines(trimmed)
     }
+
+    private fun decodeSubscriptionLines(body: String): List<VpnProfile> =
+        body.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .mapNotNull(::decode)
+            .toList()
 
     private fun decodeXrayJsonSubscription(body: String): List<VpnProfile> {
         if (!body.startsWith("{") && !body.startsWith("[")) return emptyList()
@@ -128,20 +139,20 @@ object ProfileCodec {
                         ?: org.json.JSONArray().put(root.takeIf { it.has("protocol") })
                     for (i in 0 until outbounds.length()) {
                         val outbound = outbounds.optJSONObject(i) ?: continue
-                        decodeXrayOutbound(outbound, remark)?.let(::add)
+                        addAll(decodeXrayOutbound(outbound, remark))
                     }
                 }
             }.distinctBy { listOf(it.name, it.protocol, it.address, it.port, it.uuid, it.transport, it.path, it.host) }
         }.getOrDefault(emptyList())
     }
 
-    private fun decodeXrayOutbound(outbound: JSONObject, remark: String): VpnProfile? =
+    private fun decodeXrayOutbound(outbound: JSONObject, remark: String): List<VpnProfile> =
         when (outbound.optString("protocol").lowercase()) {
-            "aetherlinkx", "alx" -> decodeAetherLinkXOutbound(outbound, remark)
-            "vless", "vmess" -> decodeVnextXrayOutbound(outbound, remark)
-            "trojan" -> decodeServerXrayOutbound(outbound, remark, Protocol.TROJAN)
-            "shadowsocks" -> decodeServerXrayOutbound(outbound, remark, Protocol.SHADOWSOCKS)
-            else -> null
+            "aetherlinkx", "alx" -> listOfNotNull(decodeAetherLinkXOutbound(outbound, remark))
+            "vless", "vmess" -> decodeVnextXrayOutbounds(outbound, remark)
+            "trojan" -> decodeServerXrayOutbounds(outbound, remark, Protocol.TROJAN)
+            "shadowsocks" -> decodeServerXrayOutbounds(outbound, remark, Protocol.SHADOWSOCKS)
+            else -> emptyList()
         }
 
     private fun decodeAetherLinkXOutbound(outbound: JSONObject, remark: String = ""): VpnProfile? {
@@ -216,51 +227,55 @@ object ProfileCodec {
         )
     }
 
-    private fun decodeVnextXrayOutbound(outbound: JSONObject, remark: String): VpnProfile? {
+    private fun decodeVnextXrayOutbounds(outbound: JSONObject, remark: String): List<VpnProfile> {
         val protocol = when (outbound.optString("protocol").lowercase()) {
             "vless" -> Protocol.VLESS
             "vmess" -> Protocol.VMESS
-            else -> return null
+            else -> return emptyList()
         }
-        val server = outbound.optJSONObject("settings")?.optJSONArray("vnext")?.optJSONObject(0)
-            ?: return null
-        val user = server.optJSONArray("users")?.optJSONObject(0) ?: return null
-        return profileFromXrayOutbound(
-            outbound = outbound,
-            name = remark,
-            protocol = protocol,
-            address = server.optString("address"),
-            port = server.optInt("port", 443),
-            credential = user.optString("id"),
-        ).copy(
-            flow = user.optString("flow"),
-            vmessSecurity = user.optString("security", "auto").ifBlank { "auto" },
-        )
+        val servers = outbound.optJSONObject("settings")?.optJSONArray("vnext") ?: return emptyList()
+        return buildList {
+            for (index in 0 until servers.length()) {
+                val server = servers.optJSONObject(index) ?: continue
+                val user = server.optJSONArray("users")?.optJSONObject(0) ?: continue
+                add(profileFromXrayOutbound(
+                    outbound = outbound,
+                    name = remark,
+                    protocol = protocol,
+                    address = server.optString("address"),
+                    port = server.optInt("port", 443),
+                    credential = user.optString("id"),
+                ).copy(
+                    flow = user.optString("flow"),
+                    vmessSecurity = user.optString("security", "auto").ifBlank { "auto" },
+                ))
+            }
+        }
     }
 
-    private fun decodeServerXrayOutbound(
+    private fun decodeServerXrayOutbounds(
         outbound: JSONObject,
         remark: String,
         protocol: Protocol,
-    ): VpnProfile? {
-        val server = outbound.optJSONObject("settings")?.optJSONArray("servers")?.optJSONObject(0)
-            ?: return null
-        val credential = when (protocol) {
-            Protocol.TROJAN -> server.optString("password")
-            Protocol.SHADOWSOCKS -> server.optString("password")
-            else -> ""
+    ): List<VpnProfile> {
+        val servers = outbound.optJSONObject("settings")?.optJSONArray("servers") ?: return emptyList()
+        return buildList {
+            for (index in 0 until servers.length()) {
+                val server = servers.optJSONObject(index) ?: continue
+                val credential = server.optString("password")
+                add(profileFromXrayOutbound(
+                    outbound = outbound,
+                    name = remark,
+                    protocol = protocol,
+                    address = server.optString("address"),
+                    port = server.optInt("port", 443),
+                    credential = credential,
+                ).copy(
+                    ssMethod = server.optString("method", "chacha20-ietf-poly1305"),
+                    ssPassword = if (protocol == Protocol.SHADOWSOCKS) credential else "",
+                ))
+            }
         }
-        return profileFromXrayOutbound(
-            outbound = outbound,
-            name = remark,
-            protocol = protocol,
-            address = server.optString("address"),
-            port = server.optInt("port", 443),
-            credential = credential,
-        ).copy(
-            ssMethod = server.optString("method", "chacha20-ietf-poly1305"),
-            ssPassword = if (protocol == Protocol.SHADOWSOCKS) credential else "",
-        )
     }
 
     private fun profileFromXrayOutbound(

@@ -129,25 +129,39 @@ class ProfileRepository @Inject constructor(
     suspend fun updateSubscription(sub: Subscription): Result<Int> = withContext(Dispatchers.IO) {
         updateMutex.withLock {
             runCatching {
-                var fetched = fetchSubscriptionBody(sub.url)
-                var decodedProfiles = ProfileCodec.decodeSubscriptionBody(fetched.body)
-                if (decodedProfiles.none { !ProfileValidator.isProviderPlaceholder(it) }) {
-                    compatibleJsonUrl(sub.url)?.let { jsonUrl ->
-                        runCatching { fetchSubscriptionBody(jsonUrl) }.getOrNull()?.let { jsonFetch ->
-                            val jsonProfiles = ProfileCodec.decodeSubscriptionBody(jsonFetch.body)
-                            if (jsonProfiles.any { !ProfileValidator.isProviderPlaceholder(it) }) {
-                                fetched = jsonFetch
-                                decodedProfiles = jsonProfiles
-                            }
+                val primaryFetch = fetchSubscriptionBody(sub.url)
+                var fetched = primaryFetch
+                var decodedProfiles = ProfileCodec.decodeSubscriptionBody(primaryFetch.body)
+                var freshProfiles = usableProfiles(decodedProfiles, sub.id)
+
+                // Remnawave's regular endpoint depends on User-Agent and can contain a
+                // reduced/encoded format. Its /json variant is deterministic and may expose
+                // more locations, so compare both and keep the larger valid result instead
+                // of trying JSON only after a total parse failure.
+                compatibleJsonUrl(sub.url)?.let { jsonUrl ->
+                    runCatching { fetchSubscriptionBody(jsonUrl) }.getOrNull()?.let { jsonFetch ->
+                        val jsonDecoded = ProfileCodec.decodeSubscriptionBody(jsonFetch.body)
+                        val jsonUsable = usableProfiles(jsonDecoded, sub.id)
+                        if (jsonUsable.size > freshProfiles.size ||
+                            (freshProfiles.isEmpty() &&
+                                jsonDecoded.any(ProfileValidator::isProviderPlaceholder) &&
+                                decodedProfiles.none(ProfileValidator::isProviderPlaceholder))
+                        ) {
+                            fetched = jsonFetch
+                            decodedProfiles = jsonDecoded
+                            freshProfiles = jsonUsable
                         }
                     }
                 }
-                val usage = parseUserInfo(fetched.userInfo)
 
-                val freshProfiles = decodedProfiles
-                    .filterNot(ProfileValidator::isProviderPlaceholder)
-                    .filter { ProfileValidator.validate(it).isEmpty() }
-                    .map { it.copy(subscriptionId = sub.id) }
+                val providerExplicitlyEmpty = decodedProfiles.any(ProfileValidator::isProviderPlaceholder) &&
+                    freshProfiles.isEmpty()
+                if (freshProfiles.isEmpty() && !providerExplicitlyEmpty) {
+                    // A temporary HTML/error response or a new wrapper must never erase a
+                    // previously working subscription. Keep it intact and surface failure.
+                    throw IllegalArgumentException("Ответ подписки не содержит распознаваемых профилей")
+                }
+                val usage = parseUserInfo(primaryFetch.userInfo ?: fetched.userInfo)
 
                 // v2rayNG: remember which profile was selected before wiping
                 val snapshot      = _profiles.value
@@ -208,14 +222,15 @@ class ProfileRepository @Inject constructor(
                     downloadBytes  = usage?.download ?: sub.downloadBytes,
                     totalBytes     = usage?.total ?: sub.totalBytes,
                     expireEpochSec = usage?.expire ?: sub.expireEpochSec,
-                    serviceName = fetched.serviceName.ifBlank { sub.serviceName },
-                    supportUrl = fetched.supportUrl.ifBlank { sub.supportUrl },
-                    websiteUrl = fetched.websiteUrl.ifBlank { sub.websiteUrl },
-                    announcement = fetched.announcement.ifBlank { sub.announcement },
+                    serviceName = primaryFetch.serviceName.ifBlank { fetched.serviceName }.ifBlank { sub.serviceName },
+                    supportUrl = primaryFetch.supportUrl.ifBlank { fetched.supportUrl }.ifBlank { sub.supportUrl },
+                    websiteUrl = primaryFetch.websiteUrl.ifBlank { fetched.websiteUrl }.ifBlank { sub.websiteUrl },
+                    announcement = primaryFetch.announcement.ifBlank { fetched.announcement }.ifBlank { sub.announcement },
                     availabilityMessage = if (merged.isNotEmpty()) "" else
-                        "Подписка добавлена, но провайдер пока не выдал ни одной рабочей локации",
-                    preferredUpdateHours = fetched.preferredUpdateHours ?: sub.preferredUpdateHours,
-                    refillEpochSec = fetched.refillEpochSec ?: sub.refillEpochSec,
+                        "Панель вернула служебные адреса 0.0.0.0:1. Проверьте хосты и inbound, назначенные скваду.",
+                    preferredUpdateHours = primaryFetch.preferredUpdateHours
+                        ?: fetched.preferredUpdateHours ?: sub.preferredUpdateHours,
+                    refillEpochSec = primaryFetch.refillEpochSec ?: fetched.refillEpochSec ?: sub.refillEpochSec,
                 )
                 _subscriptions.value = _subscriptions.value.map { if (it.id == sub.id) updated else it }
                 saveSubscriptions()
@@ -659,6 +674,20 @@ class ProfileRepository @Inject constructor(
         URI(parsed.scheme, parsed.userInfo, parsed.host, parsed.port, "$path/json", parsed.query, parsed.fragment)
             .toString()
     }.getOrNull()
+
+    private fun usableProfiles(profiles: List<VpnProfile>, subscriptionId: String): List<VpnProfile> =
+        profiles.asSequence()
+            .filterNot(ProfileValidator::isProviderPlaceholder)
+            .filter { ProfileValidator.validate(it).isEmpty() }
+            .map { it.copy(subscriptionId = subscriptionId) }
+            .distinctBy { profile ->
+                listOf(
+                    profile.protocol, profile.address.lowercase(), profile.port, profile.uuid,
+                    profile.transport, profile.path, profile.host.lowercase(), profile.security,
+                    profile.sni.lowercase(), profile.publicKey, profile.shortId,
+                )
+            }
+            .toList()
 
     private data class SubscriptionFetch(
         val body: String,

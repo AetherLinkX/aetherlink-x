@@ -361,13 +361,15 @@ class MainViewModel @Inject constructor(
      * active as required by one-tap subscription import.
      */
     fun importSubscriptionFromUrl(rawUrl: String) {
-        val uri = runCatching { android.net.Uri.parse(rawUrl.trim()) }.getOrNull()
+        val normalizedUrl = normalizeSubscriptionUrl(rawUrl)
+        val uri = runCatching { android.net.Uri.parse(normalizedUrl) }.getOrNull()
         if ((uri?.scheme != "https" && uri?.scheme != "http") || uri.host.isNullOrBlank()) {
             snack("Нужна HTTP- или HTTPS-ссылка на подписку")
             return
         }
-        val normalizedUrl = uri.toString()
-        val existing = repo.subscriptions.value.firstOrNull { it.url == normalizedUrl }
+        val existing = repo.subscriptions.value.firstOrNull {
+            normalizeSubscriptionUrl(it.url) == normalizedUrl
+        }
         val name = existing?.name ?: uri.host.orEmpty() + (uri.lastPathSegment?.let { " · $it" } ?: "")
         val sub = existing ?: Subscription(name = name, url = normalizedUrl).also(repo::addSubscription)
 
@@ -386,8 +388,7 @@ class MainViewModel @Inject constructor(
                     snack(if (count > 0) "Импортировано и активировано профилей: $count" else "Подписка добавлена, но провайдер пока не выдал доступных локаций")
                 },
                 onFailure = {
-                    if (existing == null) repo.removeSubscription(sub.id)
-                    snack("Не удалось загрузить подписку")
+                    snack("Подписка сохранена, но её ответ пока не удалось распознать")
                 },
             )
             SubscriptionUpdateScheduler.sync(context, repo.settings.value)
@@ -396,21 +397,42 @@ class MainViewModel @Inject constructor(
     }
 
     fun addSubscription(name: String, url: String) {
-        val sub = Subscription(name = name, url = url)
-        repo.addSubscription(sub)
+        val normalizedUrl = normalizeSubscriptionUrl(url)
+        val existing = repo.subscriptions.value.firstOrNull {
+            normalizeSubscriptionUrl(it.url) == normalizedUrl
+        }
+        val sub = existing ?: Subscription(name = name, url = normalizedUrl).also(repo::addSubscription)
         viewModelScope.launch {
             _ui.update { it.copy(isUpdatingSubscriptions = true) }
             repo.updateSubscription(sub).fold(
-                onSuccess = { count -> snack(if (count > 0) "Из «$name» загружено профилей: $count" else "Подписка сохранена. Доступных локаций пока нет") },
+                onSuccess = { count ->
+                    val imported = repo.profiles.value.firstOrNull { it.subscriptionId == sub.id }
+                    if (imported != null) {
+                        if (_ui.value.vpnState == VpnState.CONNECTED || _ui.value.vpnState == VpnState.CONNECTING) {
+                            disconnect()
+                        }
+                        repo.setActiveProfile(imported.id)
+                        palazikVpnService.activeProfile = imported.copy(isActive = true)
+                    }
+                    snack(if (count > 0) "Из «$name» загружено и активировано профилей: $count" else "Подписка сохранена. Доступных локаций пока нет")
+                },
                 onFailure = {
-                    repo.removeSubscription(sub.id)
-                    snack("Не удалось загрузить подписку")
+                    snack("Подписка сохранена, но её ответ пока не удалось распознать")
                 },
             )
             syncServiceActiveProfile()
             SubscriptionUpdateScheduler.sync(context, _ui.value.settings)
             _ui.update { it.copy(isUpdatingSubscriptions = false) }
         }
+    }
+
+    private fun normalizeSubscriptionUrl(raw: String): String {
+        val trimmed = raw.trim().replace("\u200B", "")
+        val uri = runCatching { android.net.Uri.parse(trimmed) }.getOrNull() ?: return trimmed
+        val normalizedPath = uri.path.orEmpty().let { path ->
+            if (path.length > 1) path.trimEnd('/') else path
+        }
+        return uri.buildUpon().path(normalizedPath).fragment(null).build().toString()
     }
 
     fun removeSubscription(id: String) {
