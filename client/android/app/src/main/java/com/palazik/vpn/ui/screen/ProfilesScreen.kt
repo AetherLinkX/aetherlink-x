@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -44,6 +45,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 private fun alxOptionEnabled(raw: String, key: String = "enabled"): Boolean =
@@ -73,6 +77,7 @@ fun ProfilesScreen(vm: MainViewModel, onOpenSubscriptions: () -> Unit = {}) {
     var showManual    by remember { mutableStateOf(false) }
     var editProfile   by remember { mutableStateOf<VpnProfile?>(null) }
     var deleteProfile by remember { mutableStateOf<VpnProfile?>(null) }
+    var deleteSubscription by remember { mutableStateOf<Subscription?>(null) }
     var showShareLink by remember { mutableStateOf(false) }
     var showQr        by remember { mutableStateOf(false) }
     var qrBitmap      by remember { mutableStateOf<Bitmap?>(null) }
@@ -169,9 +174,9 @@ fun ProfilesScreen(vm: MainViewModel, onOpenSubscriptions: () -> Unit = {}) {
             Modifier.fillMaxWidth(),
         ) {
             Text("Серверы", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            AnimatedVisibility(visible = ui.profiles.isNotEmpty()) {
+            AnimatedVisibility(visible = ui.profiles.isNotEmpty() || ui.subscriptions.isNotEmpty()) {
                 Text(
-                    "Профилей: ${ui.profiles.size}",
+                    "Локаций: ${ui.profiles.size} · подписок: ${ui.subscriptions.size}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
@@ -274,7 +279,7 @@ fun ProfilesScreen(vm: MainViewModel, onOpenSubscriptions: () -> Unit = {}) {
         Spacer(Modifier.height(12.dp))
 
         AnimatedContent(
-            targetState = ui.profiles.isEmpty(),
+            targetState = ui.profiles.isEmpty() && ui.subscriptions.isEmpty(),
             transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(200)) },
             label = "profiles_content",
         ) { isEmpty ->
@@ -288,13 +293,13 @@ fun ProfilesScreen(vm: MainViewModel, onOpenSubscriptions: () -> Unit = {}) {
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "No profiles yet",
+                            "Профилей пока нет",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Import via link or add manually",
+                            "Импортируйте ссылку или добавьте профиль вручную",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline,
                         )
@@ -319,6 +324,7 @@ fun ProfilesScreen(vm: MainViewModel, onOpenSubscriptions: () -> Unit = {}) {
                     onExportNative = { vm.generateNativeLink(it); showShareLink = true },
                     onExportJson  = { vm.generateJsonConfig(it); showShareLink = true },
                     onRefreshSub  = { sub -> vm.updateSubscription(sub) },
+                    onDeleteSub   = { sub -> deleteSubscription = sub },
                 )
             }
         }
@@ -404,6 +410,25 @@ fun ProfilesScreen(vm: MainViewModel, onOpenSubscriptions: () -> Unit = {}) {
             dismissButton = {
                 TextButton(onClick = { deleteProfile = null }) { Text("Отмена") }
             },
+        )
+    }
+
+    deleteSubscription?.let { subscription ->
+        AlertDialog(
+            onDismissRequest = { deleteSubscription = null },
+            title = { Text("Полностью удалить профиль") },
+            icon = { Icon(Icons.Rounded.DeleteForever, null) },
+            text = { Text("Удалить подписку «${subscription.displayName}» и все её локации?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        vm.removeSubscription(subscription.id)
+                        deleteSubscription = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) { Text("Полностью удалить") }
+            },
+            dismissButton = { TextButton(onClick = { deleteSubscription = null }) { Text("Отмена") } },
         )
     }
 
@@ -598,6 +623,7 @@ private fun GroupedProfilesList(
     onExportNative: (VpnProfile) -> Unit,
     onExportJson: (VpnProfile) -> Unit,
     onRefreshSub: (Subscription) -> Unit,
+    onDeleteSub: (Subscription) -> Unit,
 ) {
     val expandedGroups = remember { mutableStateMapOf("manual" to true) }
     LaunchedEffect(subscriptions) {
@@ -620,7 +646,7 @@ private fun GroupedProfilesList(
                 }
             }
             subGroups.forEach { (sub, subProfiles) ->
-                add(ProfileListItem.Header("header_${sub.id}", sub.name, subProfiles.size, sub.id))
+                add(ProfileListItem.Header("header_${sub.id}", sub.displayName, subProfiles.size, sub.id))
                 if (expandedGroups[sub.id] != false) {
                     subProfiles.forEach { add(ProfileListItem.Card(it)) }
                 }
@@ -651,6 +677,8 @@ private fun GroupedProfilesList(
                             expandedGroups[k] = !(expandedGroups[k] ?: true)
                         },
                         onRefresh = if (sub != null) ({ onRefreshSub(sub) }) else null,
+                        subscription = sub,
+                        onDelete = if (sub != null) ({ onDeleteSub(sub) }) else null,
                     )
                 }
                 is ProfileListItem.Card -> {
@@ -680,6 +708,8 @@ private fun GroupHeader(
     expanded: Boolean,
     onToggle: () -> Unit,
     onRefresh: (() -> Unit)?,
+    subscription: Subscription?,
+    onDelete: (() -> Unit)?,
 ) {
     val rotation by animateFloatAsState(
         targetValue   = if (expanded) 0f else -90f,
@@ -695,6 +725,11 @@ private fun GroupHeader(
     Surface(
         color = containerColor,
         shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.border(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.70f),
+            MaterialTheme.shapes.medium,
+        ),
     ) {
         Row(
             Modifier
@@ -711,13 +746,40 @@ private fun GroupHeader(
                 )
             }
             Spacer(Modifier.width(4.dp))
-            Text(
-                title,
-                style      = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color      = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier   = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                subscription?.let { sub ->
+                    val expiry = if (sub.expireEpochSec > 0) {
+                        val date = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("ru"))
+                            .format(Date(sub.expireEpochSec * 1000L))
+                        "Действует до $date"
+                    } else "Срок не указан"
+                    Text(
+                        listOf(sub.name.takeIf { it != sub.displayName }, expiry)
+                            .filterNotNull().joinToString(" · "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (count == 0) {
+                        Text(
+                            sub.availabilityMessage.ifBlank { "Нет доступных локаций" },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
             Surface(
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                 shape = CircleShape,
@@ -741,6 +803,16 @@ private fun GroupHeader(
                 IconButton(onClick = onRefresh, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Rounded.Refresh, "Обновить подписку", Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+            if (onDelete != null) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Rounded.DeleteForever,
+                        "Полностью удалить профиль",
+                        Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         }
@@ -789,6 +861,12 @@ private fun ProfileCard(
         modifier = Modifier
             .fillMaxWidth()
             .scale(cardScale)
+            .border(
+                if (isActive) 2.dp else 1.dp,
+                if (isActive) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline.copy(alpha = 0.65f),
+                MaterialTheme.shapes.large,
+            )
             .animateContentSize(tween(240)),
         shape    = MaterialTheme.shapes.large,
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = elevation),
@@ -923,7 +1001,7 @@ private fun ProfileCard(
                 }
                 Box {
                     IconButton(onClick = { actionsExpanded = true }) {
-                        Icon(Icons.Rounded.MoreVert, "More profile actions")
+                        Icon(Icons.Rounded.MoreVert, "Действия с профилем")
                     }
                     DropdownMenu(
                         expanded = actionsExpanded,

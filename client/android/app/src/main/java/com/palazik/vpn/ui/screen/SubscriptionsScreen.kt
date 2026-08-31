@@ -3,6 +3,7 @@ package com.palazik.vpn.ui.screen
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -247,6 +248,7 @@ private fun SubscriptionCard(
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.65f), MaterialTheme.shapes.large)
             .animateContentSize(tween(240)),
         colors = CardDefaults.elevatedCardColors(containerColor = cardColor),
         shape    = MaterialTheme.shapes.large,
@@ -293,7 +295,7 @@ private fun SubscriptionCard(
                         label = "sub_profile_count_${sub.id}",
                     ) { count ->
                         Text(
-                            "$count profiles",
+                            "$count локаций",
                             modifier   = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                             style      = MaterialTheme.typography.labelSmall,
                             color      = MaterialTheme.colorScheme.primary,
@@ -387,6 +389,24 @@ private fun SubscriptionCard(
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+            }
+
+            if (sub.profileCount == 0 && sub.availabilityMessage.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.65f), MaterialTheme.shapes.medium),
+                ) {
+                    Text(
+                        sub.availabilityMessage,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
 

@@ -21,12 +21,19 @@ object ProfileValidator {
         java.util.Base64.getUrlDecoder().decode(padded)
     }.getOrNull()?.let { decoded -> decoded.size == 32 && decoded.any { it.toInt() != 0 } } == true
 
+    /** Remnawave uses this endpoint for explanatory fallback entries, not real nodes. */
+    fun isProviderPlaceholder(profile: VpnProfile): Boolean =
+        profile.port == 1 && profile.address.trim().lowercase() in setOf(
+            "0.0.0.0", "::", "[::]", "localhost",
+        )
+
     fun validate(profile: VpnProfile): List<String> {
         val errors = mutableListOf<String>()
 
         if (profile.name.isBlank()) errors += "Укажите название профиля"
         if (profile.address.isBlank()) errors += "Укажите адрес сервера"
         if (profile.port !in 1..65535) errors += "Порт должен быть в диапазоне 1–65535"
+        if (isProviderPlaceholder(profile)) errors += "Провайдер не выдал доступную локацию"
         if (profile.security == Security.REALITY && profile.transport !in listOf(
                 Transport.TCP, Transport.XHTTP, Transport.H2, Transport.QUIC, Transport.GRPC
             )) {

@@ -13,6 +13,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -116,6 +117,11 @@ fun AppNavHost(
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         shadowElevation = 8.dp,
                         shape = CircleShape,
+                        modifier = Modifier.border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outline.copy(alpha = 0.65f),
+                            CircleShape,
+                        ),
                     ) {
                         Row(
                             Modifier.padding(5.dp),
@@ -214,7 +220,14 @@ private fun NavPill(
         color = container,
         contentColor = content,
         shape = CircleShape,
-        modifier = Modifier.size(width = width, height = 56.dp),
+        modifier = Modifier
+            .size(width = width, height = 56.dp)
+            .border(
+                if (selected) 1.5.dp else 1.dp,
+                if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                CircleShape,
+            ),
     ) {
         Row(
             Modifier.padding(horizontal = 12.dp),

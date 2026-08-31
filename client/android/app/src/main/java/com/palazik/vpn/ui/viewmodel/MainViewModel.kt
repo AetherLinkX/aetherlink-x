@@ -340,6 +340,19 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun pingSubscription(subscriptionId: String) {
+        viewModelScope.launch {
+            val profiles = _ui.value.profiles.filter { it.subscriptionId == subscriptionId }
+            if (profiles.isEmpty()) {
+                snack("В этой подписке пока нет доступных локаций")
+                return@launch
+            }
+            snack("Проверяем локации: ${profiles.size}…")
+            repo.pingProfiles(profiles)
+            snack("Проверка всех локаций завершена")
+        }
+    }
+
     // ── Subscriptions ─────────────────────────────────────────────────────────
 
     /**
@@ -370,7 +383,7 @@ class MainViewModel @Inject constructor(
                         repo.setActiveProfile(imported.id)
                         palazikVpnService.activeProfile = imported.copy(isActive = true)
                     }
-                    snack("Импортировано и активировано профилей: $count")
+                    snack(if (count > 0) "Импортировано и активировано профилей: $count" else "Подписка добавлена, но провайдер пока не выдал доступных локаций")
                 },
                 onFailure = {
                     if (existing == null) repo.removeSubscription(sub.id)
@@ -388,7 +401,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             _ui.update { it.copy(isUpdatingSubscriptions = true) }
             repo.updateSubscription(sub).fold(
-                onSuccess = { count -> snack("Из «$name» загружено профилей: $count") },
+                onSuccess = { count -> snack(if (count > 0) "Из «$name» загружено профилей: $count" else "Подписка сохранена. Доступных локаций пока нет") },
                 onFailure = {
                     repo.removeSubscription(sub.id)
                     snack("Не удалось загрузить подписку")
@@ -406,6 +419,7 @@ class MainViewModel @Inject constructor(
             palazikVpnService.activeProfile = null
         }
         repo.removeSubscription(id)
+        snack("Профиль подписки полностью удалён")
     }
 
     fun updateSubscription(sub: Subscription) {
@@ -415,7 +429,7 @@ class MainViewModel @Inject constructor(
             repo.updateSubscription(sub).fold(
                 onSuccess = { count ->
                     syncServiceActiveProfile()
-                    snack("Обновлено профилей: $count")
+                    snack(if (count > 0) "Обновлено профилей: $count" else "Подписка обновлена, но доступных локаций пока нет")
                 },
                 onFailure = { snack("Обновление не удалось") },
             )

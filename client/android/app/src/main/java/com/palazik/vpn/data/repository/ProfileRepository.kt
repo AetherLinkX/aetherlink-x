@@ -129,14 +129,30 @@ class ProfileRepository @Inject constructor(
     suspend fun updateSubscription(sub: Subscription): Result<Int> = withContext(Dispatchers.IO) {
         updateMutex.withLock {
             runCatching {
-                val fetched = fetchSubscriptionBody(sub.url)
-                val body = fetched.body
+                var fetched = fetchSubscriptionBody(sub.url)
+                var decodedProfiles = ProfileCodec.decodeSubscriptionBody(fetched.body)
+                if (decodedProfiles.none { !ProfileValidator.isProviderPlaceholder(it) }) {
+                    compatibleJsonUrl(sub.url)?.let { jsonUrl ->
+                        runCatching { fetchSubscriptionBody(jsonUrl) }.getOrNull()?.let { jsonFetch ->
+                            val jsonProfiles = ProfileCodec.decodeSubscriptionBody(jsonFetch.body)
+                            if (jsonProfiles.any { !ProfileValidator.isProviderPlaceholder(it) }) {
+                                fetched = jsonFetch
+                                decodedProfiles = jsonProfiles
+                            }
+                        }
+                    }
+                }
                 val usage = parseUserInfo(fetched.userInfo)
 
-                val freshProfiles = ProfileCodec.decodeSubscriptionBody(body)
+                val placeholderNames = decodedProfiles
+                    .filter(ProfileValidator::isProviderPlaceholder)
+                    .map { it.name.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                val freshProfiles = decodedProfiles
+                    .filterNot(ProfileValidator::isProviderPlaceholder)
                     .filter { ProfileValidator.validate(it).isEmpty() }
                     .map { it.copy(subscriptionId = sub.id) }
-                if (freshProfiles.isEmpty()) throw Exception("No valid profiles in subscription")
 
                 // v2rayNG: remember which profile was selected before wiping
                 val snapshot      = _profiles.value
@@ -187,7 +203,7 @@ class ProfileRepository @Inject constructor(
                 }
 
                 // Single atomic write — old sub profiles deleted, new ones added
-                _profiles.value = retainedProfiles + merged
+                _profiles.value = ensureActiveProfile(retainedProfiles + merged)
                 saveProfiles()
 
                 val updated = sub.copy(
@@ -201,6 +217,9 @@ class ProfileRepository @Inject constructor(
                     supportUrl = fetched.supportUrl.ifBlank { sub.supportUrl },
                     websiteUrl = fetched.websiteUrl.ifBlank { sub.websiteUrl },
                     announcement = fetched.announcement.ifBlank { sub.announcement },
+                    availabilityMessage = if (merged.isNotEmpty()) "" else placeholderNames
+                        .joinToString(" · ")
+                        .ifBlank { "Провайдер пока не выдал доступных локаций для этой подписки" },
                     preferredUpdateHours = fetched.preferredUpdateHours ?: sub.preferredUpdateHours,
                     refillEpochSec = fetched.refillEpochSec ?: sub.refillEpochSec,
                 )
@@ -479,6 +498,7 @@ class ProfileRepository @Inject constructor(
                 put("supportUrl", sub.supportUrl)
                 put("websiteUrl", sub.websiteUrl)
                 put("announcement", sub.announcement)
+                put("availabilityMessage", sub.availabilityMessage)
                 put("preferredUpdateHours", sub.preferredUpdateHours)
                 put("refillEpochSec", sub.refillEpochSec)
             })
@@ -542,6 +562,7 @@ class ProfileRepository @Inject constructor(
                     supportUrl = o.optString("supportUrl"),
                     websiteUrl = o.optString("websiteUrl"),
                     announcement = o.optString("announcement"),
+                    availabilityMessage = o.optString("availabilityMessage"),
                     preferredUpdateHours = o.optLong("preferredUpdateHours", -1L),
                     refillEpochSec = o.optLong("refillEpochSec", -1L),
                 ))
@@ -598,7 +619,7 @@ class ProfileRepository @Inject constructor(
     private fun fetchSubscriptionBody(url: String): SubscriptionFetch {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", _settings.value.subscriptionUserAgent.ifBlank { "AetherLinkX/0.1" })
+            .header("User-Agent", _settings.value.subscriptionUserAgent.ifBlank { AppSettings().subscriptionUserAgent })
             .build()
 
         // Attempt 1: through proxy (so the fetch itself goes through the active profile)
@@ -620,6 +641,19 @@ class ProfileRepository @Inject constructor(
             subscriptionFetch(body, resp.headers.toMultimap())
         }
     }
+
+    private fun compatibleJsonUrl(url: String): String? = runCatching {
+        val parsed = URI(url)
+        val path = parsed.path.orEmpty().trimEnd('/')
+        if (path.substringAfterLast('-').lowercase() in setOf(
+                "json", "v2ray-json", "singbox", "mihomo", "clash", "stash",
+            ) || path.substringAfterLast('/').lowercase() in setOf(
+                "json", "v2ray-json", "singbox", "mihomo", "clash", "stash",
+            )
+        ) return@runCatching null
+        URI(parsed.scheme, parsed.userInfo, parsed.host, parsed.port, "$path/json", parsed.query, parsed.fragment)
+            .toString()
+    }.getOrNull()
 
     private data class SubscriptionFetch(
         val body: String,

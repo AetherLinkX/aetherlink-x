@@ -5,6 +5,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +21,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -50,11 +52,13 @@ fun HomeScreen(
     val activeSubscription = remember(ui.subscriptions, ui.activeProfile?.subscriptionId) {
         ui.subscriptions.firstOrNull { it.id == ui.activeProfile?.subscriptionId }
     }
-    val homeProfiles = remember(ui.profiles, ui.activeProfile?.subscriptionId) {
-        val subscriptionId = ui.activeProfile?.subscriptionId
+    val homeSubscription = activeSubscription ?: ui.subscriptions.firstOrNull().takeIf { ui.activeProfile == null }
+    val homeProfiles = remember(ui.profiles, homeSubscription?.id, ui.activeProfile?.subscriptionId) {
+        val subscriptionId = homeSubscription?.id ?: ui.activeProfile?.subscriptionId
         if (subscriptionId == null) ui.profiles.filter { it.subscriptionId == null }
         else ui.profiles.filter { it.subscriptionId == subscriptionId }
     }
+    var confirmDelete by remember { mutableStateOf(false) }
     // NOTE: per-second traffic/duration updates live in ConnectedStats so they don't
     // recompose this whole screen every second.
 
@@ -131,15 +135,16 @@ fun HomeScreen(
         label = "btn_color",
     )
 
+    val lightTheme = MaterialTheme.colorScheme.background.luminance() > 0.5f
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.linearGradient(
                     listOf(
-                        Color(0xFF030207),
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
-                        Color(0xFF080311),
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.primary.copy(alpha = if (lightTheme) 0.08f else 0.13f),
+                        if (lightTheme) MaterialTheme.colorScheme.surfaceVariant else Color(0xFF080311),
                     )
                 )
             )
@@ -353,8 +358,14 @@ fun HomeScreen(
             )
         }
 
-        ui.activeProfile?.let { profile ->
-            ProviderSummaryCard(subscription = activeSubscription, profile = profile)
+        if (homeSubscription != null || ui.activeProfile != null) {
+            ProviderSummaryCard(
+                subscription = homeSubscription,
+                profile = ui.activeProfile?.takeIf { homeSubscription == null || it.subscriptionId == homeSubscription.id },
+                onPingAll = { homeSubscription?.let { vm.pingSubscription(it.id) } ?: vm.pingAll() },
+                onUpdate = { homeSubscription?.let(vm::updateSubscription) },
+                onDelete = { confirmDelete = true },
+            )
         }
 
         // Current connection stats stay immediately below the connect control and
@@ -415,6 +426,31 @@ fun HomeScreen(
             }
         }
     }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            icon = { Icon(Icons.Rounded.DeleteForever, null) },
+            title = { Text("Полностью удалить профиль?") },
+            text = {
+                Text(
+                    if (homeSubscription != null) "Будут удалены подписка «${homeSubscription.displayName}» и все её локации."
+                    else "Будет удалён выбранный локальный профиль.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        homeSubscription?.let { vm.removeSubscription(it.id) }
+                            ?: ui.activeProfile?.let { vm.removeProfile(it.id) }
+                        confirmDelete = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) { Text("Полностью удалить") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Отмена") } },
+        )
+    }
 }
 
 @Composable
@@ -427,7 +463,9 @@ private fun HomeServerSwitcher(
     onPing: (VpnProfile) -> Unit,
 ) {
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.70f), MaterialTheme.shapes.extraLarge),
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
@@ -499,13 +537,22 @@ private fun HomeServerSwitcher(
             }
         }
     }
+
 }
 
 @Composable
-private fun ProviderSummaryCard(subscription: Subscription?, profile: VpnProfile) {
+private fun ProviderSummaryCard(
+    subscription: Subscription?,
+    profile: VpnProfile?,
+    onPingAll: () -> Unit,
+    onUpdate: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val uriHandler = LocalUriHandler.current
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.75f), MaterialTheme.shapes.extraLarge),
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
@@ -520,6 +567,23 @@ private fun ProviderSummaryCard(subscription: Subscription?, profile: VpnProfile
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(onClick = onPingAll, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.NetworkCheck, null, Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Пинг всех", maxLines = 1)
+                }
+                if (subscription != null) {
+                    OutlinedButton(onClick = onUpdate, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.Refresh, null, Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Обновить", maxLines = 1)
+                    }
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
@@ -529,9 +593,10 @@ private fun ProviderSummaryCard(subscription: Subscription?, profile: VpnProfile
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(profile.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(profile?.name ?: "Нет доступных локаций", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        "${profile.protocol.name.replace('_', ' ')} · ${profile.transport.name.replace('_', ' ')} · ${profile.security.name}",
+                        profile?.let { "${it.protocol.name.replace('_', ' ')} · ${it.transport.name.replace('_', ' ')} · ${it.security.name}" }
+                            ?: subscription?.availabilityMessage.orEmpty().ifBlank { "Обновите подписку или обратитесь к провайдеру" },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -576,6 +641,15 @@ private fun ProviderSummaryCard(subscription: Subscription?, profile: VpnProfile
             }
             subscription?.announcement?.takeIf { it.isNotBlank() }?.let { announcement ->
                 Text(announcement, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            OutlinedButton(
+                onClick = onDelete,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) {
+                Icon(Icons.Rounded.DeleteForever, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(7.dp))
+                Text("Полностью удалить профиль")
             }
         }
     }

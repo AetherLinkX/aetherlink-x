@@ -41,7 +41,8 @@ object AppSettingsCodec {
                     PingDisplayMode.valueOf(o.optString("pingDisplayMode", d.pingDisplayMode.name))
                 }.getOrDefault(d.pingDisplayMode),
                 subscriptionUserAgent = o.optString("subscriptionUserAgent", d.subscriptionUserAgent)
-                    .ifBlank { d.subscriptionUserAgent },
+                    .ifBlank { d.subscriptionUserAgent }
+                    .let { if (it == "AetherLinkX/0.1") d.subscriptionUserAgent else it },
                 geoipUrl = o.optString("geoipUrl", d.geoipUrl),
                 geositeUrl = o.optString("geositeUrl", d.geositeUrl),
                 blockAds = o.optBoolean("blockAds", d.blockAds),

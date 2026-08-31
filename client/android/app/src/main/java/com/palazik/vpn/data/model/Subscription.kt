@@ -22,6 +22,8 @@ data class Subscription(
     val supportUrl: String = "",
     val websiteUrl: String = "",
     val announcement: String = "",
+    /** Human-readable reason returned by a provider when no usable locations are available. */
+    val availabilityMessage: String = "",
     val preferredUpdateHours: Long = -1L,
     val refillEpochSec: Long = -1L,
 ) {
