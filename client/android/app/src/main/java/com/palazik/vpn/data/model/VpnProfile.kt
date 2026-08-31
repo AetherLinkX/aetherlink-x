@@ -10,7 +10,17 @@ enum class Protocol {
     // REALITY removed — it is a Security layer, not a Protocol (use Security.REALITY)
 }
 
-enum class Transport { TCP, WS, GRPC, XHTTP, H2, QUIC }
+/**
+ * Wire transports understood by the patched Xray core.
+ *
+ * H2 and QUIC are retained for old subscription links. Modern Xray removed the
+ * legacy HTTP/2 and QUIC transports; the client migrates them to XHTTP over H2
+ * and H3 respectively when it builds the runtime configuration.
+ */
+enum class Transport {
+    TCP, WS, GRPC, XHTTP, HTTP_UPGRADE, KCP, HYSTERIA,
+    H2, QUIC,
+}
 enum class Security  { NONE, TLS, REALITY, XTLS }
 
 data class VpnProfile(
@@ -27,6 +37,11 @@ data class VpnProfile(
     val transport: Transport = Transport.TCP,
     val path: String      = "/",
     val host: String      = "",
+    val transportMode: String = "",       // XHTTP: auto / packet-up / stream-up / stream-one
+    val transportHeader: String = "none", // mKCP/legacy QUIC header type
+    val transportSeed: String = "",       // mKCP seed
+    val transportSecurity: String = "none", // legacy QUIC packet cipher
+    val transportKey: String = "",        // legacy QUIC packet key
 
     // ── security ─────────────────────────────────────────────────────────────
     val security: Security   = Security.TLS,

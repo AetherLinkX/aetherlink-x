@@ -43,6 +43,7 @@ class palazikVpnService : VpnService() {
     companion object {
         const val ACTION_START    = "com.palazik.vpn.START"
         const val ACTION_STOP     = "com.palazik.vpn.STOP"
+        const val ACTION_SWITCH   = "com.palazik.vpn.SWITCH"
         const val EXTRA_PROFILE   = "profile_id"
         const val NOTIFICATION_ID = 1001
         private const val TAG     = "AetherLinkX"
@@ -117,6 +118,7 @@ class palazikVpnService : VpnService() {
         when (intent?.action) {
             ACTION_START -> startVpn(intent.getStringExtra(EXTRA_PROFILE))
             ACTION_STOP  -> stopVpn()
+            ACTION_SWITCH -> switchVpn(intent.getStringExtra(EXTRA_PROFILE))
             null -> {
                 addDiagnostic("Sticky restart ignored: missing start action")
                 return START_NOT_STICKY
@@ -556,6 +558,48 @@ class palazikVpnService : VpnService() {
         val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
         _diagnostics.value = (_diagnostics.value + "$stamp  $message").takeLast(80)
+    }
+
+    /**
+     * Replace the outbound profile while keeping ownership of Android's VpnService.
+     * Android allows only one VPN app at a time; rebuilding inside the same service
+     * avoids another permission dialog and prevents the old and new cores from
+     * competing for a loopback listener.
+     */
+    private fun switchVpn(profileId: String?) {
+        val profile = profileId?.let(::loadProfileById)
+            ?: activeProfile?.takeIf { it.id == profileId }
+            ?: run {
+                _lastError.value = "Выбранный профиль не найден"
+                return
+            }
+        if (activeProfile?.id == profile.id && _connectionState.value == ServiceState.RUNNING) return
+        if (_connectionState.value == ServiceState.STARTING || _connectionState.value == ServiceState.STOPPING) {
+            _lastError.value = "Дождитесь завершения текущего переключения"
+            return
+        }
+        if (_connectionState.value !in listOf(ServiceState.RUNNING, ServiceState.ERROR)) {
+            activeProfile = profile
+            startVpn(profile.id)
+            return
+        }
+
+        activeProfile = profile
+        _connectionState.value = ServiceState.STARTING
+        _lastError.value = null
+        addDiagnostic("Switching to ${profile.name}")
+        updateNotification("Переключение — ${profile.name}")
+        statsJob?.cancel()
+        statsJob = null
+        unregisterNetworkCallbackSafely()
+        scope.launch {
+            teardownCore()
+            _connectedSince.value = 0L
+            _bytesIn.value = 0L
+            _bytesOut.value = 0L
+            _connectionState.value = ServiceState.STOPPED
+            startVpn(profile.id)
+        }
     }
 
     private fun userFacingError(error: Throwable): String {

@@ -182,17 +182,20 @@ private fun Md3StyleScreen(vm: MainViewModel, onBack: () -> Unit) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Анимации Miuix", style = MaterialTheme.typography.bodyLarge)
+                        Text("Анимации интерфейса", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "Пружинная прокрутка списков и плавные переходы темы.",
+                            "Свечение, пружинная прокрутка и плавные переходы. По умолчанию выключены.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Spacer(Modifier.width(12.dp))
                     Switch(
-                        checked = ui.designSystem == DesignSystem.MIUIX,
-                        onCheckedChange = { vm.setDesignSystem(if (it) DesignSystem.MIUIX else DesignSystem.MD3) },
+                        checked = ui.settings.uiAnimationsEnabled,
+                        onCheckedChange = {
+                            vm.updateAppSettings(ui.settings.copy(uiAnimationsEnabled = it))
+                            vm.setDesignSystem(if (it) DesignSystem.MIUIX else DesignSystem.MD3)
+                        },
                     )
                 }
             }

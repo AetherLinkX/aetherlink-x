@@ -1,8 +1,6 @@
 # AetherLink X — автономный комплект
 
-Эта папка содержит всё, что относится к новому протоколу: исходники, точки интеграции с Xray-core, переносимый patch, документацию, конфигурации, тесты, готовые Windows/Linux-бинарники, интеграцию с Remnawave Node и исходники собственного клиента.
-
-Готовый архив для переноса: `dist/AetherLink-X-0.4.0-experimental.zip`; его SHA-256 находится в одноимённом `.sha256` файле.
+Эта папка содержит всё, что относится к новому протоколу: исходники, точки интеграции с Xray-core, переносимый patch, документацию, конфигурации, тесты, интеграцию с Remnawave Node и Android-клиент. Бинарные сборочные артефакты в Git не хранятся: APK, образы и ядро создаются воспроизводимыми GitHub Actions.
 
 ## Структура
 
@@ -16,25 +14,12 @@
   remnawave/          custom Node image, deploy script и Config Profile
   client/             AetherLink X Client для Android (GPLv3)
   .github/workflows/  сборка multi-arch Remnawave Backend и Node в GHCR
-  dist/               готовые Windows/Linux-бинарники и архив
+  dist/               только небольшие smoke-конфиги; бинарники публикуются в Releases
   manifest.json       версия, совместимость и результаты проверок
   SHA256SUMS          контрольные суммы комплекта
 ```
 
 Рабочая копия исходников также остаётся в `Xray-core-source/Xray-core-main/proxy/aetherlinkx`, поскольку Go/Xray требует пакет внутри дерева модуля. Удаление этой копии сломало бы текущую сборку. Канонический переносимый комплект — эта папка.
-
-## Быстрый запуск готового бинарника
-
-```powershell
-.\dist\windows-amd64\xray-aetherlinkx.exe version
-.\dist\windows-amd64\xray-aetherlinkx.exe aetherlinkx-keygen
-```
-
-Проверка встроенной регистрации протокола:
-
-```powershell
-.\dist\windows-amd64\xray-aetherlinkx.exe run -test -config .\dist\windows-amd64\smoke-config.json
-```
 
 ## Установка в чистый Xray-core
 
@@ -68,6 +53,7 @@ Installer сначала выполняет `git apply --check`. Patch прим�
 - `source/proxy/aetherlinkx/SECURITY.md` — threat model и checklist;
 - `source/proxy/aetherlinkx/BENCHMARKS.md` — baseline производительности.
 - `docs/AETHERLINK_X_CLIENT_REMNAWAVE.md` — установка клиента и импорт подписки.
+- `docs/ANDROID_INSTALLATION_RU.md` — полная сборка, установка, импорты, транспорты и диагностика Android-клиента.
 
 ## AetherLink X Client
 

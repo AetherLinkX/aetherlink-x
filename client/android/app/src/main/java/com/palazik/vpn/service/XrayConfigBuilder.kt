@@ -145,7 +145,9 @@ object XrayConfigBuilder {
             val stream = buildStreamSettings(profile)
             // Chain through the fragment dialer for anti-DPI (#22/#23). Only meaningful
             // for TCP-based transports; QUIC/UDP transports ignore TCP fragmentation.
-            if (profile.fragmentEnabled && profile.transport != Transport.QUIC) {
+            if (profile.fragmentEnabled && profile.transport !in listOf(
+                    Transport.QUIC, Transport.KCP, Transport.HYSTERIA
+                )) {
                 stream.put("sockopt", JSONObject().apply { put("dialerProxy", "fragment") })
             }
             put("streamSettings", stream)
@@ -159,7 +161,10 @@ object XrayConfigBuilder {
         val useMux = profile.muxEnabled && profile.protocol !in listOf(
             Protocol.AETHERLINK_X, Protocol.SHADOWSOCKS, Protocol.TROJAN, Protocol.ANYTLS,
             Protocol.HYSTERIA2, Protocol.WIREGUARD, Protocol.TUIC, Protocol.SOCKS5, Protocol.HTTP
-        ) && profile.transport !in listOf(Transport.XHTTP, Transport.QUIC)
+        ) && profile.transport !in listOf(
+            Transport.XHTTP, Transport.GRPC, Transport.H2, Transport.QUIC,
+            Transport.KCP, Transport.HYSTERIA,
+        )
           && profile.security !in listOf(Security.REALITY, Security.XTLS)
         put("mux", JSONObject().apply {
             put("enabled", useMux)
@@ -391,30 +396,54 @@ object XrayConfigBuilder {
             Transport.TCP   -> "tcp"
             Transport.WS    -> "ws"
             Transport.GRPC  -> "grpc"
-            Transport.XHTTP -> "xhttp"
-            Transport.H2    -> "http"
-            Transport.QUIC  -> "quic"
+            Transport.XHTTP, Transport.H2, Transport.QUIC -> "xhttp"
+            Transport.HTTP_UPGRADE -> "httpupgrade"
+            Transport.KCP -> "mkcp"
+            Transport.HYSTERIA -> "hysteria"
         }
         put("network", network)
 
         when (p.transport) {
-            Transport.XHTTP -> put("xhttpSettings", JSONObject().apply {
+            Transport.XHTTP, Transport.H2, Transport.QUIC -> put("xhttpSettings", JSONObject().apply {
                 put("path", p.path.ifEmpty { "/" })
                 put("host", p.host.ifEmpty { p.sni.ifEmpty { p.address } })
-                put("mode", "stream-one")
+                put("mode", p.transportMode.ifBlank {
+                    if (p.transport in listOf(Transport.H2, Transport.QUIC)) "stream-one" else "auto"
+                })
             })
             Transport.WS -> put("wsSettings", JSONObject().apply {
                 put("path", p.path.ifEmpty { "/" })
-                if (p.host.isNotEmpty()) put("headers", JSONObject().apply { put("Host", p.host) })
+                if (p.host.isNotEmpty()) {
+                    put("host", p.host)
+                    put("headers", JSONObject().apply { put("Host", p.host) })
+                }
             })
             Transport.GRPC -> put("grpcSettings", JSONObject().apply {
-                put("serviceName", p.path.ifEmpty { "" })
+                put("serviceName", p.path)
+                if (p.host.isNotEmpty()) put("authority", p.host)
                 put("multiMode", false)
+                put("idle_timeout", 60)
+                put("health_check_timeout", 20)
+                put("permit_without_stream", false)
             })
-            Transport.H2 -> put("httpSettings", JSONObject().apply {
+            Transport.HTTP_UPGRADE -> put("httpupgradeSettings", JSONObject().apply {
                 put("path", p.path.ifEmpty { "/" })
-                if (p.host.isNotEmpty()) put("host", JSONArray().apply { put(p.host) })
+                if (p.host.isNotEmpty()) put("host", p.host)
             })
+            Transport.KCP -> put("kcpSettings", JSONObject().apply {
+                put("mtu", 1350)
+                put("tti", 20)
+                put("uplinkCapacity", 12)
+                put("downlinkCapacity", 100)
+                put("congestion", true)
+                put("readBufferSize", 2)
+                put("writeBufferSize", 2)
+                if (p.transportSeed.isNotEmpty()) put("seed", p.transportSeed)
+                put("header", JSONObject().apply {
+                    put("type", p.transportHeader.ifBlank { "none" })
+                })
+            })
+            Transport.HYSTERIA -> put("hysteriaSettings", JSONObject())
             Transport.TCP -> {
                 if (p.host.isNotEmpty()) {
                     put("tcpSettings", JSONObject().apply {
@@ -444,8 +473,12 @@ object XrayConfigBuilder {
                     put("allowInsecure", p.allowInsecure)
                     if (p.fingerprint.isNotEmpty()) put("fingerprint", p.fingerprint)
                     put("alpn", JSONArray().apply {
-                        if (p.transport in listOf(Transport.GRPC, Transport.H2)) put("h2")
-                        put("http/1.1")
+                        when (p.transport) {
+                            Transport.GRPC, Transport.H2 -> put("h2")
+                            Transport.QUIC -> put("h3")
+                            Transport.WS, Transport.HTTP_UPGRADE -> put("http/1.1")
+                            else -> { put("h2"); put("http/1.1") }
+                        }
                     })
                 })
             }

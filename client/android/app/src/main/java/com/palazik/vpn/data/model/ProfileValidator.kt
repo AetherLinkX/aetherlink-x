@@ -24,27 +24,32 @@ object ProfileValidator {
     fun validate(profile: VpnProfile): List<String> {
         val errors = mutableListOf<String>()
 
-        if (profile.name.isBlank()) errors += "Profile name is required"
-        if (profile.address.isBlank()) errors += "Server address is required"
-        if (profile.port !in 1..65535) errors += "Port must be between 1 and 65535"
+        if (profile.name.isBlank()) errors += "Укажите название профиля"
+        if (profile.address.isBlank()) errors += "Укажите адрес сервера"
+        if (profile.port !in 1..65535) errors += "Порт должен быть в диапазоне 1–65535"
+        if (profile.security == Security.REALITY && profile.transport !in listOf(
+                Transport.TCP, Transport.XHTTP, Transport.H2, Transport.QUIC, Transport.GRPC
+            )) {
+            errors += "REALITY поддерживается только с RAW, XHTTP и gRPC"
+        }
 
         when (profile.protocol) {
             Protocol.AETHERLINK_X -> {
-                if (!uuidRegex.matches(profile.uuid)) errors += "AetherLink X requires a valid UUID"
+                if (!uuidRegex.matches(profile.uuid)) errors += "Для AetherLink X нужен корректный UUID"
                 if (!isValidAetherLinkSecret(profile.alxSecret)) {
-                    errors += "AetherLink X secret must be 32 non-zero bytes encoded as Base64URL"
+                    errors += "Секрет AetherLink X должен содержать 32 ненулевых байта в Base64URL"
                 }
                 if (!profile.alxAllowInsecureTransport && profile.security == Security.NONE) {
-                    errors += "AetherLink X requires TLS/REALITY unless insecure transport is explicitly enabled"
+                    errors += "Для AetherLink X требуется TLS/REALITY либо явное разрешение тестового транспорта"
                 }
                 if (profile.security == Security.REALITY && profile.publicKey.isBlank()) {
-                    errors += "AetherLink X REALITY requires a public key"
+                    errors += "Для AetherLink X REALITY нужен открытый ключ"
                 }
             }
             Protocol.VMESS, Protocol.VLESS -> {
-                if (!uuidRegex.matches(profile.uuid)) errors += "${profile.protocol.name} requires a valid UUID"
+                if (!uuidRegex.matches(profile.uuid)) errors += "Для ${profile.protocol.name} нужен корректный UUID"
                 if (profile.security == Security.REALITY && profile.publicKey.isBlank()) {
-                    errors += "Reality requires a public key"
+                    errors += "Для REALITY нужен открытый ключ"
                 }
             }
             Protocol.TROJAN -> {

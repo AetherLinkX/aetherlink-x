@@ -27,6 +27,7 @@ import com.palazik.vpn.R
 import com.palazik.vpn.data.model.AppSettings
 import com.palazik.vpn.data.model.DesignSystem
 import com.palazik.vpn.data.model.PingMode
+import com.palazik.vpn.data.model.PingDisplayMode
 import com.palazik.vpn.data.model.SplitTunnelMode
 import com.palazik.vpn.ui.theme.LocalDesignSystem
 import com.palazik.vpn.ui.theme.miuixSpringScroll
@@ -213,35 +214,70 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 // Sub-screens
 // ─────────────────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ConnectionSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     val ui by vm.ui.collectAsState()
+    var testUrl by remember(ui.settings.pingTestUrl) { mutableStateOf(ui.settings.pingTestUrl) }
     SettingsScaffold(stringResource(R.string.settings_connection), onBack) {
         SettingsCard {
             Text("Режим проверки пинга", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 4.dp))
             Text(
-                "TCP — raw socket connect (fastest, most accurate, default).\n" +
-                "GET / HEAD — Cloudflare request through the running VPN.",
+                "AetherLink, GET и HEAD проверяют весь активный туннель. TCP и ICMP доступны для любого сервера.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 12.dp),
             )
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                PingModeOptions.forEachIndexed { idx, mode ->
-                    SegmentedButton(
-                        shape    = SegmentedButtonDefaults.itemShape(idx, PingModeOptions.size),
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PingModeOptions.forEach { mode ->
+                    FilterChip(
                         selected = ui.pingMode == mode,
-                        onClick  = { vm.setPingMode(mode) },
-                        label    = {
-                            Text(when (mode) {
-                                PingMode.TCP       -> "TCP"
-                                PingMode.HTTP_GET  -> "GET"
-                                PingMode.HTTP_HEAD -> "HEAD"
-                            })
-                        },
+                        onClick = { vm.setPingMode(mode) },
+                        label = { Text(when (mode) {
+                            PingMode.AETHERLINK -> "AetherLink Ping"
+                            PingMode.TCP -> "TCP Connect"
+                            PingMode.HTTP_GET -> "HTTP GET"
+                            PingMode.HTTP_HEAD -> "HTTP HEAD"
+                            PingMode.ICMP -> "ICMP"
+                        }) },
+                        leadingIcon = if (ui.pingMode == mode) {
+                            { Icon(Icons.Rounded.Check, null, Modifier.size(16.dp)) }
+                        } else null,
                     )
                 }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 14.dp))
+            Text("Отображение", style = MaterialTheme.typography.titleSmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PingDisplayMode.values().forEach { mode ->
+                    FilterChip(
+                        selected = ui.settings.pingDisplayMode == mode,
+                        onClick = { vm.updateAppSettings(ui.settings.copy(pingDisplayMode = mode)) },
+                        label = { Text(when (mode) {
+                            PingDisplayMode.NUMBERS -> "Цифры"
+                            PingDisplayMode.SCALE -> "Шкала"
+                            PingDisplayMode.SCALE_AND_NUMBERS -> "Шкала и цифры"
+                            PingDisplayMode.DOTS -> "Точки"
+                        }) },
+                    )
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 14.dp))
+            OutlinedTextField(
+                value = testUrl,
+                onValueChange = { testUrl = it },
+                label = { Text("URL для проверки") },
+                supportingText = { Text("HTTPS-адрес для AetherLink/GET/HEAD") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = {
+                    val normalized = testUrl.trim()
+                    if (normalized.startsWith("https://")) {
+                        vm.updateAppSettings(ui.settings.copy(pingTestUrl = normalized))
+                    } else vm.showSnack("URL должен начинаться с https://")
+                }) { Text("Сохранить URL") }
             }
         }
     }

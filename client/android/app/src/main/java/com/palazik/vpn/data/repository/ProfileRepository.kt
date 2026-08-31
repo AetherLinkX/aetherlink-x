@@ -327,9 +327,11 @@ class ProfileRepository @Inject constructor(
     /** Measure latency for one profile (respecting the selected mode) without persisting. */
     private suspend fun measureLatency(profile: VpnProfile): Long = runCatching {
         when (_pingMode.value) {
-            PingMode.TCP       -> tcpPing(profile)
-            PingMode.HTTP_GET  -> httpPing(head = false)
-            PingMode.HTTP_HEAD -> httpPing(head = true)
+            PingMode.AETHERLINK -> aetherLinkPing()
+            PingMode.TCP        -> tcpPing(profile)
+            PingMode.HTTP_GET   -> httpPing(head = false)
+            PingMode.HTTP_HEAD  -> httpPing(head = true)
+            PingMode.ICMP       -> icmpPing(profile.address)
         }
     }.getOrElse { -1L }
 
@@ -337,7 +339,7 @@ class ProfileRepository @Inject constructor(
     private fun tcpPing(profile: VpnProfile): Long {
         // v2rayNG SpeedtestManager.socketConnectTime: try twice, keep the best
         var best = -1L
-        repeat(2) {
+        repeat(3) {
             val start = System.currentTimeMillis()
             runCatching {
                 Socket().use { sock ->
@@ -356,7 +358,7 @@ class ProfileRepository @Inject constructor(
      * ACTIVE tunnel end-to-end. Not per-profile; callers must ensure the VPN is running.
      */
     private fun httpPing(head: Boolean): Long {
-        val req = Request.Builder().url("https://cp.cloudflare.com/")
+        val req = Request.Builder().url(_settings.value.pingTestUrl)
             .apply { if (head) head() else get() }
             .build()
         val start = System.currentTimeMillis()
@@ -364,6 +366,29 @@ class ProfileRepository @Inject constructor(
             if (!resp.isSuccessful && resp.code != 204) throw Exception("HTTP ${resp.code}")
         }
         return System.currentTimeMillis() - start
+    }
+
+    /** Three end-to-end GET probes through the active tunnel; median filters radio jitter. */
+    private fun aetherLinkPing(): Long {
+        val samples = buildList {
+            repeat(3) { runCatching { httpPing(head = false) }.getOrNull()?.let(::add) }
+        }.sorted()
+        return samples.getOrNull(samples.size / 2) ?: -1L
+    }
+
+    /** ICMP echo through Android's system ping binary; no shell interpolation is used. */
+    private fun icmpPing(address: String): Long {
+        val process = ProcessBuilder("/system/bin/ping", "-c", "1", "-W", "3", address)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        if (process.waitFor() != 0) return -1L
+        return Regex("time[=<]([0-9.]+)\\s*ms")
+            .find(output)
+            ?.groupValues?.getOrNull(1)
+            ?.toDoubleOrNull()
+            ?.toLong()
+            ?: -1L
     }
 
     // ── Backup / restore ────────────────────────────────────────────────────────

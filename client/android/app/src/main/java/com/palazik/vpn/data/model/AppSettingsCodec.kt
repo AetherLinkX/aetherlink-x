@@ -35,6 +35,11 @@ object AppSettingsCodec {
                 autoUpdateSubscriptions = o.optBoolean("autoUpdateSubscriptions", d.autoUpdateSubscriptions),
                 subscriptionUpdateIntervalHours = o.optLong("subscriptionUpdateIntervalHours", d.subscriptionUpdateIntervalHours)
                     .coerceAtLeast(2L),
+                uiAnimationsEnabled = o.optBoolean("uiAnimationsEnabled", d.uiAnimationsEnabled),
+                pingTestUrl = o.optString("pingTestUrl", d.pingTestUrl).ifBlank { d.pingTestUrl },
+                pingDisplayMode = runCatching {
+                    PingDisplayMode.valueOf(o.optString("pingDisplayMode", d.pingDisplayMode.name))
+                }.getOrDefault(d.pingDisplayMode),
                 subscriptionUserAgent = o.optString("subscriptionUserAgent", d.subscriptionUserAgent)
                     .ifBlank { d.subscriptionUserAgent },
                 geoipUrl = o.optString("geoipUrl", d.geoipUrl),
@@ -68,6 +73,9 @@ object AppSettingsCodec {
         put("startOnBoot", s.startOnBoot)
         put("autoUpdateSubscriptions", s.autoUpdateSubscriptions)
         put("subscriptionUpdateIntervalHours", s.subscriptionUpdateIntervalHours)
+        put("uiAnimationsEnabled", s.uiAnimationsEnabled)
+        put("pingTestUrl", s.pingTestUrl)
+        put("pingDisplayMode", s.pingDisplayMode.name)
         put("subscriptionUserAgent", s.subscriptionUserAgent)
         put("geoipUrl", s.geoipUrl)
         put("geositeUrl", s.geositeUrl)

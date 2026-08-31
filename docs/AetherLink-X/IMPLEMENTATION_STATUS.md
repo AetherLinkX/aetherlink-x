@@ -85,13 +85,10 @@ testing/scenarios/aetherlinkx_test.go
 
 Race-detector не запущен: portable Windows Go toolchain не имеет CGO C compiler. Полный `go vet ./infra/conf` также видит уже существующий upstream unreachable block legacy reverse в `infra/conf/xray.go:701`; это не ALX-код.
 
-## Артефакт
+## Артефакты
 
-```text
-Для протокола/dist/windows-amd64/xray-aetherlinkx.exe
-size: 47,569,408 bytes
-SHA-256: ACD04EEA5394E65A3DB0208CB72BCC36433501CEDBA6A9687D16A02C2424B304
-```
+Готовые бинарники не хранятся в Git. Они воспроизводимо собираются из patch и
+исходников, а APK/образы публикуются GitHub Actions вместе с контрольными суммами.
 
 ## Интеграция с Remnawave
 

@@ -20,6 +20,46 @@ import java.util.UUID
  */
 object ProfileCodec {
 
+    private fun parseTransport(raw: String?): Transport = when (raw?.lowercase()) {
+        "ws", "websocket" -> Transport.WS
+        "grpc", "gun" -> Transport.GRPC
+        "xhttp", "splithttp" -> Transport.XHTTP
+        "httpupgrade", "http_upgrade" -> Transport.HTTP_UPGRADE
+        "kcp", "mkcp" -> Transport.KCP
+        "hysteria" -> Transport.HYSTERIA
+        "h2", "http" -> Transport.H2
+        "h3", "quic" -> Transport.QUIC
+        else -> Transport.TCP
+    }
+
+    private fun encodeTransport(transport: Transport): String = when (transport) {
+        Transport.TCP -> "tcp"
+        Transport.WS -> "ws"
+        Transport.GRPC -> "grpc"
+        Transport.XHTTP -> "xhttp"
+        Transport.HTTP_UPGRADE -> "httpupgrade"
+        Transport.KCP -> "kcp"
+        Transport.HYSTERIA -> "hysteria"
+        Transport.H2 -> "h2"
+        Transport.QUIC -> "quic"
+    }
+
+    private fun Uri.Builder.appendTransportParameters(p: VpnProfile): Uri.Builder = apply {
+        appendQueryParameter("type", encodeTransport(p.transport))
+        if (p.transport == Transport.GRPC) appendQueryParameter("serviceName", p.path)
+        else appendQueryParameter("path", p.path)
+        appendQueryParameter("host", p.host)
+        if (p.transportMode.isNotBlank()) appendQueryParameter("mode", p.transportMode)
+        if (p.transportHeader.isNotBlank() && p.transportHeader != "none") {
+            appendQueryParameter("headerType", p.transportHeader)
+        }
+        if (p.transportSeed.isNotBlank()) appendQueryParameter("seed", p.transportSeed)
+        if (p.transportSecurity.isNotBlank() && p.transportSecurity != "none") {
+            appendQueryParameter("quicSecurity", p.transportSecurity)
+        }
+        if (p.transportKey.isNotBlank()) appendQueryParameter("key", p.transportKey)
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // IMPORT
     // ─────────────────────────────────────────────────────────────────────────
@@ -96,14 +136,7 @@ object ProfileCodec {
         val settings = outbound.optJSONObject("settings") ?: return null
         val stream = outbound.optJSONObject("streamSettings") ?: JSONObject()
         val network = stream.optString("network", "tcp").lowercase()
-        val transport = when (network) {
-            "ws" -> Transport.WS
-            "grpc" -> Transport.GRPC
-            "xhttp", "splithttp" -> Transport.XHTTP
-            "h2", "http" -> Transport.H2
-            "quic" -> Transport.QUIC
-            else -> Transport.TCP
-        }
+        val transport = parseTransport(network)
         val security = when (stream.optString("security").lowercase()) {
             "tls" -> Security.TLS
             "reality" -> Security.REALITY
@@ -116,13 +149,16 @@ object ProfileCodec {
             Transport.WS -> stream.optJSONObject("wsSettings")
             Transport.GRPC -> stream.optJSONObject("grpcSettings")
             Transport.XHTTP -> stream.optJSONObject("xhttpSettings") ?: stream.optJSONObject("splithttpSettings")
+            Transport.HTTP_UPGRADE -> stream.optJSONObject("httpupgradeSettings")
+            Transport.KCP -> stream.optJSONObject("kcpSettings")
+            Transport.HYSTERIA -> stream.optJSONObject("hysteriaSettings")
             Transport.H2 -> stream.optJSONObject("httpSettings")
             Transport.QUIC -> stream.optJSONObject("quicSettings")
             Transport.TCP -> stream.optJSONObject("tcpSettings")
         }
         val headers = transportSettings?.optJSONObject("headers")
         val host = when {
-            transport == Transport.GRPC -> ""
+            transport == Transport.GRPC -> transportSettings?.optString("authority").orEmpty()
             headers?.optString("Host")?.isNotBlank() == true -> headers.optString("Host")
             else -> transportSettings?.optString("host").orEmpty()
         }
@@ -153,6 +189,11 @@ object ProfileCodec {
             alxTurboJson = settings.optJSONObject("turbo")?.toString() ?: "{}",
             alxSecurityJson = settings.optJSONObject("security")?.toString() ?: "{}",
             alxStealthJson = settings.optJSONObject("stealth")?.toString() ?: "{}",
+            transportMode = transportSettings?.optString("mode").orEmpty(),
+            transportHeader = transportSettings?.optJSONObject("header")?.optString("type", "none") ?: "none",
+            transportSeed = transportSettings?.optString("seed").orEmpty(),
+            transportSecurity = transportSettings?.optString("security", "none") ?: "none",
+            transportKey = transportSettings?.optString("key").orEmpty(),
         )
     }
 
@@ -186,6 +227,11 @@ object ProfileCodec {
             put("transport", p.transport.name)
             put("path", p.path)
             put("host", p.host)
+            put("transportMode", p.transportMode)
+            put("transportHeader", p.transportHeader)
+            put("transportSeed", p.transportSeed)
+            put("transportSecurity", p.transportSecurity)
+            put("transportKey", p.transportKey)
             put("security", p.security.name)
             put("sni", p.sni)
             put("fp", p.fingerprint)
@@ -240,6 +286,11 @@ object ProfileCodec {
             transport   = transport,
             path        = json.optString("path", "/"),
             host        = json.optString("host"),
+            transportMode = json.optString("transportMode"),
+            transportHeader = json.optString("transportHeader", "none"),
+            transportSeed = json.optString("transportSeed"),
+            transportSecurity = json.optString("transportSecurity", "none"),
+            transportKey = json.optString("transportKey"),
             security    = runCatching {
                 Security.valueOf(json.optString("security", "TLS"))
             }.getOrDefault(Security.TLS),
@@ -275,14 +326,7 @@ object ProfileCodec {
     private fun decodeVmess(raw: String): VpnProfile {
         val b64  = raw.removePrefix("vmess://")
         val json = JSONObject(String(Base64.decode(b64, Base64.DEFAULT)))
-        val transport = when (json.optString("net")) {
-            "ws"   -> Transport.WS
-            "grpc" -> Transport.GRPC
-            "h2"   -> Transport.H2
-            "quic" -> Transport.QUIC
-            "xhttp"-> Transport.XHTTP
-            else   -> Transport.TCP
-        }
+        val transport = parseTransport(json.optString("net"))
         val security = when (json.optString("tls")) {
             "tls"    -> Security.TLS
             "xtls"   -> Security.XTLS
@@ -299,6 +343,11 @@ object ProfileCodec {
             // BUG FIX: always read path and host regardless of transport type
             path      = json.optString("path", "/"),
             host      = json.optString("host"),
+            transportMode = json.optString("mode"),
+            transportHeader = json.optString("type", "none"),
+            transportSeed = json.optString("seed"),
+            transportSecurity = json.optString("quicSecurity", "none"),
+            transportKey = json.optString("key"),
             security  = security,
             sni       = json.optString("sni"),
             // BUG FIX: honour the link's cipher (scy) instead of always "auto"
@@ -311,9 +360,7 @@ object ProfileCodec {
     private fun decodeVless(raw: String): VpnProfile {
         val uri  = Uri.parse(raw)
         val params = uri.queryParameterNames.associateWith { uri.getQueryParameter(it) ?: "" }
-        val transport = Transport.values().firstOrNull {
-            it.name.equals(params["type"], true)
-        } ?: Transport.TCP
+        val transport = parseTransport(params["type"])
         val security = when (params["security"]) {
             "tls"    -> Security.TLS
             "reality"-> Security.REALITY
@@ -328,8 +375,16 @@ object ProfileCodec {
             uuid        = uri.userInfo ?: "",
             transport   = transport,
             // BUG FIX: always read path and host regardless of transport type
-            path        = params["path"] ?: "/",
+            path        = when (transport) {
+                Transport.GRPC -> params["serviceName"] ?: params["path"] ?: ""
+                else -> params["path"] ?: "/"
+            },
             host        = params["host"] ?: "",
+            transportMode = params["mode"] ?: "",
+            transportHeader = params["headerType"] ?: params["header"] ?: "none",
+            transportSeed = params["seed"] ?: "",
+            transportSecurity = params["quicSecurity"] ?: "none",
+            transportKey = params["key"] ?: "",
             security    = security,
             sni         = params["sni"] ?: "",
             fingerprint = params["fp"] ?: "chrome",
@@ -342,14 +397,7 @@ object ProfileCodec {
     private fun decodeAetherLinkX(raw: String): VpnProfile {
         val uri = Uri.parse(raw)
         val params = uri.queryParameterNames.associateWith { uri.getQueryParameter(it) ?: "" }
-        val transport = when (params["type"]?.lowercase()) {
-            "ws" -> Transport.WS
-            "grpc" -> Transport.GRPC
-            "xhttp", "splithttp" -> Transport.XHTTP
-            "h2", "http" -> Transport.H2
-            "quic" -> Transport.QUIC
-            else -> Transport.TCP
-        }
+        val transport = parseTransport(params["type"])
         val security = when (params["security"]?.lowercase()) {
             "tls" -> Security.TLS
             "reality" -> Security.REALITY
@@ -369,8 +417,16 @@ object ProfileCodec {
             port = uri.port.takeIf { it > 0 } ?: 443,
             uuid = uri.userInfo ?: "",
             transport = transport,
-            path = params["path"] ?: "/",
+            path = when (transport) {
+                Transport.GRPC -> params["serviceName"] ?: params["path"] ?: ""
+                else -> params["path"] ?: "/"
+            },
             host = params["host"] ?: "",
+            transportMode = params["mode"] ?: "",
+            transportHeader = params["headerType"] ?: params["header"] ?: "none",
+            transportSeed = params["seed"] ?: "",
+            transportSecurity = params["quicSecurity"] ?: "none",
+            transportKey = params["key"] ?: "",
             security = security,
             sni = params["sni"] ?: "",
             fingerprint = params["fp"] ?: "chrome",
@@ -432,7 +488,7 @@ object ProfileCodec {
         val params = uri.queryParameterNames.associateWith { uri.getQueryParameter(it) ?: "" }
         // BUG FIX: Trojan can run over WS/gRPC/H2 — read type/path/host so non-TCP
         // Trojan links import correctly instead of silently falling back to plain TCP.
-        val transport = Transport.values().firstOrNull { it.name.equals(params["type"], true) } ?: Transport.TCP
+        val transport = parseTransport(params["type"])
         val security = when (params["security"]?.lowercase()) {
             "none"    -> Security.NONE
             "reality" -> Security.REALITY
@@ -446,8 +502,16 @@ object ProfileCodec {
             port        = uri.port.takeIf { it > 0 } ?: 443,
             uuid        = uri.userInfo ?: "",
             transport   = transport,
-            path        = params["path"] ?: "/",
+            path        = when (transport) {
+                Transport.GRPC -> params["serviceName"] ?: params["path"] ?: ""
+                else -> params["path"] ?: "/"
+            },
             host        = params["host"] ?: "",
+            transportMode = params["mode"] ?: "",
+            transportHeader = params["headerType"] ?: params["header"] ?: "none",
+            transportSeed = params["seed"] ?: "",
+            transportSecurity = params["quicSecurity"] ?: "none",
+            transportKey = params["key"] ?: "",
             security    = security,
             sni         = params["sni"] ?: "",
             fingerprint = params["fp"]?.ifBlank { "chrome" } ?: "chrome",
@@ -626,14 +690,7 @@ object ProfileCodec {
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun encodeVmess(p: VpnProfile): String {
-        val net = when (p.transport) {
-            Transport.WS    -> "ws"
-            Transport.GRPC  -> "grpc"
-            Transport.H2    -> "h2"
-            Transport.QUIC  -> "quic"
-            Transport.XHTTP -> "xhttp"
-            else            -> "tcp"
-        }
+        val net = encodeTransport(p.transport)
         val tls = when (p.security) {
             Security.TLS    -> "tls"
             Security.XTLS   -> "xtls"
@@ -645,6 +702,9 @@ object ProfileCodec {
             put("port",p.port); put("id",p.uuid); put("aid",0)
             put("scy", p.vmessSecurity.ifBlank { "auto" })
             put("net",net); put("path",p.path); put("host",p.host)
+            put("mode", p.transportMode); put("type", p.transportHeader)
+            put("seed", p.transportSeed); put("quicSecurity", p.transportSecurity)
+            put("key", p.transportKey)
             put("tls",tls); put("sni",p.sni)
             if (p.allowInsecure) put("allowInsecure", "1")
         }.toString()
@@ -660,10 +720,8 @@ object ProfileCodec {
             .encodedAuthority(buildEncodedAuthority(p.address, p.port, p.uuid))
             .appendQueryParameter("secret", p.alxSecret)
             .appendQueryParameter("allowInsecureTransport", if (p.alxAllowInsecureTransport) "1" else "0")
-            .appendQueryParameter("type", p.transport.name.lowercase())
+            .appendTransportParameters(p)
             .appendQueryParameter("security", p.security.name.lowercase())
-            .appendQueryParameter("path", p.path)
-            .appendQueryParameter("host", p.host)
             .appendQueryParameter("sni", p.sni)
             .appendQueryParameter("fp", p.fingerprint)
             .appendQueryParameter("turbo", encodedOptions(p.alxTurboJson))
@@ -683,11 +741,8 @@ object ProfileCodec {
     private fun encodeVless(p: VpnProfile): String {
         val b = Uri.Builder().scheme("vless")
             .encodedAuthority(buildEncodedAuthority(p.address, p.port, p.uuid))
-            .appendQueryParameter("type", p.transport.name.lowercase())
+            .appendTransportParameters(p)
             .appendQueryParameter("security", p.security.name.lowercase())
-            // FIX: always encode path and host, not just for certain transports
-            .appendQueryParameter("path", p.path)
-            .appendQueryParameter("host", p.host)
             .appendQueryParameter("sni", p.sni)
             .appendQueryParameter("fp", p.fingerprint)
         if (p.security == Security.REALITY) {
@@ -708,11 +763,9 @@ object ProfileCodec {
     private fun encodeTrojan(p: VpnProfile): String {
         val b = Uri.Builder().scheme("trojan")
             .encodedAuthority(buildEncodedAuthority(p.address, p.port, p.uuid))
-            .appendQueryParameter("type", p.transport.name.lowercase())
+            .appendTransportParameters(p)
             .appendQueryParameter("security", p.security.name.lowercase())
             .appendQueryParameter("sni", p.sni)
-        if (p.path.isNotBlank() && p.path != "/") b.appendQueryParameter("path", p.path)
-        if (p.host.isNotBlank()) b.appendQueryParameter("host", p.host)
         if (p.allowInsecure) b.appendQueryParameter("allowInsecure", "1")
         return b.fragment(p.name).build().toString()
     }

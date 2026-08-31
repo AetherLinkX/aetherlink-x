@@ -5,6 +5,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,10 +21,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.palazik.vpn.data.model.VpnState
+import com.palazik.vpn.data.model.PingDisplayMode
 import com.palazik.vpn.R
 import com.palazik.vpn.ui.viewmodel.MainViewModel
 import java.text.DecimalFormat
@@ -40,12 +43,13 @@ fun HomeScreen(
     val vpnState     = ui.vpnState
     val isConnected  = vpnState == VpnState.CONNECTED
     val isTransition = vpnState == VpnState.CONNECTING || vpnState == VpnState.DISCONNECTING
+    val animationsEnabled = ui.settings.uiAnimationsEnabled
     // NOTE: per-second traffic/duration updates live in ConnectedStats so they don't
     // recompose this whole screen every second.
 
     // ── Animations ────────────────────────────────────────────────────────────
 
-    val glowAlpha = if (isConnected) {
+    val glowAlpha = if (isConnected && animationsEnabled) {
         val transition = rememberInfiniteTransition(label = "home_glow")
         val value by transition.animateFloat(
             initialValue = 0.15f, targetValue = 0.40f,
@@ -60,7 +64,7 @@ fun HomeScreen(
         0f
     }
 
-    val pulseScale = if (isTransition) {
+    val pulseScale = if (isTransition && animationsEnabled) {
         val transition = rememberInfiniteTransition(label = "home_pulse")
         val value by transition.animateFloat(
             initialValue = 0.85f, targetValue = 1.15f,
@@ -75,7 +79,7 @@ fun HomeScreen(
         1f
     }
 
-    val haloRotation = if (isTransition) {
+    val haloRotation = if (isTransition && animationsEnabled) {
         val transition = rememberInfiniteTransition(label = "home_halo")
         val value by transition.animateFloat(
             initialValue = 0f, targetValue = 360f,
@@ -138,11 +142,19 @@ fun HomeScreen(
 
         // ── Header ────────────────────────────────────────────────────────────
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text  = "AetherLink X",
-                style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.primary,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_logo),
+                    contentDescription = "AetherLink X",
+                    modifier = Modifier.size(52.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text  = "AetherLink X",
+                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             Spacer(Modifier.height(6.dp))
             AnimatedContent(
                 targetState = ui.activeProfile,
@@ -330,6 +342,17 @@ fun HomeScreen(
             )
         }
 
+        if (ui.profiles.isNotEmpty()) {
+            HomeServerSwitcher(
+                profiles = ui.profiles,
+                activeId = ui.activeProfile?.id,
+                switching = isTransition,
+                displayMode = ui.settings.pingDisplayMode,
+                onSelect = vm::selectProfile,
+                onPing = vm::pingProfile,
+            )
+        }
+
         // ── Traffic stats ─────────────────────────────────────────────────────
         AnimatedVisibility(
             visible = isConnected,
@@ -366,17 +389,138 @@ fun HomeScreen(
                                 color = latencyColor(profile.latencyMs).copy(alpha = 0.15f),
                                 shape = CircleShape,
                             ) {
-                                Text(
-                                    "${profile.latencyMs}ms",
-                                    modifier   = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    style      = MaterialTheme.typography.labelMedium,
-                                    color      = latencyColor(profile.latencyMs),
-                                    fontWeight = FontWeight.Bold,
-                                )
+                                Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                    PingIndicator(profile.latencyMs, ui.settings.pingDisplayMode)
+                                }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeServerSwitcher(
+    profiles: List<com.palazik.vpn.data.model.VpnProfile>,
+    activeId: String?,
+    switching: Boolean,
+    displayMode: PingDisplayMode,
+    onSelect: (String) -> Unit,
+    onPing: (com.palazik.vpn.data.model.VpnProfile) -> Unit,
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+        ),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Серверы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (switching) "Переключение профиля…" else "Можно менять без отключения VPN",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), shape = CircleShape) {
+                    Text(
+                        profiles.size.toString(),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            profiles.take(8).forEachIndexed { index, profile ->
+                val selected = profile.id == activeId
+                Surface(
+                    onClick = { onSelect(profile.id) },
+                    enabled = !switching,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent,
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 10.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            shape = MaterialTheme.shapes.medium,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Public,
+                                null,
+                                Modifier.padding(9.dp).size(20.dp),
+                                tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(profile.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "${profile.protocol.name.replace('_', ' ')} · ${profile.transport.name.replace('_', ' ')} · ${profile.security.name}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        TextButton(onClick = { onPing(profile) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            if (profile.latencyMs >= 0) PingIndicator(profile.latencyMs, displayMode)
+                            else Text("Пинг")
+                        }
+                        if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                if (index != minOf(profiles.size, 8) - 1) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+            }
+            if (profiles.size > 8) {
+                Text(
+                    "Ещё серверов: ${profiles.size - 8}. Полный список — во вкладке «Серверы».",
+                    modifier = Modifier.padding(top = 10.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PingIndicator(latency: Long, mode: PingDisplayMode) {
+    val color = latencyColor(latency)
+    val level = when {
+        latency < 80 -> 4
+        latency < 150 -> 3
+        latency < 300 -> 2
+        else -> 1
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        if (mode in listOf(PingDisplayMode.SCALE, PingDisplayMode.SCALE_AND_NUMBERS)) {
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                (1..4).forEach { bar ->
+                    Box(
+                        Modifier
+                            .width(3.dp)
+                            .height((4 + bar * 3).dp)
+                            .background(if (bar <= level) color else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), CircleShape)
+                    )
+                }
+            }
+        }
+        if (mode in listOf(PingDisplayMode.NUMBERS, PingDisplayMode.SCALE_AND_NUMBERS)) {
+            Text("$latency мс", color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        }
+        if (mode == PingDisplayMode.DOTS) {
+            repeat(4) { index ->
+                Box(Modifier.size(5.dp).background(if (index < level) color else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), CircleShape))
             }
         }
     }

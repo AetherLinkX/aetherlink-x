@@ -29,6 +29,9 @@ data class AppSettings(
     val autoUpdateSubscriptions: Boolean = true,
     val subscriptionUpdateIntervalHours: Long = 2L,
     val designSystem: DesignSystem = DesignSystem.MD3,
+    val uiAnimationsEnabled: Boolean = false,
+    val pingTestUrl: String = "https://www.gstatic.com/generate_204",
+    val pingDisplayMode: PingDisplayMode = PingDisplayMode.NUMBERS,
 
     // ── Subscriptions ──────────────────────────────────────────────────────────
     val subscriptionUserAgent: String = "AetherLinkX/0.1",

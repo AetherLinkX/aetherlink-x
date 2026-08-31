@@ -989,6 +989,11 @@ private fun ManualProfileDialog(
     var transport   by remember { mutableStateOf(initial?.transport   ?: Transport.TCP) }
     var path        by remember { mutableStateOf(initial?.path        ?: "/") }
     var host        by remember { mutableStateOf(initial?.host        ?: "") }
+    var transportMode by remember { mutableStateOf(initial?.transportMode ?: "") }
+    var transportHeader by remember { mutableStateOf(initial?.transportHeader ?: "none") }
+    var transportSeed by remember { mutableStateOf(initial?.transportSeed ?: "") }
+    var transportSecurity by remember { mutableStateOf(initial?.transportSecurity ?: "none") }
+    var transportKey by remember { mutableStateOf(initial?.transportKey ?: "") }
     var security    by remember { mutableStateOf(initial?.security    ?: Security.TLS) }
     var sni         by remember { mutableStateOf(initial?.sni         ?: "") }
     var fingerprint by remember { mutableStateOf(initial?.fingerprint ?: "chrome") }
@@ -1139,10 +1144,29 @@ private fun ManualProfileDialog(
                                 }
                             }
                         }
-                        AnimatedVisibility(visible = transport in listOf(Transport.WS, Transport.H2, Transport.XHTTP, Transport.GRPC)) {
+                        AnimatedVisibility(visible = transport in listOf(
+                            Transport.WS, Transport.H2, Transport.QUIC, Transport.XHTTP,
+                            Transport.GRPC, Transport.HTTP_UPGRADE,
+                        )) {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 OutlinedTextField(value = path, onValueChange = { path = it }, label = { Text(if (transport == Transport.GRPC) "Имя службы" else "Путь") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                                OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text("Хост") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = host, onValueChange = { host = it }, label = { Text(if (transport == Transport.GRPC) "Authority (необязательно)" else "Хост") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                if (transport in listOf(Transport.XHTTP, Transport.H2, Transport.QUIC)) {
+                                    OutlinedTextField(
+                                        value = transportMode,
+                                        onValueChange = { transportMode = it },
+                                        label = { Text("Режим XHTTP") },
+                                        supportingText = { Text("auto, stream-one, stream-up или packet-up") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                    )
+                                }
+                            }
+                        }
+                        AnimatedVisibility(visible = transport == Transport.KCP) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                OutlinedTextField(value = transportSeed, onValueChange = { transportSeed = it }, label = { Text("Seed mKCP") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = transportHeader, onValueChange = { transportHeader = it }, label = { Text("Тип заголовка") }, supportingText = { Text("none, srtp, utp, wechat-video, dtls, wireguard") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                             }
                         }
                     }
@@ -1302,6 +1326,11 @@ private fun ManualProfileDialog(
                         transport       = transport,
                         path            = path.ifBlank { "/" },
                         host            = host.trim(),
+                        transportMode   = transportMode.trim(),
+                        transportHeader = transportHeader.trim().ifBlank { "none" },
+                        transportSeed   = transportSeed.trim(),
+                        transportSecurity = transportSecurity.trim().ifBlank { "none" },
+                        transportKey    = transportKey.trim(),
                         security        = security,
                         sni             = sni.trim(),
                         fingerprint     = fingerprint.trim(),

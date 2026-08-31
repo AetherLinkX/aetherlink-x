@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
             palazikVPNTheme(
                 appTheme           = ui.appTheme,
                 darkModePreference = ui.darkMode,
-                useMiuix           = ui.designSystem == DesignSystem.MIUIX,
+                useMiuix           = ui.settings.uiAnimationsEnabled,
             ) {
                 val isDark = when (ui.darkMode) {
                     DarkModePreference.ALWAYS_DARK  -> true

@@ -251,12 +251,23 @@ class MainViewModel @Inject constructor(
     }
 
     fun selectProfile(id: String) {
-        if (_ui.value.vpnState != VpnState.DISCONNECTED && _ui.value.vpnState != VpnState.ERROR) {
-            snack("Отключите VPN перед сменой профиля")
+        val selected = repo.profiles.value.firstOrNull { it.id == id } ?: return
+        if (_ui.value.activeProfile?.id == id) return
+        if (_ui.value.vpnState in listOf(VpnState.CONNECTING, VpnState.DISCONNECTING)) {
+            snack("Дождитесь завершения текущего переключения")
             return
         }
         repo.setActiveProfile(id)
-        palazikVpnService.activeProfile = repo.profiles.value.firstOrNull { it.id == id }
+        palazikVpnService.activeProfile = selected.copy(isActive = true)
+        if (_ui.value.vpnState == VpnState.CONNECTED) {
+            context.startService(
+                Intent(context, palazikVpnService::class.java).apply {
+                    action = palazikVpnService.ACTION_SWITCH
+                    putExtra(palazikVpnService.EXTRA_PROFILE, id)
+                }
+            )
+            snack("Переключаемся на «${selected.name}»…")
+        }
     }
 
     fun duplicateProfile(profile: VpnProfile) {
@@ -304,13 +315,13 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             // HTTP/HEAD ping measures the ACTIVE tunnel end-to-end, so it only makes sense
             // for the currently active profile while connected. TCP works for any profile.
-            if (_ui.value.pingMode != PingMode.TCP) {
+            if (_ui.value.pingMode in listOf(PingMode.AETHERLINK, PingMode.HTTP_GET, PingMode.HTTP_HEAD)) {
                 if (_ui.value.vpnState != VpnState.CONNECTED) {
                     snack("Для HTTP-пинга сначала подключите VPN")
                     return@launch
                 }
                 if (profile.id != _ui.value.activeProfile?.id) {
-                    snack("HTTP-пинг измеряет только активный профиль; для других выберите TCP")
+                    snack("Проверка через туннель доступна только для активного профиля")
                     return@launch
                 }
             }

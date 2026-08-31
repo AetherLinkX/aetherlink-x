@@ -31,7 +31,7 @@ signature, so a later store/release-signed APK will require uninstalling this al
 
 - **Material 3 Expressive UI** — with an optional Miuix-animations toggle for springy, Xiaomi-style list overscroll and animated theme transitions.
 - **One-tap WARP** — generate a free Cloudflare WARP/WireGuard profile so a brand-new user can connect with zero setup (Android 13+).
-- **Broad protocol support** — AetherLink X, VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard, AnyTLS, SOCKS5, HTTP, plus REALITY/XTLS and the WS/gRPC/H2/QUIC/XHTTP transports.
+- **Broad protocol support** — AetherLink X, VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard, AnyTLS, SOCKS5, HTTP, plus REALITY/TLS and RAW/WS/gRPC/XHTTP/HTTPUpgrade/mKCP/Hysteria transports. Legacy H2/QUIC links migrate to XHTTP H2/H3.
 - **Subscriptions** — auto-update on a schedule, custom User-Agent, and live data-usage / expiry parsed from the `Subscription-Userinfo` header.
 - **Split tunneling** — route specific apps *around* the tunnel, or route *only* selected apps through it.
 - **Smart routing** — presets (rule-based / global / bypass-LAN), selectable domain strategy, ad blocking, China bypass, custom direct/blocked domain lists, and FakeDNS.
@@ -53,7 +53,8 @@ signature, so a later store/release-signed APK will require uninstalling this al
 - Manual editor with masked secrets, per-profile `allowInsecure`, mux toggle, and TLS-fragment toggle
 - Duplicate, export as native link / AetherLink X backup link / generated JSON, share as QR
 - Search, sort (name or latency), and grouping per subscription
-- TCP / HTTP GET / HTTP HEAD latency tests, run concurrently for "ping all" and "choose best"
+- AetherLink median ping, TCP Connect, HTTP GET/HEAD and ICMP checks; four display modes
+- Live profile switching from the home screen while Android VPN remains owned by the app
 
 **Subscriptions**
 - Add, refresh, update all, and pick the fastest server by latency
@@ -61,7 +62,7 @@ signature, so a later store/release-signed APK will require uninstalling this al
 - Data usage and expiry shown per subscription
 
 **Settings**
-- Appearance: dark mode, color themes (Cyber, Ocean, Forest, Sunset, Rose, Violet, AMOLED, Dynamic), a Miuix-animations toggle, and app language (English / Russian)
+- Appearance: purple cyberpunk default, the new AetherLink logo, dark/color themes, and optional animations (off by default)
 - Routing & privacy: presets, domain strategy, FakeDNS, ad block, China bypass, IPv6, kill switch, TLS-fragment params, custom domains
 - DNS: VPN / remote / direct servers
 - Geo files: override the bundled `geoip.dat` / `geosite.dat` from a URL
