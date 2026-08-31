@@ -144,11 +144,6 @@ class ProfileRepository @Inject constructor(
                 }
                 val usage = parseUserInfo(fetched.userInfo)
 
-                val placeholderNames = decodedProfiles
-                    .filter(ProfileValidator::isProviderPlaceholder)
-                    .map { it.name.trim() }
-                    .filter { it.isNotBlank() }
-                    .distinct()
                 val freshProfiles = decodedProfiles
                     .filterNot(ProfileValidator::isProviderPlaceholder)
                     .filter { ProfileValidator.validate(it).isEmpty() }
@@ -217,9 +212,8 @@ class ProfileRepository @Inject constructor(
                     supportUrl = fetched.supportUrl.ifBlank { sub.supportUrl },
                     websiteUrl = fetched.websiteUrl.ifBlank { sub.websiteUrl },
                     announcement = fetched.announcement.ifBlank { sub.announcement },
-                    availabilityMessage = if (merged.isNotEmpty()) "" else placeholderNames
-                        .joinToString(" · ")
-                        .ifBlank { "Провайдер пока не выдал доступных локаций для этой подписки" },
+                    availabilityMessage = if (merged.isNotEmpty()) "" else
+                        "Подписка добавлена, но провайдер пока не выдал ни одной рабочей локации",
                     preferredUpdateHours = fetched.preferredUpdateHours ?: sub.preferredUpdateHours,
                     refillEpochSec = fetched.refillEpochSec ?: sub.refillEpochSec,
                 )
@@ -531,15 +525,16 @@ class ProfileRepository @Inject constructor(
             for (i in 0 until arr.length()) {
                 ProfileCodec.decode(arr.getString(i))?.let { profile ->
                     val m = metaMap[profile.id]
-                    loaded.add(profile.copy(
+                    val restored = profile.copy(
                         isActive       = m?.isActive ?: false,
                         latencyMs      = m?.latency  ?: -1L,
                         lastTested     = m?.lastTested ?: 0L,
                         subscriptionId = m?.subId    ?: profile.subscriptionId,
-                    ))
+                    )
+                    if (!ProfileValidator.isProviderPlaceholder(restored)) loaded.add(restored)
                 }
             }
-            _profiles.value = loaded
+            _profiles.value = ensureActiveProfile(loaded)
         }
 
         val subsJson = prefs.getString("subscriptions_json", null)
@@ -548,7 +543,7 @@ class ProfileRepository @Inject constructor(
             val loaded = mutableListOf<Subscription>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                loaded.add(Subscription(
+                val subscription = Subscription(
                     id           = o.getString("id"),
                     name         = o.getString("name"),
                     url          = o.getString("url"),
@@ -565,7 +560,17 @@ class ProfileRepository @Inject constructor(
                     availabilityMessage = o.optString("availabilityMessage"),
                     preferredUpdateHours = o.optLong("preferredUpdateHours", -1L),
                     refillEpochSec = o.optLong("refillEpochSec", -1L),
-                ))
+                )
+                val actualCount = _profiles.value.count { it.subscriptionId == subscription.id }
+                loaded.add(
+                    subscription.copy(
+                        profileCount = actualCount,
+                        availabilityMessage = if (actualCount > 0) "" else
+                            subscription.availabilityMessage.ifBlank {
+                                "Подписка добавлена, но провайдер пока не выдал ни одной рабочей локации"
+                            },
+                    ),
+                )
             }
             _subscriptions.value = loaded
         }

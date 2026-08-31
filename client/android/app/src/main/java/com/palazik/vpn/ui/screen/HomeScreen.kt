@@ -58,7 +58,6 @@ fun HomeScreen(
         if (subscriptionId == null) ui.profiles.filter { it.subscriptionId == null }
         else ui.profiles.filter { it.subscriptionId == subscriptionId }
     }
-    var confirmDelete by remember { mutableStateOf(false) }
     // NOTE: per-second traffic/duration updates live in ConnectedStats so they don't
     // recompose this whole screen every second.
 
@@ -364,7 +363,6 @@ fun HomeScreen(
                 profile = ui.activeProfile?.takeIf { homeSubscription == null || it.subscriptionId == homeSubscription.id },
                 onPingAll = { homeSubscription?.let { vm.pingSubscription(it.id) } ?: vm.pingAll() },
                 onUpdate = { homeSubscription?.let(vm::updateSubscription) },
-                onDelete = { confirmDelete = true },
             )
         }
 
@@ -427,30 +425,6 @@ fun HomeScreen(
         }
     }
 
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            icon = { Icon(Icons.Rounded.DeleteForever, null) },
-            title = { Text("Полностью удалить профиль?") },
-            text = {
-                Text(
-                    if (homeSubscription != null) "Будут удалены подписка «${homeSubscription.displayName}» и все её локации."
-                    else "Будет удалён выбранный локальный профиль.",
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        homeSubscription?.let { vm.removeSubscription(it.id) }
-                            ?: ui.activeProfile?.let { vm.removeProfile(it.id) }
-                        confirmDelete = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                ) { Text("Полностью удалить") }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Отмена") } },
-        )
-    }
 }
 
 @Composable
@@ -546,7 +520,6 @@ private fun ProviderSummaryCard(
     profile: VpnProfile?,
     onPingAll: () -> Unit,
     onUpdate: () -> Unit,
-    onDelete: () -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
     ElevatedCard(
@@ -641,15 +614,6 @@ private fun ProviderSummaryCard(
             }
             subscription?.announcement?.takeIf { it.isNotBlank() }?.let { announcement ->
                 Text(announcement, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            }
-            OutlinedButton(
-                onClick = onDelete,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            ) {
-                Icon(Icons.Rounded.DeleteForever, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(7.dp))
-                Text("Полностью удалить профиль")
             }
         }
     }

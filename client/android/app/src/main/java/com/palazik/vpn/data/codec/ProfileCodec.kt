@@ -117,25 +117,35 @@ object ProfileCodec {
     private fun decodeXrayJsonSubscription(body: String): List<VpnProfile> {
         if (!body.startsWith("{") && !body.startsWith("[")) return emptyList()
         return runCatching {
-            val outbounds = if (body.startsWith("[")) {
-                org.json.JSONArray(body)
-            } else {
-                val root = JSONObject(body)
-                root.optJSONArray("outbounds")
-                    ?: root.optJSONObject("config")?.optJSONArray("outbounds")
-                    ?: org.json.JSONArray().put(root.takeIf { it.has("protocol") })
-            }
+            val roots = if (body.startsWith("[")) org.json.JSONArray(body)
+                else org.json.JSONArray().put(JSONObject(body))
             buildList {
-                for (i in 0 until outbounds.length()) {
-                    val outbound = outbounds.optJSONObject(i) ?: continue
-                    decodeAetherLinkXOutbound(outbound)?.let(::add)
+                for (rootIndex in 0 until roots.length()) {
+                    val outer = roots.optJSONObject(rootIndex) ?: continue
+                    val root = outer.optJSONObject("config") ?: outer
+                    val remark = root.optString("remarks").ifBlank { outer.optString("remarks") }
+                    val outbounds = root.optJSONArray("outbounds")
+                        ?: org.json.JSONArray().put(root.takeIf { it.has("protocol") })
+                    for (i in 0 until outbounds.length()) {
+                        val outbound = outbounds.optJSONObject(i) ?: continue
+                        decodeXrayOutbound(outbound, remark)?.let(::add)
+                    }
                 }
-            }
+            }.distinctBy { listOf(it.name, it.protocol, it.address, it.port, it.uuid, it.transport, it.path, it.host) }
         }.getOrDefault(emptyList())
     }
 
-    private fun decodeAetherLinkXOutbound(outbound: JSONObject): VpnProfile? {
-        if (!outbound.optString("protocol").equals("aetherlinkx", true)) return null
+    private fun decodeXrayOutbound(outbound: JSONObject, remark: String): VpnProfile? =
+        when (outbound.optString("protocol").lowercase()) {
+            "aetherlinkx", "alx" -> decodeAetherLinkXOutbound(outbound, remark)
+            "vless", "vmess" -> decodeVnextXrayOutbound(outbound, remark)
+            "trojan" -> decodeServerXrayOutbound(outbound, remark, Protocol.TROJAN)
+            "shadowsocks" -> decodeServerXrayOutbound(outbound, remark, Protocol.SHADOWSOCKS)
+            else -> null
+        }
+
+    private fun decodeAetherLinkXOutbound(outbound: JSONObject, remark: String = ""): VpnProfile? {
+        if (outbound.optString("protocol").lowercase() !in setOf("aetherlinkx", "alx")) return null
         val settings = outbound.optJSONObject("settings") ?: return null
         val stream = outbound.optJSONObject("streamSettings") ?: JSONObject()
         val network = stream.optString("network", "tcp").lowercase()
@@ -163,15 +173,15 @@ object ProfileCodec {
         val headers = transportSettings?.optJSONObject("headers")
         val host = when {
             transport == Transport.GRPC -> transportSettings?.optString("authority").orEmpty()
-            headers?.optString("Host")?.isNotBlank() == true -> headers.optString("Host")
-            else -> transportSettings?.optString("host").orEmpty()
+            jsonText(headers, "Host").isNotBlank() -> jsonText(headers, "Host")
+            else -> jsonText(transportSettings, "host")
         }
         val path = when (transport) {
             Transport.GRPC -> transportSettings?.optString("serviceName").orEmpty()
             else -> transportSettings?.optString("path", "/") ?: "/"
         }.ifBlank { "/" }
         return VpnProfile(
-            name = outbound.optString("tag", "AetherLink X").ifBlank { "AetherLink X" },
+            name = remark.ifBlank { outbound.optString("tag", "AetherLink X") }.ifBlank { "AetherLink X" },
             protocol = Protocol.AETHERLINK_X,
             address = settings.optString("address"),
             port = settings.optInt("port", 443),
@@ -185,7 +195,7 @@ object ProfileCodec {
             fingerprint = reality?.optString("fingerprint")?.ifBlank { null }
                 ?: tls?.optString("fingerprint")?.ifBlank { null }
                 ?: "chrome",
-            publicKey = reality?.optString("publicKey").orEmpty(),
+            publicKey = reality?.optString("publicKey")?.ifBlank { reality.optString("password") }.orEmpty(),
             shortId = reality?.optString("shortId").orEmpty(),
             allowInsecure = tls?.optBoolean("allowInsecure", false) ?: false,
             alxSecret = settings.optString("secret"),
@@ -204,6 +214,133 @@ object ProfileCodec {
             }.orEmpty(),
             spiderX = reality?.optString("spiderX").orEmpty(),
         )
+    }
+
+    private fun decodeVnextXrayOutbound(outbound: JSONObject, remark: String): VpnProfile? {
+        val protocol = when (outbound.optString("protocol").lowercase()) {
+            "vless" -> Protocol.VLESS
+            "vmess" -> Protocol.VMESS
+            else -> return null
+        }
+        val server = outbound.optJSONObject("settings")?.optJSONArray("vnext")?.optJSONObject(0)
+            ?: return null
+        val user = server.optJSONArray("users")?.optJSONObject(0) ?: return null
+        return profileFromXrayOutbound(
+            outbound = outbound,
+            name = remark,
+            protocol = protocol,
+            address = server.optString("address"),
+            port = server.optInt("port", 443),
+            credential = user.optString("id"),
+        ).copy(
+            flow = user.optString("flow"),
+            vmessSecurity = user.optString("security", "auto").ifBlank { "auto" },
+        )
+    }
+
+    private fun decodeServerXrayOutbound(
+        outbound: JSONObject,
+        remark: String,
+        protocol: Protocol,
+    ): VpnProfile? {
+        val server = outbound.optJSONObject("settings")?.optJSONArray("servers")?.optJSONObject(0)
+            ?: return null
+        val credential = when (protocol) {
+            Protocol.TROJAN -> server.optString("password")
+            Protocol.SHADOWSOCKS -> server.optString("password")
+            else -> ""
+        }
+        return profileFromXrayOutbound(
+            outbound = outbound,
+            name = remark,
+            protocol = protocol,
+            address = server.optString("address"),
+            port = server.optInt("port", 443),
+            credential = credential,
+        ).copy(
+            ssMethod = server.optString("method", "chacha20-ietf-poly1305"),
+            ssPassword = if (protocol == Protocol.SHADOWSOCKS) credential else "",
+        )
+    }
+
+    private fun profileFromXrayOutbound(
+        outbound: JSONObject,
+        name: String,
+        protocol: Protocol,
+        address: String,
+        port: Int,
+        credential: String,
+    ): VpnProfile {
+        val stream = outbound.optJSONObject("streamSettings") ?: JSONObject()
+        val transport = parseTransport(stream.optString("network", "tcp"))
+        val security = when (stream.optString("security").lowercase()) {
+            "tls" -> Security.TLS
+            "reality" -> Security.REALITY
+            "xtls" -> Security.XTLS
+            else -> Security.NONE
+        }
+        val reality = stream.optJSONObject("realitySettings")
+        val tls = stream.optJSONObject("tlsSettings")
+        val tlsLayer = reality ?: tls
+        val transportSettings = when (transport) {
+            Transport.WS -> stream.optJSONObject("wsSettings")
+            Transport.GRPC -> stream.optJSONObject("grpcSettings")
+            Transport.XHTTP -> stream.optJSONObject("xhttpSettings") ?: stream.optJSONObject("splithttpSettings")
+            Transport.HTTP_UPGRADE -> stream.optJSONObject("httpupgradeSettings")
+            Transport.KCP -> stream.optJSONObject("kcpSettings")
+            Transport.HYSTERIA -> stream.optJSONObject("hysteriaSettings")
+            Transport.H2 -> stream.optJSONObject("httpSettings")
+            Transport.QUIC -> stream.optJSONObject("quicSettings")
+            Transport.TCP -> stream.optJSONObject("tcpSettings")
+        }
+        val headers = transportSettings?.optJSONObject("headers")
+        val host = when {
+            transport == Transport.GRPC -> transportSettings?.optString("authority").orEmpty()
+            jsonText(headers, "Host").isNotBlank() -> jsonText(headers, "Host")
+            else -> jsonText(transportSettings, "host")
+        }
+        val path = when (transport) {
+            Transport.GRPC -> transportSettings?.optString("serviceName").orEmpty()
+            else -> transportSettings?.optString("path", "/") ?: "/"
+        }.ifBlank { "/" }
+        return VpnProfile(
+            name = name.ifBlank { outbound.optString("tag", protocol.name) }.ifBlank { protocol.name },
+            protocol = protocol,
+            address = address,
+            port = port,
+            uuid = credential,
+            transport = transport,
+            path = path,
+            host = host,
+            security = security,
+            sni = reality?.optString("serverName")?.ifBlank { null }
+                ?: tls?.optString("serverName").orEmpty(),
+            fingerprint = reality?.optString("fingerprint")?.ifBlank { null }
+                ?: tls?.optString("fingerprint")?.ifBlank { null }
+                ?: "chrome",
+            publicKey = reality?.optString("publicKey")?.ifBlank { reality.optString("password") }.orEmpty(),
+            shortId = reality?.optString("shortId").orEmpty(),
+            allowInsecure = tls?.optBoolean("allowInsecure", false) ?: false,
+            transportMode = transportSettings?.optString("mode").orEmpty(),
+            transportExtraJson = normalizeTransportExtra(transportSettings?.opt("extra")?.toString()),
+            transportHeader = transportSettings?.optJSONObject("header")?.optString("type", "none") ?: "none",
+            transportSeed = transportSettings?.optString("seed").orEmpty(),
+            transportSecurity = transportSettings?.optString("security", "none") ?: "none",
+            transportKey = transportSettings?.optString("key").orEmpty(),
+            alpn = tlsLayer?.optJSONArray("alpn")?.let { array ->
+                (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }.joinToString(",")
+            }.orEmpty(),
+            spiderX = reality?.optString("spiderX").orEmpty(),
+        )
+    }
+
+    private fun jsonText(source: JSONObject?, key: String): String {
+        val value = source?.opt(key) ?: return ""
+        return when (value) {
+            is org.json.JSONArray -> value.optString(0)
+            is String -> value
+            else -> value.toString().takeUnless { it == "null" }.orEmpty()
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
