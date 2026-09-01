@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.palazik.vpn.data.model.DesignSystem
 import com.palazik.vpn.ui.theme.AppTheme
 import com.palazik.vpn.ui.theme.DarkModePreference
@@ -35,7 +36,7 @@ fun StyleScreen(vm: MainViewModel, onBack: () -> Unit) {
 
 @Composable
 private fun MiuixStyleScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -146,7 +147,7 @@ private fun MiuixStyleScreen(vm: MainViewModel, onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Md3StyleScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
 
     Column(
         Modifier

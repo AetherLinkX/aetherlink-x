@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.palazik.vpn.R
 import com.palazik.vpn.data.model.AppSettings
 import com.palazik.vpn.data.model.DesignSystem
@@ -217,7 +218,7 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ConnectionSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     var testUrl by remember(ui.settings.pingTestUrl) { mutableStateOf(ui.settings.pingTestUrl) }
     SettingsScaffold(stringResource(R.string.settings_connection), onBack) {
         SettingsCard {
@@ -285,7 +286,7 @@ fun ConnectionSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
 @Composable
 fun DnsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     SettingsScaffold(stringResource(R.string.settings_dns), onBack) {
         SettingsCard {
             var tunDns    by remember(ui.settings.dnsServers) { mutableStateOf(ui.settings.dnsServers.joinToString(", ")) }
@@ -328,7 +329,7 @@ fun DnsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
 @Composable
 fun RoutingSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     SettingsScaffold(stringResource(R.string.settings_routing), onBack) {
         SettingsCard { RoutingSettingsContent(vm, ui.settings) }
     }
@@ -336,7 +337,7 @@ fun RoutingSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
 @Composable
 fun GeoFilesSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     SettingsScaffold(stringResource(R.string.settings_geo), onBack) {
         SettingsCard {
             var geoip   by remember(ui.settings.geoipUrl)   { mutableStateOf(ui.settings.geoipUrl) }
@@ -385,7 +386,7 @@ fun GeoFilesSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
 @Composable
 fun SubscriptionSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     SettingsScaffold(stringResource(R.string.settings_subscriptions), onBack) {
         SettingsCard { StartupAutoUpdateContent(vm, ui.settings) }
         SettingsCard { SubscriptionUaContent(vm, ui.settings) }
@@ -394,7 +395,7 @@ fun SubscriptionSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
 @Composable
 fun SplitTunnelSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     SettingsScaffold(stringResource(R.string.settings_split), onBack) {
         SettingsCard { SplitTunnelContent(vm, ui.settings, ui.installedApps) }
     }
@@ -409,7 +410,7 @@ fun BackupSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
 @Composable
 fun StartupSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     SettingsScaffold(stringResource(R.string.settings_startup), onBack) {
         SettingsCard {
             SettingRow(
@@ -426,7 +427,7 @@ fun StartupSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val diagnostics by vm.diagnostics.collectAsState()
+    val diagnostics by vm.diagnostics.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -486,7 +487,7 @@ fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
 @Composable
 fun LanguageSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     SettingsScaffold(stringResource(R.string.settings_language), onBack) {
         SettingsCard {
@@ -521,7 +522,7 @@ fun LanguageSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     SettingsScaffold(stringResource(R.string.settings_about), onBack) {
         SettingsCard {

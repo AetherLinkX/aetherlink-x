@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.palazik.vpn.data.model.Subscription
 import com.palazik.vpn.ui.theme.miuixSpringScroll
 import com.palazik.vpn.ui.viewmodel.MainViewModel
@@ -36,7 +37,7 @@ private fun formatBytes(bytes: Long): String {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SubscriptionsScreen(vm: MainViewModel) {
-    val ui by vm.ui.collectAsState()
+    val ui by vm.ui.collectAsStateWithLifecycle()
 
     var showAdd by remember { mutableStateOf(false) }
     var subName by remember { mutableStateOf("") }

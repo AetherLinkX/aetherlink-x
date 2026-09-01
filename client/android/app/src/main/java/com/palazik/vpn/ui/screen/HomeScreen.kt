@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.palazik.vpn.data.model.Subscription
 import com.palazik.vpn.data.model.VpnProfile
 import com.palazik.vpn.data.model.VpnState
@@ -46,7 +47,7 @@ fun HomeScreen(
     vm: MainViewModel,
     permLauncher: ActivityResultLauncher<Intent>,
 ) {
-    val ui           by vm.ui.collectAsState()
+    val ui           by vm.ui.collectAsStateWithLifecycle()
     val vpnState     = ui.vpnState
     val isConnected  = vpnState == VpnState.CONNECTED
     val isTransition = vpnState == VpnState.CONNECTING || vpnState == VpnState.DISCONNECTING
@@ -704,9 +705,9 @@ private fun ErrorCard(message: String, onRetry: () -> Unit) {
  */
 @Composable
 private fun ConnectedStats(vm: MainViewModel, profileName: String, isConnected: Boolean) {
-    val bytesIn        by vm.bytesIn.collectAsState()
-    val bytesOut       by vm.bytesOut.collectAsState()
-    val connectedSince by vm.connectedSince.collectAsState()
+    val bytesIn        by vm.bytesIn.collectAsStateWithLifecycle()
+    val bytesOut       by vm.bytesOut.collectAsStateWithLifecycle()
+    val connectedSince by vm.connectedSince.collectAsStateWithLifecycle()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(isConnected) {

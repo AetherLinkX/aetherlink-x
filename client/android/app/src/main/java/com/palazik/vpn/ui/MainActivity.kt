@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +27,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.palazik.vpn.ui.screen.AppNavHost
 import com.palazik.vpn.ui.screen.OnboardingScreen
 import com.palazik.vpn.ui.theme.DarkModePreference
@@ -65,14 +65,14 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-            val ui by vm.ui.collectAsState()
+            val themeUi by vm.themeUi.collectAsStateWithLifecycle()
 
             palazikVPNTheme(
-                appTheme           = ui.appTheme,
-                darkModePreference = ui.darkMode,
-                useMiuix           = ui.settings.uiAnimationsEnabled,
+                appTheme           = themeUi.appTheme,
+                darkModePreference = themeUi.darkMode,
+                useMiuix           = themeUi.animationsEnabled,
             ) {
-                val isDark = when (ui.darkMode) {
+                val isDark = when (themeUi.darkMode) {
                     DarkModePreference.ALWAYS_DARK  -> true
                     DarkModePreference.ALWAYS_LIGHT -> false
                     DarkModePreference.SYSTEM       -> isSystemInDarkTheme()

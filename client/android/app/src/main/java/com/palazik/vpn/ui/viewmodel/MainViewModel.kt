@@ -49,6 +49,19 @@ data class UiState(
     val updateAvailable: UpdateInfo?      = null,
 )
 
+/** Small, stable slices keep root navigation/theme from observing the complete profile list. */
+data class ThemeUiState(
+    val appTheme: AppTheme = AppTheme.CYBER,
+    val darkMode: DarkModePreference = DarkModePreference.ALWAYS_DARK,
+    val animationsEnabled: Boolean = false,
+)
+
+data class ShellUiState(
+    val snackMessage: String? = null,
+    val snackActionLabel: String? = null,
+    val animationsEnabled: Boolean = false,
+)
+
 private const val THEME_PREFS       = "palazik_theme"
 private const val KEY_THEME         = "app_theme"
 private const val KEY_DARKMODE      = "dark_mode"
@@ -65,6 +78,14 @@ class MainViewModel @Inject constructor(
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
+    val themeUi: StateFlow<ThemeUiState> = ui
+        .map { ThemeUiState(it.appTheme, it.darkMode, it.settings.uiAnimationsEnabled) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ThemeUiState())
+    val shellUi: StateFlow<ShellUiState> = ui
+        .map { ShellUiState(it.snackMessage, it.snackActionLabel, it.settings.uiAnimationsEnabled) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ShellUiState())
 
     // High-frequency values (update ~1×/sec) are exposed as dedicated flows instead of
     // living in the big UiState — so a traffic tick doesn't recompose every screen that
@@ -335,7 +356,9 @@ class MainViewModel @Inject constructor(
                 }
             }
             snack("Проверяем ${profile.name}…")
-            val ms = repo.pingProfile(profile)
+            val activeTunnelId = _ui.value.activeProfile?.id
+                .takeIf { _ui.value.vpnState == VpnState.CONNECTED }
+            val ms = repo.pingProfile(profile, activeTunnelId)
             snack(if (ms >= 0) "${profile.name}: ${ms} мс" else "${profile.name}: нет ответа")
         }
     }
@@ -344,7 +367,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             // pingProfiles always uses TCP (per-server) — no VPN required, no HTTP gate.
             snack("Проверяем профили: ${_ui.value.profiles.size}…")
-            repo.pingProfiles(_ui.value.profiles)
+            repo.pingProfiles(_ui.value.profiles, connectedProfileId())
             snack("Проверка завершена")
         }
     }
@@ -357,10 +380,13 @@ class MainViewModel @Inject constructor(
                 return@launch
             }
             snack("Проверяем локации: ${profiles.size}…")
-            repo.pingProfiles(profiles)
+            repo.pingProfiles(profiles, connectedProfileId())
             snack("Проверка всех локаций завершена")
         }
     }
+
+    private fun connectedProfileId(): String? = _ui.value.activeProfile?.id
+        .takeIf { _ui.value.vpnState == VpnState.CONNECTED }
 
     // ── Subscriptions ─────────────────────────────────────────────────────────
 

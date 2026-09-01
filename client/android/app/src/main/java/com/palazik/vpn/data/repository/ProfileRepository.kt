@@ -1,7 +1,11 @@
 package com.palazik.vpn.data.repository
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.SystemClock
 import com.palazik.vpn.data.SecurePreferences
 import com.palazik.vpn.data.codec.ProfileCodec
 import com.palazik.vpn.data.network.LocalProxyEndpoint
@@ -28,6 +32,7 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URI
@@ -46,6 +51,11 @@ class ProfileRepository @Inject constructor(
     @Named("direct") private val directClient: OkHttpClient,
 ) {
     private val prefs = SecurePreferences.get(context)
+    private val connectivityManager =
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+    @Volatile private var proxyClientPort = -1
+    @Volatile private var cachedProxyClient: OkHttpClient? = null
 
     /**
      * App-scoped Remnawave device identifier.
@@ -79,7 +89,10 @@ class ProfileRepository @Inject constructor(
     private val updateMutex = Mutex()
 
     private companion object {
-        const val MAX_CONCURRENT_PINGS = 24
+        // Ten simultaneous probes keep large (60+) subscriptions responsive on weak phones.
+        const val MAX_CONCURRENT_PINGS = 10
+        const val TCP_PING_ATTEMPTS = 2
+        const val TCP_PING_TIMEOUT_MS = 2_000
         const val SUBSCRIPTION_HWID_KEY = "subscription_hwid_v1"
         val SUBSCRIPTION_HWID_REGEX = Regex("^[A-Za-z0-9._:-]{8,128}$")
         val SUBSCRIPTION_USER_AGENT_FALLBACKS = listOf(
@@ -383,8 +396,11 @@ class ProfileRepository @Inject constructor(
      *         reflects end-to-end latency through the proxy profile.
      *         Requires the VPN / xray service to be running.
      */
-    suspend fun pingProfile(profile: VpnProfile): Long = withContext(Dispatchers.IO) {
-        val latency = measureLatency(profile)
+    suspend fun pingProfile(
+        profile: VpnProfile,
+        activeTunnelProfileId: String? = null,
+    ): Long = withContext(Dispatchers.IO) {
+        val latency = measureLatency(profile, activeTunnelProfileId)
         updateProfile(profile.copy(latencyMs = latency, lastTested = System.currentTimeMillis()))
         latency
     }
@@ -405,11 +421,20 @@ class ProfileRepository @Inject constructor(
      * Concurrency is capped so a large subscription doesn't open hundreds of sockets at once
      * (which can exhaust file descriptors and just thrashes the IO dispatcher anyway).
      */
-    suspend fun pingProfiles(profiles: List<VpnProfile>): Unit = withContext(Dispatchers.IO) {
+    suspend fun pingProfiles(
+        profiles: List<VpnProfile>,
+        activeTunnelProfileId: String? = null,
+    ): Unit = withContext(Dispatchers.IO) {
         if (profiles.isEmpty()) return@withContext
         val gate = Semaphore(MAX_CONCURRENT_PINGS)
         val results = profiles
-            .map { p -> async { gate.withPermit { p.id to tcpPing(p) } } }
+            .map { p ->
+                async {
+                    gate.withPermit {
+                        p.id to tcpOrActiveTunnelPing(p, activeTunnelProfileId)
+                    }
+                }
+            }
             .awaitAll()
             .toMap()
         val now = System.currentTimeMillis()
@@ -420,32 +445,83 @@ class ProfileRepository @Inject constructor(
     }
 
     /** Measure latency for one profile (respecting the selected mode) without persisting. */
-    private suspend fun measureLatency(profile: VpnProfile): Long = runCatching {
+    private suspend fun measureLatency(
+        profile: VpnProfile,
+        activeTunnelProfileId: String?,
+    ): Long = runCatching {
         when (_pingMode.value) {
             PingMode.AETHERLINK -> aetherLinkPing()
-            PingMode.TCP        -> tcpPing(profile)
+            PingMode.TCP        -> tcpOrActiveTunnelPing(profile, activeTunnelProfileId)
             PingMode.HTTP_GET   -> httpPing(head = false)
             PingMode.HTTP_HEAD  -> httpPing(head = true)
             PingMode.ICMP       -> icmpPing(profile.address)
         }
     }.getOrElse { -1L }
 
-    /** Direct TCP connect to the server's address:port. Returns -1 on failure. */
+    /**
+     * Direct TCP connect to every address resolved on a physical Android network.
+     * Binding to a non-VPN network avoids OEM-specific routing loops while the tunnel is
+     * active. Trying every DNS result also prevents an unreachable IPv6 record from hiding
+     * a working IPv4 endpoint (and vice versa).
+     */
     private fun tcpPing(profile: VpnProfile): Long {
-        // v2rayNG SpeedtestManager.socketConnectTime: try twice, keep the best
         var best = -1L
-        repeat(3) {
-            val start = System.currentTimeMillis()
-            runCatching {
-                Socket().use { sock ->
-                    sock.connect(InetSocketAddress(profile.address, profile.port), 3000)
+        // The first entry is the validated physical default. Trying Wi-Fi and mobile
+        // together doubles radio/socket work and makes a 60+ server batch visibly lag.
+        val networks: List<Network?> = listOf(directNetworks().firstOrNull())
+
+        repeat(TCP_PING_ATTEMPTS) {
+            networks.forEach { network ->
+                val addresses = resolveAddresses(profile.address, network)
+                addresses.forEach { address ->
+                    val start = SystemClock.elapsedRealtimeNanos()
+                    runCatching {
+                        val socket = network?.socketFactory?.createSocket() ?: Socket()
+                        socket.use { sock ->
+                            sock.tcpNoDelay = true
+                            sock.connect(
+                                InetSocketAddress(address, profile.port),
+                                TCP_PING_TIMEOUT_MS,
+                            )
+                        }
+                    }.onSuccess {
+                        val elapsedMs = ((SystemClock.elapsedRealtimeNanos() - start) / 1_000_000L)
+                            .coerceAtLeast(1L)
+                        if (best == -1L || elapsedMs < best) best = elapsedMs
+                    }
                 }
-            }.onSuccess {
-                val t = System.currentTimeMillis() - start
-                if (best == -1L || t < best) best = t
             }
         }
         return best
+    }
+
+    private fun directNetworks(): List<Network> = runCatching {
+        connectivityManager.allNetworks
+            .mapNotNull { network ->
+                val caps = connectivityManager.getNetworkCapabilities(network) ?: return@mapNotNull null
+                if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                ) return@mapNotNull null
+                network to caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+            .sortedByDescending { it.second }
+            .map { it.first }
+    }.getOrDefault(emptyList())
+
+    private fun resolveAddresses(host: String, network: Network?): List<InetAddress> =
+        runCatching {
+            (network?.getAllByName(host) ?: InetAddress.getAllByName(host)).toList()
+        }.getOrDefault(emptyList())
+
+    /** Active ALX fallback measures the real tunnel when an OEM blocks direct probing. */
+    private fun tcpOrActiveTunnelPing(profile: VpnProfile, activeTunnelProfileId: String?): Long {
+        val direct = tcpPing(profile)
+        if (direct >= 0L) return direct
+        return if (profile.id == activeTunnelProfileId && LocalProxyEndpoint.port > 0) {
+            aetherLinkPing()
+        } else {
+            -1L
+        }
     }
 
     /**
@@ -793,7 +869,17 @@ class ProfileRepository @Inject constructor(
     private fun activeProxyClient(): OkHttpClient {
         val proxy = LocalProxyEndpoint.proxyOrNull()
             ?: throw IllegalStateException("VPN-туннель не запущен")
-        return directClient.newBuilder().proxy(proxy).build()
+        val port = LocalProxyEndpoint.port
+        cachedProxyClient?.takeIf { proxyClientPort == port }?.let { return it }
+        return synchronized(this) {
+            cachedProxyClient?.takeIf { proxyClientPort == port } ?: directClient.newBuilder()
+                .proxy(proxy)
+                .build()
+                .also {
+                    proxyClientPort = port
+                    cachedProxyClient = it
+                }
+        }
     }
 
     private data class Usage(val upload: Long, val download: Long, val total: Long, val expire: Long)

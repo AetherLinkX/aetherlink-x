@@ -3,9 +3,12 @@ package com.palazik.vpn.ui.screen
 import android.content.Intent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -38,7 +41,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -54,6 +56,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.palazik.vpn.R
 import com.palazik.vpn.ui.viewmodel.MainViewModel
 
@@ -78,15 +81,15 @@ fun AppNavHost(
     permLauncher: ActivityResultLauncher<Intent>,
 ) {
     val navController = rememberNavController()
-    val ui by vm.ui.collectAsState()
+    val shell by vm.shellUi.collectAsStateWithLifecycle()
     val tabs = remember { listOf(Screen.Home, Screen.Profiles, Screen.Settings) }
     val snackState = remember { SnackbarHostState() }
 
-    LaunchedEffect(ui.snackMessage) {
-        ui.snackMessage?.let { message ->
+    LaunchedEffect(shell.snackMessage) {
+        shell.snackMessage?.let { message ->
             val result = snackState.showSnackbar(
                 message = message,
-                actionLabel = ui.snackActionLabel,
+                actionLabel = shell.snackActionLabel,
                 duration = SnackbarDuration.Short,
             )
             if (result == SnackbarResult.ActionPerformed) vm.undoSnackAction()
@@ -137,6 +140,7 @@ fun AppNavHost(
                                 NavPill(
                                     screen = screen,
                                     selected = selected,
+                                    animationsEnabled = shell.animationsEnabled,
                                     onClick = {
                                         navController.navigate(screen.route) {
                                             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -157,20 +161,28 @@ fun AppNavHost(
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(innerPadding),
             enterTransition = {
-                fadeIn(tween(180, easing = EaseOutQuart)) +
-                    slideInHorizontally(tween(180, easing = EaseOutQuart)) { it / 14 }
+                if (shell.animationsEnabled) {
+                    fadeIn(tween(180, easing = EaseOutQuart)) +
+                        slideInHorizontally(tween(180, easing = EaseOutQuart)) { it / 14 }
+                } else EnterTransition.None
             },
             exitTransition = {
-                fadeOut(tween(140)) +
-                    slideOutHorizontally(tween(140)) { -it / 14 }
+                if (shell.animationsEnabled) {
+                    fadeOut(tween(140)) +
+                        slideOutHorizontally(tween(140)) { -it / 14 }
+                } else ExitTransition.None
             },
             popEnterTransition = {
-                fadeIn(tween(180, easing = EaseOutQuart)) +
-                    slideInHorizontally(tween(180, easing = EaseOutQuart)) { -it / 14 }
+                if (shell.animationsEnabled) {
+                    fadeIn(tween(180, easing = EaseOutQuart)) +
+                        slideInHorizontally(tween(180, easing = EaseOutQuart)) { -it / 14 }
+                } else EnterTransition.None
             },
             popExitTransition = {
-                fadeOut(tween(140)) +
-                    slideOutHorizontally(tween(140)) { it / 14 }
+                if (shell.animationsEnabled) {
+                    fadeOut(tween(140)) +
+                        slideOutHorizontally(tween(140)) { it / 14 }
+                } else ExitTransition.None
             },
         ) {
             val back: () -> Unit = { navController.popBackStack() }
@@ -212,21 +224,22 @@ fun AppNavHost(
 private fun NavPill(
     screen: Screen,
     selected: Boolean,
+    animationsEnabled: Boolean,
     onClick: () -> Unit,
 ) {
     val container by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-        animationSpec = tween(180),
+        animationSpec = if (animationsEnabled) tween(180) else snap(),
         label = "nav_container_${screen.route}",
     )
     val content by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(180),
+        animationSpec = if (animationsEnabled) tween(180) else snap(),
         label = "nav_content_${screen.route}",
     )
     val width by animateDpAsState(
         targetValue = if (selected) 132.dp else 56.dp,
-        animationSpec = tween(220, easing = EaseOutQuart),
+        animationSpec = if (animationsEnabled) tween(220, easing = EaseOutQuart) else snap(),
         label = "nav_width_${screen.route}",
     )
 
@@ -253,7 +266,13 @@ private fun NavPill(
             Icon(screen.icon, label, Modifier.size(25.dp))
             AnimatedContent(
                 targetState = selected,
-                transitionSpec = { fadeIn(tween(120)) togetherWith fadeOut(tween(80)) },
+                transitionSpec = {
+                    if (animationsEnabled) {
+                        fadeIn(tween(120)) togetherWith fadeOut(tween(80))
+                    } else {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    }
+                },
                 label = "nav_label_${screen.route}",
             ) { show ->
                 if (show) {

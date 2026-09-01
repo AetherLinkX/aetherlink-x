@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.palazik.vpn.data.codec.ProfileCodec
 import com.palazik.vpn.data.codec.QrCodec
 import com.palazik.vpn.data.model.*
@@ -72,7 +73,7 @@ fun ProfilesScreen(
     onOpenSubscriptions: () -> Unit = {},
     onOpenJson: (String) -> Unit = {},
 ) {
-    val ui        by vm.ui.collectAsState()
+    val ui        by vm.ui.collectAsStateWithLifecycle()
     val context   = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val keyboard  = LocalSoftwareKeyboardController.current
@@ -324,6 +325,7 @@ fun ProfilesScreen(
                     onSelect      = { vm.selectProfile(it) },
                     onDelete      = { profile -> deleteProfile = profile },
                     onEdit        = { editProfile = it },
+                    onPing        = { vm.pingProfile(it) },
                     onViewJson    = { onOpenJson(it.id) },
                     onRefreshSub  = { sub -> vm.updateSubscription(sub) },
                     onDeleteSub   = { sub -> deleteSubscription = sub },
@@ -610,7 +612,7 @@ private fun PreviewRow(label: String, value: String) {
 // Sealed list item types for the flat LazyColumn
 private sealed class ProfileListItem {
     data class Header(val key: String, val title: String, val count: Int, val subId: String?) : ProfileListItem()
-    data class Card(val profile: VpnProfile) : ProfileListItem()
+    data class Card(val key: String, val profile: VpnProfile) : ProfileListItem()
 }
 
 @Composable
@@ -620,6 +622,7 @@ private fun GroupedProfilesList(
     onSelect: (String) -> Unit,
     onDelete: (VpnProfile) -> Unit,
     onEdit: (VpnProfile) -> Unit,
+    onPing: (VpnProfile) -> Unit,
     onViewJson: (VpnProfile) -> Unit,
     onRefreshSub: (Subscription) -> Unit,
     onDeleteSub: (Subscription) -> Unit,
@@ -641,13 +644,17 @@ private fun GroupedProfilesList(
             if (manualProfiles.isNotEmpty()) {
                 add(ProfileListItem.Header("header_manual", "Вручную", manualProfiles.size, null))
                 if (expandedGroups["manual"] != false) {
-                    manualProfiles.forEach { add(ProfileListItem.Card(it)) }
+                    manualProfiles.forEachIndexed { index, profile ->
+                        add(ProfileListItem.Card("manual_${index}_${profile.id}", profile))
+                    }
                 }
             }
             subGroups.forEach { (sub, subProfiles) ->
                 add(ProfileListItem.Header("header_${sub.id}", sub.displayName, subProfiles.size, sub.id))
                 if (expandedGroups[sub.id] != false) {
-                    subProfiles.forEach { add(ProfileListItem.Card(it)) }
+                    subProfiles.forEachIndexed { index, profile ->
+                        add(ProfileListItem.Card("${sub.id}_${index}_${profile.id}", profile))
+                    }
                 }
             }
         }
@@ -659,9 +666,10 @@ private fun GroupedProfilesList(
             key   = { item ->
                 when (item) {
                     is ProfileListItem.Header -> item.key
-                    is ProfileListItem.Card   -> item.profile.id
+                    is ProfileListItem.Card   -> item.key
                 }
             },
+            contentType = { item -> if (item is ProfileListItem.Header) "header" else "profile" },
         ) { item ->
             when (item) {
                 is ProfileListItem.Header -> {
@@ -688,6 +696,7 @@ private fun GroupedProfilesList(
                         onSelect = { onSelect(item.profile.id) },
                         onDelete = { onDelete(item.profile) },
                         onEdit   = { onEdit(item.profile) },
+                        onPing   = { onPing(item.profile) },
                         onViewJson = { onViewJson(item.profile) },
                     )
                 }
@@ -828,6 +837,7 @@ private fun ProfileCard(
     onSelect: () -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit,
+    onPing: () -> Unit,
     onViewJson: () -> Unit,
 ) {
     var actionsExpanded by remember { mutableStateOf(false) }
@@ -972,6 +982,12 @@ private fun ProfileCard(
                         expanded = actionsExpanded,
                         onDismissRequest = { actionsExpanded = false },
                     ) {
+                        DropdownMenuItem(
+                            text = { Text("Проверить пинг только на этой локации") },
+                            leadingIcon = { Icon(Icons.Rounded.NetworkCheck, null) },
+                            onClick = { actionsExpanded = false; onPing() },
+                        )
+                        HorizontalDivider()
                         DropdownMenuItem(
                             text = { Text("Посмотреть JSON-конфиг") },
                             leadingIcon = { Icon(Icons.Rounded.DataObject, null) },

@@ -43,7 +43,13 @@ object AppSettingsCodec {
                 subscriptionUserAgent = o.optString("subscriptionUserAgent", d.subscriptionUserAgent)
                     .ifBlank { d.subscriptionUserAgent }
                     .let {
-                        if (it in setOf("AetherLinkX/0.1", "AetherLinkX/0.6", "AetherLinkX/0.6.4")) {
+                        if (it in setOf(
+                                "AetherLinkX/0.1",
+                                "AetherLinkX/0.6",
+                                "AetherLinkX/0.6.4",
+                                "AetherLinkX/0.6.5",
+                            )
+                        ) {
                             d.subscriptionUserAgent
                         } else {
                             it
