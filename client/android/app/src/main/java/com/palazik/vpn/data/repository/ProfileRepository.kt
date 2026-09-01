@@ -1,6 +1,7 @@
 package com.palazik.vpn.data.repository
 
 import android.content.Context
+import android.os.Build
 import com.palazik.vpn.data.SecurePreferences
 import com.palazik.vpn.data.codec.ProfileCodec
 import com.palazik.vpn.data.network.LocalProxyEndpoint
@@ -32,6 +33,7 @@ import java.net.Socket
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.util.Base64
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -44,6 +46,22 @@ class ProfileRepository @Inject constructor(
     @Named("direct") private val directClient: OkHttpClient,
 ) {
     private val prefs = SecurePreferences.get(context)
+
+    /**
+     * App-scoped Remnawave device identifier.
+     *
+     * Do not use IMEI, serial number, advertising ID or ANDROID_ID here. A random value
+     * stored in encrypted app preferences is enough for Remnawave's device-limit feature,
+     * remains stable across app updates, and does not identify the phone outside this app.
+     */
+    private val subscriptionHwid: String by lazy {
+        prefs.getString(SUBSCRIPTION_HWID_KEY, null)
+            ?.trim()
+            ?.takeIf { it.matches(SUBSCRIPTION_HWID_REGEX) }
+            ?: UUID.randomUUID().toString().also { generated ->
+                prefs.edit().putString(SUBSCRIPTION_HWID_KEY, generated).apply()
+            }
+    }
 
     private val _profiles      = MutableStateFlow<List<VpnProfile>>(emptyList())
     val profiles: StateFlow<List<VpnProfile>> = _profiles.asStateFlow()
@@ -62,6 +80,8 @@ class ProfileRepository @Inject constructor(
 
     private companion object {
         const val MAX_CONCURRENT_PINGS = 24
+        const val SUBSCRIPTION_HWID_KEY = "subscription_hwid_v1"
+        val SUBSCRIPTION_HWID_REGEX = Regex("^[A-Za-z0-9._:-]{8,128}$")
         val SUBSCRIPTION_USER_AGENT_FALLBACKS = listOf(
             "v2rayNG/1.10",
             "Happ/3.0",
@@ -676,6 +696,13 @@ class ProfileRepository @Inject constructor(
             .url(url)
             .header("User-Agent", userAgent)
             .header("Accept", "*/*")
+            // Remnawave's HWID limiter returns provider-defined fallback profiles when
+            // x-hwid is absent. Those profiles commonly use 0.0.0.0:1 and a remark such
+            // as "application is not supported", which used to look like a parse bug.
+            .header("x-hwid", subscriptionHwid)
+            .header("x-device-os", "Android")
+            .header("x-ver-os", Build.VERSION.RELEASE.ifBlank { Build.VERSION.SDK_INT.toString() })
+            .header("x-device-model", Build.MODEL.trim().ifBlank { "Android device" }.take(128))
             .build()
 
         // Attempt 1: through proxy (so the fetch itself goes through the active profile)
