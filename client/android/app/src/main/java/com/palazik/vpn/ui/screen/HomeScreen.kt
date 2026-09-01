@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -361,8 +363,6 @@ fun HomeScreen(
             ProviderSummaryCard(
                 subscription = homeSubscription,
                 profile = ui.activeProfile?.takeIf { homeSubscription == null || it.subscriptionId == homeSubscription.id },
-                onPingAll = { homeSubscription?.let { vm.pingSubscription(it.id) } ?: vm.pingAll() },
-                onUpdate = { homeSubscription?.let(vm::updateSubscription) },
             )
         }
 
@@ -384,45 +384,13 @@ fun HomeScreen(
                 switching = isTransition,
                 displayMode = ui.settings.pingDisplayMode,
                 onSelect = vm::selectProfile,
-                onPing = vm::pingProfile,
+                onPingAll = { homeSubscription?.let { vm.pingSubscription(it.id) } ?: vm.pingAll() },
+                onUpdate = { homeSubscription?.let(vm::updateSubscription) },
+                canUpdate = homeSubscription != null,
             )
         }
 
         // ── Quick ping ────────────────────────────────────────────────────────
-        AnimatedVisibility(
-            visible = ui.activeProfile != null,
-            enter   = fadeIn(tween(250)) + expandVertically(spring(Spring.DampingRatioMediumBouncy)),
-            exit    = fadeOut(tween(180)) + shrinkVertically(tween(200)),
-        ) {
-            ui.activeProfile?.let { profile ->
-                OutlinedButton(
-                    onClick  = { vm.pingProfile(profile) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape    = MaterialTheme.shapes.medium,
-                ) {
-                    Icon(Icons.Rounded.NetworkCheck, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.home_ping_profile, profile.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    AnimatedVisibility(
-                        visible = profile.latencyMs >= 0,
-                        enter   = fadeIn() + scaleIn(EaseOutBack.toAnimationSpec(300)),
-                        exit    = fadeOut() + scaleOut(),
-                    ) {
-                        Row {
-                            Spacer(Modifier.width(8.dp))
-                            Surface(
-                                color = latencyColor(profile.latencyMs).copy(alpha = 0.15f),
-                                shape = CircleShape,
-                            ) {
-                                Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                    PingIndicator(profile.latencyMs, ui.settings.pingDisplayMode)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
 }
@@ -434,7 +402,9 @@ private fun HomeServerSwitcher(
     switching: Boolean,
     displayMode: PingDisplayMode,
     onSelect: (String) -> Unit,
-    onPing: (VpnProfile) -> Unit,
+    onPingAll: () -> Unit,
+    onUpdate: () -> Unit,
+    canUpdate: Boolean,
 ) {
     ElevatedCard(
         modifier = Modifier
@@ -450,7 +420,7 @@ private fun HomeServerSwitcher(
                 Column(Modifier.weight(1f)) {
                     Text("Серверы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        if (switching) "Переключение профиля…" else "Можно менять без отключения VPN",
+                        if (switching) "Переключение профиля…" else "VPN перезапустится на выбранной локации",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -463,9 +433,19 @@ private fun HomeServerSwitcher(
                         fontWeight = FontWeight.Bold,
                     )
                 }
+                Spacer(Modifier.width(4.dp))
+                IconButton(onClick = onPingAll) {
+                    Icon(Icons.Rounded.NetworkCheck, "Проверить пинг всех локаций", tint = MaterialTheme.colorScheme.primary)
+                }
+                if (canUpdate) {
+                    IconButton(onClick = onUpdate) {
+                        Icon(Icons.Rounded.Refresh, "Обновить подписку", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
             }
             Spacer(Modifier.height(10.dp))
-            profiles.forEachIndexed { index, profile ->
+            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 620.dp)) {
+                itemsIndexed(profiles, key = { _, profile -> profile.id }) { index, profile ->
                 val selected = profile.id == activeId
                 Surface(
                     onClick = { onSelect(profile.id) },
@@ -500,14 +480,18 @@ private fun HomeServerSwitcher(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        TextButton(onClick = { onPing(profile) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                            if (profile.latencyMs >= 0) PingIndicator(profile.latencyMs, displayMode)
-                            else Text("Пинг")
+                        if (profile.lastTested > 0L) {
+                            if (profile.latencyMs >= 0L) {
+                                PingIndicator(profile.latencyMs, displayMode)
+                            } else {
+                                Text("н/д", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                         if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                     }
                 }
                 if (index != profiles.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                }
             }
         }
     }
@@ -518,8 +502,6 @@ private fun HomeServerSwitcher(
 private fun ProviderSummaryCard(
     subscription: Subscription?,
     profile: VpnProfile?,
-    onPingAll: () -> Unit,
-    onUpdate: () -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
     ElevatedCard(
@@ -540,23 +522,6 @@ private fun ProviderSummaryCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(onClick = onPingAll, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Rounded.NetworkCheck, null, Modifier.size(17.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("Пинг всех", maxLines = 1)
-                }
-                if (subscription != null) {
-                    OutlinedButton(onClick = onUpdate, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.Refresh, null, Modifier.size(17.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("Обновить", maxLines = 1)
-                    }
-                }
-            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),

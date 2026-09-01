@@ -69,6 +69,7 @@ sealed class Screen(
 
     // Sub-screen — not a tab, no icon needed for the nav bar
     object Style : Screen("style", R.string.nav_settings, Icons.Rounded.Settings)
+    object JsonConfig : Screen("json/{profileId}", R.string.nav_profiles, Icons.AutoMirrored.Rounded.List)
 }
 
 @Composable
@@ -98,7 +99,9 @@ fun AppNavHost(
     val currentRoute = navBackStack?.destination?.route
     // Hide the bottom bar on settings sub-screens (Style + settings/*)
     val showBottomBar = currentRoute == null ||
-        (currentRoute != Screen.Style.route && !currentRoute.startsWith("settings/"))
+        (currentRoute != Screen.Style.route &&
+            !currentRoute.startsWith("settings/") &&
+            !currentRoute.startsWith("json/"))
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -172,10 +175,23 @@ fun AppNavHost(
         ) {
             val back: () -> Unit = { navController.popBackStack() }
             composable(Screen.Home.route)          { HomeScreen(vm, permLauncher) }
-            composable(Screen.Profiles.route)      { ProfilesScreen(vm, onOpenSubscriptions = { navController.navigate(Screen.Subscriptions.route) }) }
+            composable(Screen.Profiles.route)      {
+                ProfilesScreen(
+                    vm,
+                    onOpenSubscriptions = { navController.navigate(Screen.Subscriptions.route) },
+                    onOpenJson = { profileId -> navController.navigate("json/$profileId") },
+                )
+            }
             composable(Screen.Subscriptions.route) { SubscriptionsScreen(vm) }
             composable(Screen.Settings.route)      { SettingsScreen(vm, onNavigate = { navController.navigate(it) }) }
             composable(Screen.Style.route)                  { StyleScreen(vm, onBack = back) }
+            composable(Screen.JsonConfig.route) { entry ->
+                JsonConfigScreen(
+                    vm = vm,
+                    profileId = entry.arguments?.getString("profileId").orEmpty(),
+                    onBack = back,
+                )
+            }
             composable(SettingsRoutes.LANGUAGE)             { LanguageSettingsScreen(vm, back) }
             composable(SettingsRoutes.CONNECTION)           { ConnectionSettingsScreen(vm, back) }
             composable(SettingsRoutes.DNS)                  { DnsSettingsScreen(vm, back) }

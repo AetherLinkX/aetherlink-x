@@ -213,3 +213,28 @@ index c3528aa..e08f55a 100644
 +        }
 +    }
  }
+diff --git a/src/modules/internal/internal.service.ts b/src/modules/internal/internal.service.ts
+index 06affef..d2f07ec 100644
+--- a/src/modules/internal/internal.service.ts
++++ b/src/modules/internal/internal.service.ts
+@@ -74,6 +74,19 @@ export class InternalService {
+                         }
+                     }
+-
++
++                    if (
++                        inbound.protocol === 'aetherlinkx' &&
++                        inbound.settings &&
++                        inbound.settings.users &&
++                        Array.isArray(inbound.settings.users)
++                    ) {
++                        for (const user of inbound.settings.users) {
++                            if (user.id) {
++                                usersSet.add(user.id);
++                            }
++                        }
++                    }
++
+                     this.inboundsHashMap.set(inboundTag, usersSet);
+                 },
+                 { concurrency: 20 },

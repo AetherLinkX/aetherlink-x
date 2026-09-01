@@ -604,11 +604,13 @@ class palazikVpnService : VpnService() {
             return
         }
 
-        activeProfile = profile
-        _connectionState.value = ServiceState.STARTING
+        // A profile switch is a real disconnect/reconnect cycle.  Publishing STARTING
+        // before the old TUN/core had stopped made the UI look connected to the new
+        // location while packets could still be handled by the previous one.
+        _connectionState.value = ServiceState.STOPPING
         _lastError.value = null
-        addDiagnostic("Switching to ${profile.name}")
-        updateNotification("Переключение — ${profile.name}")
+        addDiagnostic("Stopping current VPN before switching to ${profile.name}")
+        updateNotification("Отключение перед переключением…")
         statsJob?.cancel()
         statsJob = null
         unregisterNetworkCallbackSafely()
@@ -618,6 +620,8 @@ class palazikVpnService : VpnService() {
             _bytesIn.value = 0L
             _bytesOut.value = 0L
             _connectionState.value = ServiceState.STOPPED
+            activeProfile = profile
+            addDiagnostic("Old VPN stopped; starting ${profile.name}")
             startVpn(profile.id)
         }
     }

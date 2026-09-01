@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AetherLink X</string>
-    <string name="app_version">0.6.4 Alpha</string>
+    <string name="app_version">0.6.5 Alpha</string>
     <string name="connect">Подключить</string>
     <string name="disconnect">Отключить</string>
     <string name="connecting">Подключение…</string>

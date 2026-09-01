@@ -258,8 +258,11 @@ class MainViewModel @Inject constructor(
             return
         }
         repo.setActiveProfile(id)
-        palazikVpnService.activeProfile = selected.copy(isActive = true)
         if (_ui.value.vpnState == VpnState.CONNECTED) {
+            // Keep the service's activeProfile pointing at the currently running
+            // outbound until ACTION_SWITCH has fully torn it down.  Replacing this
+            // field here made switchVpn() think the requested profile was already
+            // running and silently skip the switch.
             context.startService(
                 Intent(context, palazikVpnService::class.java).apply {
                     action = palazikVpnService.ACTION_SWITCH
@@ -267,6 +270,8 @@ class MainViewModel @Inject constructor(
                 }
             )
             snack("Переключаемся на «${selected.name}»…")
+        } else {
+            palazikVpnService.activeProfile = selected.copy(isActive = true)
         }
     }
 
@@ -294,6 +299,10 @@ class MainViewModel @Inject constructor(
     fun generateJsonConfig(profile: VpnProfile) {
         _ui.update { it.copy(shareLink = XrayConfigBuilder.build(profile, _ui.value.settings)) }
     }
+
+    fun jsonConfigFor(profileId: String): String? =
+        _ui.value.profiles.firstOrNull { it.id == profileId }
+            ?.let { XrayConfigBuilder.build(it, _ui.value.settings) }
 
     fun clearShareLink() = _ui.update { it.copy(shareLink = null) }
 

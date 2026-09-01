@@ -391,7 +391,9 @@ object XrayConfigBuilder {
             Transport.TCP   -> "tcp"
             Transport.WS    -> "ws"
             Transport.GRPC  -> "grpc"
-            Transport.XHTTP, Transport.H2, Transport.QUIC -> "xhttp"
+            Transport.XHTTP -> "xhttp"
+            Transport.H2    -> "h2"
+            Transport.QUIC  -> "quic"
             Transport.HTTP_UPGRADE -> "httpupgrade"
             Transport.KCP -> "mkcp"
             Transport.HYSTERIA -> "hysteria"
@@ -399,13 +401,24 @@ object XrayConfigBuilder {
         put("network", network)
 
         when (p.transport) {
-            Transport.XHTTP, Transport.H2, Transport.QUIC -> put("xhttpSettings", JSONObject().apply {
+            Transport.XHTTP -> put("xhttpSettings", JSONObject().apply {
                 put("path", p.path.ifEmpty { "/" })
                 if (p.host.isNotEmpty()) put("host", p.host)
-                put("mode", p.transportMode.ifBlank {
-                    if (p.transport in listOf(Transport.H2, Transport.QUIC)) "stream-one" else "auto"
-                })
+                put("mode", p.transportMode.ifBlank { "auto" })
                 optionsObject(p.transportExtraJson)?.let { put("extra", it) }
+            })
+            Transport.H2 -> put("httpSettings", JSONObject().apply {
+                put("path", p.path.ifEmpty { "/" })
+                if (p.host.isNotEmpty()) {
+                    put("host", JSONArray().apply { put(p.host) })
+                }
+            })
+            Transport.QUIC -> put("quicSettings", JSONObject().apply {
+                put("security", p.transportSecurity.ifBlank { "none" })
+                put("key", p.transportKey)
+                put("header", JSONObject().apply {
+                    put("type", p.transportHeader.ifBlank { "none" })
+                })
             })
             Transport.WS -> put("wsSettings", JSONObject().apply {
                 put("path", p.path.ifEmpty { "/" })

@@ -23,4 +23,15 @@ for (const patchPath of [
     }
 }
 
-console.log('managed ALX secret KDF vector OK');
+const nodePatch = readFileSync('remnawave/node-managed-alx-3.2.2.patch', 'utf8');
+for (const requiredFragment of [
+    "inbound.protocol === 'aetherlinkx'",
+    'Array.isArray(inbound.settings.users)',
+    'usersSet.add(user.id)',
+]) {
+    if (!nodePatch.includes(requiredFragment)) {
+        throw new Error(`managed node patch does not index ALX users: ${requiredFragment}`);
+    }
+}
+
+console.log('managed ALX secret KDF vector and node user indexing OK');

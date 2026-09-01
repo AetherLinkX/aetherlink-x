@@ -6,7 +6,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,7 +24,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -66,7 +67,11 @@ private fun setAlxOption(raw: String, key: String, value: String): String =
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun ProfilesScreen(vm: MainViewModel, onOpenSubscriptions: () -> Unit = {}) {
+fun ProfilesScreen(
+    vm: MainViewModel,
+    onOpenSubscriptions: () -> Unit = {},
+    onOpenJson: (String) -> Unit = {},
+) {
     val ui        by vm.ui.collectAsState()
     val context   = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -318,11 +323,8 @@ fun ProfilesScreen(vm: MainViewModel, onOpenSubscriptions: () -> Unit = {}) {
                     subscriptions = ui.subscriptions,
                     onSelect      = { vm.selectProfile(it) },
                     onDelete      = { profile -> deleteProfile = profile },
-                    onPing        = { vm.pingProfile(it) },
                     onEdit        = { editProfile = it },
-                    onDuplicate   = { vm.duplicateProfile(it) },
-                    onExportNative = { vm.generateNativeLink(it); showShareLink = true },
-                    onExportJson  = { vm.generateJsonConfig(it); showShareLink = true },
+                    onViewJson    = { onOpenJson(it.id) },
                     onRefreshSub  = { sub -> vm.updateSubscription(sub) },
                     onDeleteSub   = { sub -> deleteSubscription = sub },
                 )
@@ -617,11 +619,8 @@ private fun GroupedProfilesList(
     subscriptions: List<Subscription>,
     onSelect: (String) -> Unit,
     onDelete: (VpnProfile) -> Unit,
-    onPing: (VpnProfile) -> Unit,
     onEdit: (VpnProfile) -> Unit,
-    onDuplicate: (VpnProfile) -> Unit,
-    onExportNative: (VpnProfile) -> Unit,
-    onExportJson: (VpnProfile) -> Unit,
+    onViewJson: (VpnProfile) -> Unit,
     onRefreshSub: (Subscription) -> Unit,
     onDeleteSub: (Subscription) -> Unit,
 ) {
@@ -688,11 +687,8 @@ private fun GroupedProfilesList(
                         isActive = item.profile.isActive,
                         onSelect = { onSelect(item.profile.id) },
                         onDelete = { onDelete(item.profile) },
-                        onPing   = { onPing(item.profile) },
                         onEdit   = { onEdit(item.profile) },
-                        onDuplicate = { onDuplicate(item.profile) },
-                        onExportNative = { onExportNative(item.profile) },
-                        onExportJson = { onExportJson(item.profile) },
+                        onViewJson = { onViewJson(item.profile) },
                     )
                 }
             }
@@ -823,7 +819,7 @@ private fun GroupHeader(
 // Profile card
 // ─────────────────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ProfileCard(
     profile: VpnProfile,
@@ -831,45 +827,26 @@ private fun ProfileCard(
     isActive: Boolean,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
-    onPing: () -> Unit,
     onEdit: () -> Unit,
-    onDuplicate: () -> Unit,
-    onExportNative: () -> Unit,
-    onExportJson: () -> Unit,
+    onViewJson: () -> Unit,
 ) {
     var actionsExpanded by remember { mutableStateOf(false) }
-    val containerColor by animateColorAsState(
-        targetValue   = if (isActive) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceVariant,
-        animationSpec = tween(350),
-        label         = "card_bg",
-    )
-    val elevation by animateDpAsState(
-        targetValue   = if (isActive) 6.dp else 1.dp,
-        animationSpec = tween(300),
-        label         = "card_elev",
-    )
-    val cardScale by animateFloatAsState(
-        targetValue = if (isActive) 1.01f else 1f,
-        animationSpec = tween(260),
-        label = "card_scale",
-    )
+    val containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceVariant
 
     ElevatedCard(
-        onClick  = onSelect,
         colors   = CardDefaults.elevatedCardColors(containerColor = containerColor),
         modifier = Modifier
             .fillMaxWidth()
-            .scale(cardScale)
+            .combinedClickable(onClick = onSelect, onLongClick = { actionsExpanded = true })
             .border(
                 if (isActive) 2.dp else 1.dp,
                 if (isActive) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.outline.copy(alpha = 0.65f),
                 MaterialTheme.shapes.large,
-            )
-            .animateContentSize(tween(240)),
+            ),
         shape    = MaterialTheme.shapes.large,
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = elevation),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (isActive) 4.dp else 1.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
             // ── Badge row ──────────────────────────────────────────────────────
@@ -990,37 +967,15 @@ private fun ProfileCard(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // WireGuard is UDP-only and its address is the local tunnel IP, so a TCP
-                // ping can never succeed — hide the button instead of always showing timeout.
-                if (profile.protocol != Protocol.WIREGUARD) {
-                    TextButton(onClick = onPing, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                        Icon(Icons.Rounded.NetworkCheck, null, Modifier.size(15.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Пинг", style = MaterialTheme.typography.labelMedium)
-                    }
-                }
                 Box {
-                    IconButton(onClick = { actionsExpanded = true }) {
-                        Icon(Icons.Rounded.MoreVert, "Действия с профилем")
-                    }
                     DropdownMenu(
                         expanded = actionsExpanded,
                         onDismissRequest = { actionsExpanded = false },
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Дублировать") },
-                            leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) },
-                            onClick = { actionsExpanded = false; onDuplicate() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Экспорт ссылки") },
-                            leadingIcon = { Icon(Icons.Rounded.Link, null) },
-                            onClick = { actionsExpanded = false; onExportNative() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Экспорт JSON") },
+                            text = { Text("Посмотреть JSON-конфиг") },
                             leadingIcon = { Icon(Icons.Rounded.DataObject, null) },
-                            onClick = { actionsExpanded = false; onExportJson() },
+                            onClick = { actionsExpanded = false; onViewJson() },
                         )
                         DropdownMenuItem(
                             text = { Text("Изменить") },
