@@ -62,6 +62,11 @@ class ProfileRepository @Inject constructor(
 
     private companion object {
         const val MAX_CONCURRENT_PINGS = 24
+        val SUBSCRIPTION_USER_AGENT_FALLBACKS = listOf(
+            "v2rayNG/1.10",
+            "Happ/3.0",
+            "sing-box/1.12",
+        )
     }
 
     init { loadFromPrefs() }
@@ -150,6 +155,32 @@ class ProfileRepository @Inject constructor(
                             fetched = jsonFetch
                             decodedProfiles = jsonDecoded
                             freshProfiles = jsonUsable
+                        }
+                    }
+                }
+
+                // Some panels select the output template exclusively by User-Agent. If the
+                // configured value produced no usable entry, repeat the same raw/JSON parse
+                // sequence with well-known client families. This mirrors established clients'
+                // configurable subscription UA while keeping AetherLink X as the first choice.
+                if (freshProfiles.isEmpty()) {
+                    val alternativeUrls = listOfNotNull(sub.url, compatibleJsonUrl(sub.url)).distinct()
+                    val configuredUa = _settings.value.subscriptionUserAgent
+                        .ifBlank { AppSettings().subscriptionUserAgent }
+                    fallbackLoop@ for (userAgent in SUBSCRIPTION_USER_AGENT_FALLBACKS) {
+                        if (userAgent.equals(configuredUa, ignoreCase = true)) continue
+                        for (candidateUrl in alternativeUrls) {
+                            val candidateFetch = runCatching {
+                                fetchSubscriptionBody(candidateUrl, userAgent)
+                            }.getOrNull() ?: continue
+                            val candidateDecoded = ProfileCodec.decodeSubscriptionBody(candidateFetch.body)
+                            val candidateUsable = usableProfiles(candidateDecoded, sub.id)
+                            if (candidateUsable.isNotEmpty()) {
+                                fetched = candidateFetch
+                                decodedProfiles = candidateDecoded
+                                freshProfiles = candidateUsable
+                                break@fallbackLoop
+                            }
                         }
                     }
                 }
@@ -636,10 +667,15 @@ class ProfileRepository @Inject constructor(
      *
      * Returns the raw string (may be base64 or plain links). Throws if both fail.
      */
-    private fun fetchSubscriptionBody(url: String): SubscriptionFetch {
+    private fun fetchSubscriptionBody(
+        url: String,
+        userAgent: String = _settings.value.subscriptionUserAgent
+            .ifBlank { AppSettings().subscriptionUserAgent },
+    ): SubscriptionFetch {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", _settings.value.subscriptionUserAgent.ifBlank { AppSettings().subscriptionUserAgent })
+            .header("User-Agent", userAgent)
+            .header("Accept", "*/*")
             .build()
 
         // Attempt 1: through proxy (so the fetch itself goes through the active profile)
@@ -680,13 +716,6 @@ class ProfileRepository @Inject constructor(
             .filterNot(ProfileValidator::isProviderPlaceholder)
             .filter { ProfileValidator.validate(it).isEmpty() }
             .map { it.copy(subscriptionId = subscriptionId) }
-            .distinctBy { profile ->
-                listOf(
-                    profile.protocol, profile.address.lowercase(), profile.port, profile.uuid,
-                    profile.transport, profile.path, profile.host.lowercase(), profile.security,
-                    profile.sni.lowercase(), profile.publicKey, profile.shortId,
-                )
-            }
             .toList()
 
     private data class SubscriptionFetch(

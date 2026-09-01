@@ -100,6 +100,8 @@ object ProfileCodec {
         // Keep this path before Base64 decoding so a valid JSON document is never
         // accidentally interpreted as garbage Base64.
         decodeXrayJsonSubscription(trimmed).takeIf { it.isNotEmpty() }?.let { return it }
+        decodeSingBoxJsonSubscription(trimmed).takeIf { it.isNotEmpty() }?.let { return it }
+        decodeSip008Subscription(trimmed).takeIf { it.isNotEmpty() }?.let { return it }
 
         // Try base64 first (many providers serve a base64 blob of newline-separated links).
         val fromBase64 = listOf(Base64.DEFAULT, Base64.URL_SAFE).firstNotNullOfOrNull { flags ->
@@ -108,6 +110,8 @@ object ProfileCodec {
                 ?.removePrefix("\uFEFF")
                 ?.let { decoded ->
                     decodeXrayJsonSubscription(decoded).takeIf { it.isNotEmpty() }
+                        ?: decodeSingBoxJsonSubscription(decoded).takeIf { it.isNotEmpty() }
+                        ?: decodeSip008Subscription(decoded).takeIf { it.isNotEmpty() }
                         ?: decodeSubscriptionLines(decoded).takeIf { it.isNotEmpty() }
                 }
         }
@@ -142,7 +146,121 @@ object ProfileCodec {
                         addAll(decodeXrayOutbound(outbound, remark))
                     }
                 }
-            }.distinctBy { listOf(it.name, it.protocol, it.address, it.port, it.uuid, it.transport, it.path, it.host) }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /** Import the native JSON produced by sing-box based panels/clients. */
+    private fun decodeSingBoxJsonSubscription(body: String): List<VpnProfile> {
+        if (!body.startsWith("{") && !body.startsWith("[")) return emptyList()
+        return runCatching {
+            val roots = if (body.startsWith("[")) org.json.JSONArray(body)
+                else org.json.JSONArray().put(JSONObject(body))
+            buildList {
+                for (rootIndex in 0 until roots.length()) {
+                    val outer = roots.optJSONObject(rootIndex) ?: continue
+                    val root = outer.optJSONObject("config") ?: outer
+                    val outbounds = root.optJSONArray("outbounds") ?: continue
+                    for (index in 0 until outbounds.length()) {
+                        val outbound = outbounds.optJSONObject(index) ?: continue
+                        decodeSingBoxOutbound(outbound)?.let(::add)
+                    }
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun decodeSingBoxOutbound(outbound: JSONObject): VpnProfile? {
+        val type = outbound.optString("type").lowercase()
+        val protocol = when (type) {
+            "vless" -> Protocol.VLESS
+            "vmess" -> Protocol.VMESS
+            "trojan" -> Protocol.TROJAN
+            "shadowsocks" -> Protocol.SHADOWSOCKS
+            "hysteria2", "hy2" -> Protocol.HYSTERIA2
+            "tuic" -> Protocol.TUIC
+            "anytls" -> Protocol.ANYTLS
+            else -> return null
+        }
+        val tls = outbound.optJSONObject("tls") ?: JSONObject()
+        val reality = tls.optJSONObject("reality") ?: JSONObject()
+        val transportSettings = outbound.optJSONObject("transport") ?: JSONObject()
+        val transport = parseTransport(transportSettings.optString("type", "tcp"))
+        val security = when {
+            reality.optBoolean("enabled", false) -> Security.REALITY
+            tls.optBoolean("enabled", false) -> Security.TLS
+            else -> Security.NONE
+        }
+        val credential = when (protocol) {
+            Protocol.VLESS, Protocol.VMESS, Protocol.TUIC -> outbound.optString("uuid")
+            else -> outbound.optString("password")
+        }
+        val headers = transportSettings.optJSONObject("headers")
+        val host = when (transport) {
+            Transport.GRPC -> transportSettings.optString("authority")
+            else -> jsonText(headers, "Host").ifBlank { jsonText(transportSettings, "host") }
+        }
+        val path = when (transport) {
+            Transport.GRPC -> transportSettings.optString("service_name")
+            else -> transportSettings.optString("path", "/")
+        }.ifBlank { "/" }
+        val fingerprint = tls.optJSONObject("utls")?.optString("fingerprint")
+            .orEmpty().ifBlank { "chrome" }
+        return VpnProfile(
+            name = outbound.optString("tag", protocol.name).ifBlank { protocol.name },
+            protocol = protocol,
+            address = outbound.optString("server"),
+            port = outbound.optInt("server_port", 443),
+            uuid = credential,
+            transport = transport,
+            path = path,
+            host = host,
+            security = security,
+            sni = tls.optString("server_name"),
+            fingerprint = fingerprint,
+            alpn = tls.optJSONArray("alpn")?.let { values ->
+                (0 until values.length()).mapNotNull { values.optString(it).takeIf(String::isNotBlank) }
+                    .joinToString(",")
+            }.orEmpty(),
+            publicKey = reality.optString("public_key"),
+            shortId = reality.optString("short_id"),
+            flow = outbound.optString("flow"),
+            allowInsecure = tls.optBoolean("insecure", false),
+            vmessSecurity = outbound.optString("security", "auto").ifBlank { "auto" },
+            ssMethod = outbound.optString("method", "chacha20-ietf-poly1305"),
+            ssPassword = if (protocol == Protocol.SHADOWSOCKS) credential else
+                if (protocol == Protocol.TUIC) outbound.optString("password") else "",
+            hystPassword = if (protocol == Protocol.HYSTERIA2) credential else "",
+            hystObfs = outbound.optJSONObject("obfs")?.optString("type").orEmpty(),
+            hystObfsPassword = outbound.optJSONObject("obfs")?.optString("password").orEmpty(),
+            transportMode = transportSettings.optString("mode"),
+            transportExtraJson = normalizeTransportExtra(transportSettings.opt("extra")?.toString()),
+        )
+    }
+
+    /** Import Shadowsocks SIP008 JSON without treating repeated server entries as duplicates. */
+    private fun decodeSip008Subscription(body: String): List<VpnProfile> {
+        if (!body.startsWith("{")) return emptyList()
+        return runCatching {
+            val root = JSONObject(body)
+            val servers = root.optJSONArray("servers") ?: return@runCatching emptyList()
+            buildList {
+                for (index in 0 until servers.length()) {
+                    val server = servers.optJSONObject(index) ?: continue
+                    if (!server.has("server") || !server.has("server_port")) continue
+                    add(VpnProfile(
+                        name = server.optString("remarks")
+                            .ifBlank { server.optString("name") }
+                            .ifBlank { "Shadowsocks" },
+                        protocol = Protocol.SHADOWSOCKS,
+                        address = server.optString("server"),
+                        port = server.optInt("server_port"),
+                        security = Security.NONE,
+                        ssMethod = server.optString("method"),
+                        ssPassword = server.optString("password"),
+                    ))
+                }
+            }
         }.getOrDefault(emptyList())
     }
 
