@@ -63,6 +63,7 @@ jobs:
             cd "$CORE"
             go test ./proxy/aetherlinkx
             go test ./infra/conf -run AetherLinkX -count=1
+            go test ./testing/scenarios -run AetherLinkX -count=1 -timeout=3m
           )
           git clone "$ANDROIDLIB_REPO" "$WRAPPER"
           git -C "$WRAPPER" checkout --detach "$ANDROIDLIB_COMMIT"
