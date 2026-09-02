@@ -91,6 +91,7 @@ class MainViewModel @Inject constructor(
 
     private val themePrefs = context.getSharedPreferences(THEME_PREFS, Context.MODE_PRIVATE)
     private var deletedProfile: VpnProfile? = null
+    private var installedAppsLoadJob: kotlinx.coroutines.Job? = null
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
@@ -178,7 +179,6 @@ class MainViewModel @Inject constructor(
             }
         }
         viewModelScope.launch { palazikVpnService.lastError.collect { error -> _ui.update { it.copy(lastError = error) } } }
-        loadInstalledApps()
     }
 
     // ── VPN toggle ────────────────────────────────────────────────────────────
@@ -657,8 +657,10 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private fun loadInstalledApps() {
-        viewModelScope.launch(Dispatchers.IO) {
+    /** PackageManager enumeration is expensive; load it only when split tunnelling is opened. */
+    fun ensureInstalledAppsLoaded() {
+        if (_ui.value.installedApps.isNotEmpty() || installedAppsLoadJob?.isActive == true) return
+        installedAppsLoadJob = viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
             val self = context.packageName
 

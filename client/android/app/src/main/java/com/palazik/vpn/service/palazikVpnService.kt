@@ -77,6 +77,7 @@ class palazikVpnService : VpnService() {
     private var sessionBytesOut: Long = 0L
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
+    private var egressVerificationJob: Job? = null
     private val networkLock = Any()
     private val underlyingNetworks = linkedSetOf<Network>()
 
@@ -148,6 +149,8 @@ class palazikVpnService : VpnService() {
         // coroutine launched on `scope` (which we cancel below) to finish the cleanup.
         statsJob?.cancel()
         statsJob = null
+        egressVerificationJob?.cancel()
+        egressVerificationJob = null
         unregisterNetworkCallbackSafely()
         val s = _connectionState.value
         if (s != ServiceState.STOPPED && s != ServiceState.ERROR) {
@@ -238,14 +241,12 @@ class palazikVpnService : VpnService() {
                 check(controller.isRunning) { "Xray core stopped during startup" }
                 LocalProxyEndpoint.publish(socksPort)
 
-                val verifiedDelay = verifyCoreEgress(controller, settings)
-                addDiagnostic("End-to-end egress verified (${verifiedDelay} ms)")
-
                 _connectionState.value = ServiceState.RUNNING
                 _connectedSince.value = System.currentTimeMillis()
                 addDiagnostic("Connected: ${profile.name}")
                 updateNotification("Подключено — ${profile.name}")
                 startStatsPolling()
+                startEgressVerification(controller, settings, profile.name)
 
             } catch (e: Exception) {
                 Log.e(TAG, "VPN start failed: ${e.message}", e)
@@ -425,6 +426,8 @@ class palazikVpnService : VpnService() {
         addDiagnostic("Stopping VPN")
         statsJob?.cancel()
         statsJob = null
+        egressVerificationJob?.cancel()
+        egressVerificationJob = null
         unregisterNetworkCallbackSafely()
 
         // BUG FIX: teardownCore() does a blocking Thread.sleep(100) + native stopLoop.
@@ -474,6 +477,8 @@ class palazikVpnService : VpnService() {
         }
         statsJob?.cancel()
         statsJob = null
+        egressVerificationJob?.cancel()
+        egressVerificationJob = null
         LocalProxyEndpoint.clear(localSocksPort)
         localSocksPort = 0
         sessionBytesIn = 0L
@@ -622,6 +627,8 @@ class palazikVpnService : VpnService() {
         updateNotification("Отключение перед переключением…")
         statsJob?.cancel()
         statsJob = null
+        egressVerificationJob?.cancel()
+        egressVerificationJob = null
         unregisterNetworkCallbackSafely()
         scope.launch {
             teardownCore()
@@ -635,7 +642,40 @@ class palazikVpnService : VpnService() {
         }
     }
 
-    /** Validate the selected outbound itself; a listening TUN is not proof of Internet access. */
+    /**
+     * Validate the selected outbound in the background.
+     *
+     * `CoreController.measureDelay` opens its own probe connection. It is useful
+     * diagnostics, but it is not the Android VPN data plane and must never be a
+     * condition for keeping an already-running TUN alive. In particular a REALITY +
+     * X-Wing handshake can exceed a short synthetic-probe timeout on a cold/slow
+     * device while normal application traffic succeeds moments later.
+     */
+    private fun startEgressVerification(
+        controller: CoreController,
+        settings: AppSettings,
+        profileName: String,
+    ) {
+        egressVerificationJob?.cancel()
+        egressVerificationJob = scope.launch {
+            // Let Android publish the VPN network and the underlying-network callback
+            // settle before the first cold cryptographic handshake.
+            delay(1_200L)
+            val result = runCatching { verifyCoreEgress(controller, settings) }
+            if (!isActive || coreController !== controller || !controller.isRunning) return@launch
+            result.onSuccess { delayMs ->
+                addDiagnostic("End-to-end egress verified ($delayMs ms)")
+                updateNotification("Подключено — $profileName")
+            }.onFailure { error ->
+                // Do not tear down a healthy TUN because a synthetic URL is filtered,
+                // temporarily unavailable, or the cold PQ handshake took too long.
+                addDiagnostic("Egress probe deferred: ${error.message ?: error.javaClass.simpleName}")
+                updateNotification("Подключено — $profileName (проверка сети ожидается)")
+            }
+        }
+    }
+
+    /** Probe URLs sequentially so a cold phone does not perform three X-Wing handshakes at once. */
     private suspend fun verifyCoreEgress(controller: CoreController, settings: AppSettings): Long {
         val urls = listOf(
             settings.pingTestUrl,
@@ -643,15 +683,17 @@ class palazikVpnService : VpnService() {
             "https://www.gstatic.com/generate_204",
         ).filter(String::isNotBlank).distinct()
 
-        val results = withTimeoutOrNull(15_000L) {
-            coroutineScope {
-                urls.map { url ->
-                    async(Dispatchers.IO) { runCatching { controller.measureDelay(url) }.getOrNull() }
-                }.awaitAll()
+        repeat(2) { attempt ->
+            for (url in urls) {
+                currentCoroutineContext().ensureActive()
+                val measured = withTimeoutOrNull(12_000L) {
+                    runCatching { controller.measureDelay(url) }.getOrNull()
+                }
+                if (measured != null && measured >= 0L) return measured
             }
-        }.orEmpty()
-        return results.filterNotNull().filter { it >= 0L }.minOrNull()
-            ?: throw IllegalStateException("AetherLink X не получил ответ через выбранный outbound")
+            if (attempt == 0) delay(1_500L)
+        }
+        throw IllegalStateException("проверочные URL пока не ответили через выбранный outbound")
     }
 
     private fun userFacingError(error: Throwable): String {
@@ -663,8 +705,6 @@ class palazikVpnService : VpnService() {
                 "Android не выдал разрешение VPN"
             raw.contains("Missing asset", ignoreCase = true) ->
                 "В приложении отсутствуют служебные гео-файлы"
-            raw.contains("не получил ответ", ignoreCase = true) ->
-                "Сервер доступен, но не передаёт трафик через выбранный профиль"
             raw.contains("core stopped", ignoreCase = true) ->
                 "Ядро Xray остановилось во время запуска туннеля"
             else -> "Не удалось запустить туннель. Проверьте профиль и сеть"

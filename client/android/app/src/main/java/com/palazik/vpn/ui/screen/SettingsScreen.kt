@@ -396,6 +396,7 @@ fun SubscriptionSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 @Composable
 fun SplitTunnelSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     val ui by vm.ui.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { vm.ensureInstalledAppsLoaded() }
     SettingsScaffold(stringResource(R.string.settings_split), onBack) {
         SettingsCard { SplitTunnelContent(vm, ui.settings, ui.installedApps) }
     }

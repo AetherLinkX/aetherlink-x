@@ -17,11 +17,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.List
 import androidx.compose.material.icons.rounded.Home
@@ -41,6 +44,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -48,8 +54,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -81,7 +85,21 @@ fun AppNavHost(
     val navController = rememberNavController()
     val shell by vm.shellUi.collectAsStateWithLifecycle()
     val tabs = remember { listOf(Screen.Home, Screen.Profiles, Screen.Settings) }
+    var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(
+        initialPage = selectedTabIndex,
+        pageCount = { tabs.size },
+    )
     val snackState = remember { SnackbarHostState() }
+
+    // Compose equivalent of IndexedStack + keep-alive: pages are created lazily,
+    // retained after the first visit, and switched without reconstructing the full
+    // navigation destination tree. scrollToPage is intentionally immediate.
+    LaunchedEffect(selectedTabIndex) {
+        if (pagerState.currentPage != selectedTabIndex) {
+            pagerState.scrollToPage(selectedTabIndex)
+        }
+    }
 
     LaunchedEffect(shell.snackMessage) {
         shell.snackMessage?.let { message ->
@@ -99,10 +117,7 @@ fun AppNavHost(
     val navBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStack?.destination?.route
     // Hide the bottom bar on settings sub-screens (Style + settings/*)
-    val showBottomBar = currentRoute == null ||
-        (currentRoute != Screen.Style.route &&
-            !currentRoute.startsWith("settings/") &&
-            !currentRoute.startsWith("json/"))
+    val showBottomBar = currentRoute == null || currentRoute == Screen.Home.route
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -132,19 +147,18 @@ fun AppNavHost(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            val currentDest = navBackStack?.destination
-                            tabs.forEach { screen ->
-                                val selected = currentDest?.hierarchy?.any { it.route == screen.route } == true
+                            tabs.forEachIndexed { index, screen ->
+                                val selected = (currentRoute == null || currentRoute == Screen.Home.route) &&
+                                    selectedTabIndex == index
                                 NavPill(
                                     screen = screen,
                                     selected = selected,
                                     animationsEnabled = shell.animationsEnabled,
                                     onClick = {
-                                        navController.navigate(screen.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
+                                        if (currentRoute != Screen.Home.route) {
+                                            navController.popBackStack(Screen.Home.route, inclusive = false)
                                         }
+                                        selectedTabIndex = index
                                     },
                                 )
                             }
@@ -167,16 +181,30 @@ fun AppNavHost(
             popExitTransition = { ExitTransition.None },
         ) {
             val back: () -> Unit = { navController.popBackStack() }
-            composable(Screen.Home.route)          { HomeScreen(vm, permLauncher) }
-            composable(Screen.Profiles.route)      {
-                ProfilesScreen(
-                    vm,
-                    onOpenSubscriptions = { navController.navigate(Screen.Subscriptions.route) },
-                    onOpenJson = { profileId -> navController.navigate("json/$profileId") },
-                )
+            composable(Screen.Home.route) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    userScrollEnabled = false,
+                    beyondViewportPageCount = tabs.lastIndex,
+                    key = { tabs[it].route },
+                ) { page ->
+                    when (tabs[page]) {
+                        Screen.Home -> HomeScreen(vm, permLauncher)
+                        Screen.Profiles -> ProfilesScreen(
+                            vm,
+                            onOpenSubscriptions = { navController.navigate(Screen.Subscriptions.route) },
+                            onOpenJson = { profileId -> navController.navigate("json/$profileId") },
+                        )
+                        Screen.Settings -> SettingsScreen(
+                            vm,
+                            onNavigate = { navController.navigate(it) },
+                        )
+                        else -> Unit
+                    }
+                }
             }
             composable(Screen.Subscriptions.route) { SubscriptionsScreen(vm) }
-            composable(Screen.Settings.route)      { SettingsScreen(vm, onNavigate = { navController.navigate(it) }) }
             composable(Screen.Style.route)                  { StyleScreen(vm, onBack = back) }
             composable(Screen.JsonConfig.route) { entry ->
                 JsonConfigScreen(

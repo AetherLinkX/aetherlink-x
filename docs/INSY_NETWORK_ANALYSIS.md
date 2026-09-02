@@ -23,9 +23,11 @@ component not covered by the core handshake test:
 ## Fixed traffic path
 
 Version 0.6.8 passes Android's TUN file descriptor directly to Xray's native `tun` inbound and keeps
-a private random-port SOCKS listener only for subscription refresh and diagnostics. Before the UI
-reports `RUNNING`, the core performs concurrent end-to-end HTTP checks through the selected
-outbound. Periodic core-state and outbound-stat checks turn a native stop into an explicit error.
+a private random-port SOCKS listener only for subscription refresh and diagnostics. Version 0.6.9
+starts the VPN as soon as both the native TUN and Xray loop are alive, then performs a sequential
+end-to-end HTTP check in the background. A slow or filtered synthetic probe is diagnostic only and
+can no longer tear down a working tunnel. Periodic core-state and outbound-stat checks still turn a
+real native-core stop into an explicit error.
 
 The native inbound handles TCP and UDP without a second JNI event loop or packet copy. IPv6 is
 captured only when enabled. With IPv6 disabled, Xray's DNS `queryStrategy` is `UseIPv4`, preventing
@@ -40,6 +42,14 @@ were removed. Resolver failure therefore fails closed instead of silently queryi
 
 The default routing preset for new installations is `GLOBAL`. A user can still explicitly enable
 split tunnelling or direct routing; those options necessarily exempt the selected traffic.
+
+## Main-tab lifecycle
+
+The three main Compose screens use a retained `HorizontalPager`: a page is created lazily on its
+first visit and kept composed afterwards. Switching is immediate and does not rebuild a complete
+navigation destination. Expensive package enumeration is deferred until the split-tunnelling page
+is actually opened. This is the Jetpack Compose equivalent of Flutter's `IndexedStack`, lazy
+`PageView`, and keep-alive approach; Flutter widgets are not part of this native Android client.
 
 ## Subscription and deep links
 
