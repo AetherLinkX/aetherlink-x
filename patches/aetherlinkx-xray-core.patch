@@ -382,7 +382,7 @@ index 0000000..3071d63
 +	}
 +}
 diff --git a/infra/conf/xray.go b/infra/conf/xray.go
-index c029a7b..1eb6ea4 100644
+index bdcabbd..c85d3b2 100644
 --- a/infra/conf/xray.go
 +++ b/infra/conf/xray.go
 @@ -26,6 +26,8 @@ var (
@@ -504,17 +504,26 @@ index c029a7b..1eb6ea4 100644
  // Build implements Buildable.
  func (c *OutboundDetourConfig) Build() (*core.OutboundHandlerConfig, error) {
  	senderSettings := &proxyman.SenderConfig{}
-@@ -358,6 +446,10 @@ func (c *OutboundDetourConfig) Build() (*core.OutboundHandlerConfig, error) {
+@@ -358,13 +446,17 @@ func (c *OutboundDetourConfig) Build() (*core.OutboundHandlerConfig, error) {
  	if err != nil {
  		return nil, errors.New("failed to load outbound detour config for protocol ", c.Protocol).Base(err)
  	}
+-	if err := validateOutboundTransportSecurity(rawConfig, senderSettings); err != nil {
+-		return nil, err
 +	if alxConfig, ok := rawConfig.(*AetherLinkXClientConfig); ok {
 +		applyAetherLinkXTransportTuning(alxConfig.Turbo, &senderSettings.StreamSettings)
 +		applyAetherLinkXMuxTuning(alxConfig.Turbo, senderSettings)
-+	}
+ 	}
  	ts, err := rawConfig.(Buildable).Build()
  	if err != nil {
  		return nil, errors.New("failed to build outbound handler for protocol ", c.Protocol).Base(err)
+ 	}
++	if err := validateOutboundTransportSecurity(rawConfig, senderSettings); err != nil {
++		return nil, err
++	}
+ 
+ 	return &core.OutboundHandlerConfig{
+ 		SenderSettings: serial.ToTypedMessage(senderSettings),
 diff --git a/main/commands/all/aetherlinkx.go b/main/commands/all/aetherlinkx.go
 new file mode 100644
 index 0000000..4f72e7f
@@ -619,7 +628,7 @@ index 0000000..a91cb44
 +```
 diff --git a/proxy/aetherlinkx/README.md b/proxy/aetherlinkx/README.md
 new file mode 100644
-index 0000000..1530208
+index 0000000..6eb283c
 --- /dev/null
 +++ b/proxy/aetherlinkx/README.md
 @@ -0,0 +1,148 @@
@@ -708,7 +717,7 @@ index 0000000..1530208
 +  "secret": "REPLACE_WITH_GENERATED_ACCOUNT_SECRET",
 +  "turbo": {
 +    "enabled": true,
-+    "maxDatagramAgeMs": 35,
++    "maxDatagramAgeMs": 0,
 +    "destinationCacheSize": 64,
 +    "maxUdpPayload": 8192,
 +    "tcpKeepAliveIdle": 15,
@@ -1910,7 +1919,7 @@ index 0000000..73474fb
 +}
 diff --git a/proxy/aetherlinkx/examples/client-reality.json b/proxy/aetherlinkx/examples/client-reality.json
 new file mode 100644
-index 0000000..23143a2
+index 0000000..50662bc
 --- /dev/null
 +++ b/proxy/aetherlinkx/examples/client-reality.json
 @@ -0,0 +1,65 @@
@@ -1940,7 +1949,7 @@ index 0000000..23143a2
 +        "secret": "REPLACE_WITH_32_RANDOM_BYTES_AS_BASE64URL",
 +        "turbo": {
 +          "enabled": true,
-+          "maxDatagramAgeMs": 35,
++          "maxDatagramAgeMs": 0,
 +          "destinationCacheSize": 64,
 +          "maxUdpPayload": 8192,
 +          "tcpKeepAliveIdle": 15,
@@ -1981,7 +1990,7 @@ index 0000000..23143a2
 +}
 diff --git a/proxy/aetherlinkx/examples/client-warp-reality.json b/proxy/aetherlinkx/examples/client-warp-reality.json
 new file mode 100644
-index 0000000..cbde519
+index 0000000..fcbd5c5
 --- /dev/null
 +++ b/proxy/aetherlinkx/examples/client-warp-reality.json
 @@ -0,0 +1,98 @@
@@ -2011,7 +2020,7 @@ index 0000000..cbde519
 +        "secret": "REPLACE_WITH_32_RANDOM_BYTES_AS_BASE64URL",
 +        "turbo": {
 +          "enabled": true,
-+          "maxDatagramAgeMs": 35,
++          "maxDatagramAgeMs": 0,
 +          "destinationCacheSize": 64,
 +          "maxUdpPayload": 8192,
 +          "tcpKeepAliveIdle": 15,
@@ -2085,7 +2094,7 @@ index 0000000..cbde519
 +}
 diff --git a/proxy/aetherlinkx/examples/server-reality.json b/proxy/aetherlinkx/examples/server-reality.json
 new file mode 100644
-index 0000000..2371635
+index 0000000..25aebb4
 --- /dev/null
 +++ b/proxy/aetherlinkx/examples/server-reality.json
 @@ -0,0 +1,70 @@
@@ -2111,7 +2120,7 @@ index 0000000..2371635
 +        "handshakeTimeoutSeconds": 4,
 +        "turbo": {
 +          "enabled": true,
-+          "maxDatagramAgeMs": 35,
++          "maxDatagramAgeMs": 0,
 +          "destinationCacheSize": 64,
 +          "maxUdpPayload": 8192,
 +          "tcpKeepAliveIdle": 15,
@@ -2806,10 +2815,10 @@ index 0000000..18a4621
 +}
 diff --git a/proxy/aetherlinkx/protocol_test.go b/proxy/aetherlinkx/protocol_test.go
 new file mode 100644
-index 0000000..4c2276f
+index 0000000..fe8f845
 --- /dev/null
 +++ b/proxy/aetherlinkx/protocol_test.go
-@@ -0,0 +1,433 @@
+@@ -0,0 +1,469 @@
 +package aetherlinkx
 +
 +import (
@@ -2980,6 +2989,21 @@ index 0000000..4c2276f
 +	}
 +	if diff := cmp.Diff(request.Session.Turbo, clientSession.Turbo); diff != "" {
 +		t.Fatalf("Turbo selection mismatch (-server +client):\n%s", diff)
++	}
++}
++
++func TestTurboZeroDisablesDeadlineDrops(t *testing.T) {
++	normalized := normalizeTurbo(&TurboConfig{Enabled: true, MaxDatagramAgeMs: 0})
++	if normalized.MaxDatagramAge != 0 {
++		t.Fatalf("zero maxDatagramAgeMs enabled deadline drops: %s", normalized.MaxDatagramAge)
++	}
++
++	selected := negotiateTurbo(
++		TurboSettings{Enabled: true, MaxDatagramAge: 0, DestinationCacheSize: 8, MaxUDPPayload: 1024},
++		TurboSettings{Enabled: true, MaxDatagramAge: 35 * time.Millisecond, DestinationCacheSize: 8, MaxUDPPayload: 1024},
++	)
++	if selected.MaxDatagramAge != 0 {
++		t.Fatalf("peer negotiation re-enabled deadline drops: %s", selected.MaxDatagramAge)
 +	}
 +}
 +
@@ -3198,6 +3222,27 @@ index 0000000..4c2276f
 +	defer buf.ReleaseMulti(decoded)
 +	if got := string(decoded[0].Bytes()); got != "fresh" {
 +		t.Fatalf("deadline-aware reader returned %q, want fresh packet", got)
++	}
++}
++
++func TestTurboUDPZeroDeadlineKeepsDelayedPacket(t *testing.T) {
++	turbo := TurboSettings{Enabled: true, MaxDatagramAge: 0, DestinationCacheSize: 8, MaxUDPPayload: 2048}
++	target := net.UDPDestination(net.DomainAddress("dns.example"), 53)
++	epoch := time.Now()
++	var wire bytes.Buffer
++	payload := buf.FromBytes([]byte("delayed-but-valid"))
++	payload.UDP = &target
++	if err := (&PacketWriter{Writer: &wire, Target: target, Turbo: turbo, Epoch: epoch}).WriteMultiBuffer(buf.MultiBuffer{payload}); err != nil {
++		t.Fatal(err)
++	}
++	time.Sleep(20 * time.Millisecond)
++	decoded, err := (&PacketReader{Reader: &wire, Turbo: turbo, Epoch: epoch}).ReadMultiBuffer()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer buf.ReleaseMulti(decoded)
++	if got := string(decoded[0].Bytes()); got != "delayed-but-valid" {
++		t.Fatalf("zero deadline returned %q", got)
 +	}
 +}
 +
@@ -3916,7 +3961,7 @@ index 0000000..be95ed1
 +}
 diff --git a/proxy/aetherlinkx/turbo.go b/proxy/aetherlinkx/turbo.go
 new file mode 100644
-index 0000000..781adec
+index 0000000..6dffc8b
 --- /dev/null
 +++ b/proxy/aetherlinkx/turbo.go
 @@ -0,0 +1,146 @@
@@ -3931,7 +3976,6 @@ index 0000000..781adec
 +)
 +
 +const (
-+	defaultTurboMaxDatagramAge = 35 * time.Millisecond
 +	defaultDestinationCache    = 64
 +	defaultMaxUDPPayload       = 8192
 +	maxDestinationCache        = 1024
@@ -4011,9 +4055,6 @@ index 0000000..781adec
 +		return TurboSettings{MaxUDPPayload: defaultMaxUDPPayload}
 +	}
 +	age := time.Duration(config.MaxDatagramAgeMs) * time.Millisecond
-+	if config.MaxDatagramAgeMs == 0 {
-+		age = defaultTurboMaxDatagramAge
-+	}
 +	cacheSize := config.DestinationCacheSize
 +	if cacheSize == 0 {
 +		cacheSize = defaultDestinationCache
@@ -4044,7 +4085,11 @@ index 0000000..781adec
 +		return TurboSettings{MaxUDPPayload: defaultMaxUDPPayload}
 +	}
 +	selected := requested
-+	if available.MaxDatagramAge > 0 && (selected.MaxDatagramAge == 0 || available.MaxDatagramAge < selected.MaxDatagramAge) {
++	// Zero explicitly disables deadline drops. Reliability takes precedence if
++	// either peer disables this optional lossy optimisation.
++	if requested.MaxDatagramAge == 0 || available.MaxDatagramAge == 0 {
++		selected.MaxDatagramAge = 0
++	} else if available.MaxDatagramAge < selected.MaxDatagramAge {
 +		selected.MaxDatagramAge = available.MaxDatagramAge
 +	}
 +	if available.DestinationCacheSize < selected.DestinationCacheSize {

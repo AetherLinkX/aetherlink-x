@@ -83,7 +83,7 @@ Client protocol settings:
   "secret": "REPLACE_WITH_GENERATED_ACCOUNT_SECRET",
   "turbo": {
     "enabled": true,
-    "maxDatagramAgeMs": 35,
+    "maxDatagramAgeMs": 0,
     "destinationCacheSize": 64,
     "maxUdpPayload": 8192,
     "tcpKeepAliveIdle": 15,

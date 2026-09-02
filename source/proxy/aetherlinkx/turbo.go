@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	defaultTurboMaxDatagramAge = 35 * time.Millisecond
 	defaultDestinationCache    = 64
 	defaultMaxUDPPayload       = 8192
 	maxDestinationCache        = 1024
@@ -89,9 +88,6 @@ func normalizeTurbo(config *TurboConfig) TurboSettings {
 		return TurboSettings{MaxUDPPayload: defaultMaxUDPPayload}
 	}
 	age := time.Duration(config.MaxDatagramAgeMs) * time.Millisecond
-	if config.MaxDatagramAgeMs == 0 {
-		age = defaultTurboMaxDatagramAge
-	}
 	cacheSize := config.DestinationCacheSize
 	if cacheSize == 0 {
 		cacheSize = defaultDestinationCache
@@ -122,7 +118,11 @@ func negotiateTurbo(requested, available TurboSettings) TurboSettings {
 		return TurboSettings{MaxUDPPayload: defaultMaxUDPPayload}
 	}
 	selected := requested
-	if available.MaxDatagramAge > 0 && (selected.MaxDatagramAge == 0 || available.MaxDatagramAge < selected.MaxDatagramAge) {
+	// Zero explicitly disables deadline drops. Reliability takes precedence if
+	// either peer disables this optional lossy optimisation.
+	if requested.MaxDatagramAge == 0 || available.MaxDatagramAge == 0 {
+		selected.MaxDatagramAge = 0
+	} else if available.MaxDatagramAge < selected.MaxDatagramAge {
 		selected.MaxDatagramAge = available.MaxDatagramAge
 	}
 	if available.DestinationCacheSize < selected.DestinationCacheSize {

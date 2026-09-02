@@ -200,7 +200,16 @@ object XrayConfigBuilder {
             put("id", p.uuid)
             put("secret", p.alxSecret)
             put("allowInsecureTransport", p.alxAllowInsecureTransport)
-            optionsObject(p.alxTurboJson)?.let { put("turbo", it) }
+            optionsObject(p.alxTurboJson)?.let { turbo ->
+                // Deadline-based UDP dropping is intentionally disabled on Android.
+                // Mobile networks regularly exceed 35 ms of jitter; treating delayed
+                // DNS/QUIC packets as stale made a healthy tunnel appear connected while
+                // applications could not resolve or load anything.
+                if (turbo.optBoolean("enabled", false)) {
+                    turbo.put("maxDatagramAgeMs", 0)
+                }
+                put("turbo", turbo)
+            }
             optionsObject(p.alxSecurityJson)?.let { put("security", it) }
             optionsObject(p.alxStealthJson)?.let { put("stealth", it) }
         })

@@ -27,7 +27,7 @@
           "enabled": true,
           "targetQueueMs": 4,
           "maxQueueMs": 12,
-          "maxDatagramAgeMs": 35,
+          "maxDatagramAgeMs": 0,
           "maxRealtimeStreamsPerUser": 32,
           "maxLanesPerUser": 2,
           "streamIsolation": true
@@ -93,4 +93,3 @@
     ]
   }
 }
-

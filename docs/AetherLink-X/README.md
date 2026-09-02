@@ -540,7 +540,7 @@ Transport-agnostic вариант:
       "profile": "game",
       "targetQueueMs": 4,
       "maxQueueMs": 12,
-      "maxDatagramAgeMs": 35,
+      "maxDatagramAgeMs": 0,
       "laneCount": 2,
       "maxBatchDelayUs": 0,
       "congestion": "auto"

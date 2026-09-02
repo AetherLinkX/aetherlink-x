@@ -171,6 +171,21 @@ func TestTurboNegotiation(t *testing.T) {
 	}
 }
 
+func TestTurboZeroDisablesDeadlineDrops(t *testing.T) {
+	normalized := normalizeTurbo(&TurboConfig{Enabled: true, MaxDatagramAgeMs: 0})
+	if normalized.MaxDatagramAge != 0 {
+		t.Fatalf("zero maxDatagramAgeMs enabled deadline drops: %s", normalized.MaxDatagramAge)
+	}
+
+	selected := negotiateTurbo(
+		TurboSettings{Enabled: true, MaxDatagramAge: 0, DestinationCacheSize: 8, MaxUDPPayload: 1024},
+		TurboSettings{Enabled: true, MaxDatagramAge: 35 * time.Millisecond, DestinationCacheSize: 8, MaxUDPPayload: 1024},
+	)
+	if selected.MaxDatagramAge != 0 {
+		t.Fatalf("peer negotiation re-enabled deadline drops: %s", selected.MaxDatagramAge)
+	}
+}
+
 func TestTurboDowngradeIsRejected(t *testing.T) {
 	account := testAccount(t)
 	requested := TurboSettings{Enabled: true, MaxDatagramAge: 35 * time.Millisecond, DestinationCacheSize: 8, MaxUDPPayload: 1024}
@@ -386,6 +401,27 @@ func TestTurboUDPDestinationCompressionAndDeadlineDrop(t *testing.T) {
 	defer buf.ReleaseMulti(decoded)
 	if got := string(decoded[0].Bytes()); got != "fresh" {
 		t.Fatalf("deadline-aware reader returned %q, want fresh packet", got)
+	}
+}
+
+func TestTurboUDPZeroDeadlineKeepsDelayedPacket(t *testing.T) {
+	turbo := TurboSettings{Enabled: true, MaxDatagramAge: 0, DestinationCacheSize: 8, MaxUDPPayload: 2048}
+	target := net.UDPDestination(net.DomainAddress("dns.example"), 53)
+	epoch := time.Now()
+	var wire bytes.Buffer
+	payload := buf.FromBytes([]byte("delayed-but-valid"))
+	payload.UDP = &target
+	if err := (&PacketWriter{Writer: &wire, Target: target, Turbo: turbo, Epoch: epoch}).WriteMultiBuffer(buf.MultiBuffer{payload}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	decoded, err := (&PacketReader{Reader: &wire, Turbo: turbo, Epoch: epoch}).ReadMultiBuffer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer buf.ReleaseMulti(decoded)
+	if got := string(decoded[0].Bytes()); got != "delayed-but-valid" {
+		t.Fatalf("zero deadline returned %q", got)
 	}
 }
 

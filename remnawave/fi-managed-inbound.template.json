@@ -8,7 +8,7 @@
     "handshakeTimeoutSeconds": 4,
     "turbo": {
       "enabled": true,
-      "maxDatagramAgeMs": 35,
+      "maxDatagramAgeMs": 0,
       "destinationCacheSize": 64,
       "maxUdpPayload": 8192,
       "tcpKeepAliveIdle": 15,
