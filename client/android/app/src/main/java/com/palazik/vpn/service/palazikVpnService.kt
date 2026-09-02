@@ -72,8 +72,9 @@ class palazikVpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var coreController: CoreController? = null
-    private var hevTunBridge: HevTunBridge? = null
     private var localSocksPort: Int = 0
+    private var sessionBytesIn: Long = 0L
+    private var sessionBytesOut: Long = 0L
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
     private val networkLock = Any()
@@ -204,6 +205,7 @@ class palazikVpnService : VpnService() {
                     settings = settings,
                     localSocksPort = socksPort,
                     includeHttpInbound = false,
+                    includeNativeTun = true,
                 )
                 Log.d(TAG, "Xray config built for ${profile.name}")
 
@@ -230,13 +232,14 @@ class palazikVpnService : VpnService() {
                 })
                 coreController = controller
 
-                // Xray owns only the loopback SOCKS listener. HEV owns the Android TUN fd
-                // and converts every IP packet (TCP/UDP/DNS) to that listener.
-                controller.startLoop(config, 0)
+                // The patched Xray core owns the Android TUN descriptor directly. This
+                // avoids a second JNI event loop and an extra TUN -> SOCKS packet copy.
+                controller.startLoop(config, iface.fd)
+                check(controller.isRunning) { "Xray core stopped during startup" }
                 LocalProxyEndpoint.publish(socksPort)
-                val bridge = HevTunBridge(applicationContext)
-                hevTunBridge = bridge
-                bridge.start(iface, settings.enableIpv6, socksPort)
+
+                val verifiedDelay = verifyCoreEgress(controller, settings)
+                addDiagnostic("End-to-end egress verified (${verifiedDelay} ms)")
 
                 _connectionState.value = ServiceState.RUNNING
                 _connectedSince.value = System.currentTimeMillis()
@@ -324,13 +327,12 @@ class palazikVpnService : VpnService() {
             .addAddress("10.10.14.1", 30)   // v2rayNG default: OPTION_1
             .addRoute("0.0.0.0", 0)
 
-        // Without an IPv6 address + ::/0 route, apps' IPv6 traffic bypasses the tunnel on
-        // dual-stack networks and leaks the real IP. With IPv6 enabled we carry it; with it
-        // disabled we still claim ::/0 so the OS drops it inside the TUN instead.
-        runCatching {
-            builder.addAddress("fd66:6ca7:14e7::1", 126)
-            builder.addRoute("::", 0)
-        }.onFailure { Log.w(TAG, "IPv6 TUN setup failed: ${it.message}") }
+        if (settings.enableIpv6) {
+            runCatching {
+                builder.addAddress("fd66:6ca7:14e7::1", 126)
+                builder.addRoute("::", 0)
+            }.onFailure { Log.w(TAG, "IPv6 TUN setup failed: ${it.message}") }
+        }
 
         settings.dnsServers.forEach { dns ->
             runCatching { builder.addDnsServer(dns) }
@@ -447,10 +449,6 @@ class palazikVpnService : VpnService() {
     private fun teardownCore() {
         LocalProxyEndpoint.clear(localSocksPort)
         localSocksPort = 0
-        try { hevTunBridge?.stop() } catch (e: Exception) { Log.w(TAG, "HEV stop: ${e.message}") }
-        hevTunBridge = null
-
-        // Stop Xray only after HEV has stopped feeding its SOCKS listener.
         try { coreController?.stopLoop() } catch (e: Exception) { Log.w(TAG, "stopLoop: ${e.message}") }
         coreController = null
 
@@ -478,13 +476,13 @@ class palazikVpnService : VpnService() {
         statsJob = null
         LocalProxyEndpoint.clear(localSocksPort)
         localSocksPort = 0
+        sessionBytesIn = 0L
+        sessionBytesOut = 0L
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try { connectivity.unregisterNetworkCallback(defaultNetworkCallback) } catch (_: Exception) {}
         }
 
-        try { hevTunBridge?.stop() } catch (e: Exception) { Log.w(TAG, "HEV stop: ${e.message}") }
-        hevTunBridge = null
         try { coreController?.stopLoop() } catch (e: Exception) { Log.w(TAG, "stopLoop: ${e.message}") }
         coreController = null
         try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
@@ -519,23 +517,34 @@ class palazikVpnService : VpnService() {
 
     private fun startStatsPolling() {
         statsJob?.cancel()
+        sessionBytesIn = 0L
+        sessionBytesOut = 0L
         statsJob = scope.launch {
             var transientFailures = 0
             while (isActive) {
                 delay(1000)
                 try {
-                    val bridge = hevTunBridge ?: break
-                    check(bridge.isRunning()) { "HEV tun2socks stopped unexpectedly" }
-                    val stats = bridge.stats()
-                    if (stats.size >= 4) {
-                        _bytesOut.value = stats[1].coerceAtLeast(0L)
-                        _bytesIn.value = stats[3].coerceAtLeast(0L)
-                    }
+                    val controller = coreController ?: break
+                    check(controller.isRunning) { "Xray core stopped unexpectedly" }
+                    controller.queryAllOutboundTrafficStats()
+                        .split(';')
+                        .filter(String::isNotBlank)
+                        .forEach { row ->
+                            val parts = row.split(',')
+                            if (parts.size != 3 || parts[0] != "proxy") return@forEach
+                            val value = parts[2].toLongOrNull()?.coerceAtLeast(0L) ?: return@forEach
+                            when (parts[1]) {
+                                "uplink" -> sessionBytesOut += value
+                                "downlink" -> sessionBytesIn += value
+                            }
+                        }
+                    _bytesOut.value = sessionBytesOut
+                    _bytesIn.value = sessionBytesIn
                     transientFailures = 0
                 } catch (e: Exception) {
                     transientFailures++
                     addDiagnostic("Tunnel health check failed ($transientFailures/3)")
-                    if (transientFailures >= 3 || hevTunBridge?.isRunning() != true) {
+                    if (transientFailures >= 3 || coreController?.isRunning != true) {
                         _lastError.value = "Туннель неожиданно остановился. Повторите подключение"
                         withContext(Dispatchers.Main) { failVpn() }
                         break
@@ -626,6 +635,25 @@ class palazikVpnService : VpnService() {
         }
     }
 
+    /** Validate the selected outbound itself; a listening TUN is not proof of Internet access. */
+    private suspend fun verifyCoreEgress(controller: CoreController, settings: AppSettings): Long {
+        val urls = listOf(
+            settings.pingTestUrl,
+            "https://cp.cloudflare.com/generate_204",
+            "https://www.gstatic.com/generate_204",
+        ).filter(String::isNotBlank).distinct()
+
+        val results = withTimeoutOrNull(15_000L) {
+            coroutineScope {
+                urls.map { url ->
+                    async(Dispatchers.IO) { runCatching { controller.measureDelay(url) }.getOrNull() }
+                }.awaitAll()
+            }
+        }.orEmpty()
+        return results.filterNotNull().filter { it >= 0L }.minOrNull()
+            ?: throw IllegalStateException("AetherLink X не получил ответ через выбранный outbound")
+    }
+
     private fun userFacingError(error: Throwable): String {
         val raw = error.message.orEmpty()
         return when {
@@ -635,6 +663,10 @@ class palazikVpnService : VpnService() {
                 "Android не выдал разрешение VPN"
             raw.contains("Missing asset", ignoreCase = true) ->
                 "В приложении отсутствуют служебные гео-файлы"
+            raw.contains("не получил ответ", ignoreCase = true) ->
+                "Сервер доступен, но не передаёт трафик через выбранный профиль"
+            raw.contains("core stopped", ignoreCase = true) ->
+                "Ядро Xray остановилось во время запуска туннеля"
             else -> "Не удалось запустить туннель. Проверьте профиль и сеть"
         }
     }

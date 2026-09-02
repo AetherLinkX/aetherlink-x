@@ -11,6 +11,7 @@ object XrayConfigBuilder {
         settings: AppSettings = AppSettings(),
         localSocksPort: Int = 10808,
         includeHttpInbound: Boolean = true,
+        includeNativeTun: Boolean = true,
     ): String =
         JSONObject().apply {
             put("log",       buildLog())
@@ -24,7 +25,7 @@ object XrayConfigBuilder {
                     })
                 })
             }
-            put("inbounds",  buildInbounds(settings, localSocksPort, includeHttpInbound))
+            put("inbounds",  buildInbounds(settings, localSocksPort, includeHttpInbound, includeNativeTun))
             put("outbounds", buildOutbounds(profile, settings))
             put("routing",   buildRouting(settings))
             put("stats",     JSONObject())
@@ -39,17 +40,22 @@ object XrayConfigBuilder {
 
     // ── Inbounds ──────────────────────────────────────────────────────────────
 
-    // Android packets are converted by HEV tun2socks and enter Xray through this
-    // loopback SOCKS inbound. Keeping Android's TUN descriptor out of Xray avoids
-    // native-TUN routing loops seen on some vendor kernels.
-    private fun buildInbounds(settings: AppSettings, localSocksPort: Int, includeHttpInbound: Boolean) = JSONArray().apply {
+    // The native TUN inbound owns Android's VPN descriptor. The loopback SOCKS
+    // inbound remains available for subscription refreshes and end-to-end health
+    // checks without putting another packet-copying bridge in the data path.
+    private fun buildInbounds(
+        settings: AppSettings,
+        localSocksPort: Int,
+        includeHttpInbound: Boolean,
+        includeNativeTun: Boolean,
+    ) = JSONArray().apply {
         // FakeDNS must be the first destOverride entry so sniffed connections map back
         // to their real domain before http/tls override (v2rayNG ordering).
         fun sniffing() = JSONObject().apply {
             put("enabled", true)
             put("destOverride", JSONArray().apply {
                 if (settings.enableFakeDns) put("fakedns")
-                put("http"); put("tls")
+                put("http"); put("tls"); put("quic")
             })
         }
         put(JSONObject().apply {
@@ -71,6 +77,18 @@ object XrayConfigBuilder {
                 put("listen", "127.0.0.1")
                 put("protocol", "http")
                 put("settings", JSONObject().apply { put("userLevel", 8) })
+            })
+        }
+        if (includeNativeTun) {
+            put(JSONObject().apply {
+                put("tag", "tun")
+                put("protocol", "tun")
+                put("settings", JSONObject().apply {
+                    put("name", "aetherlink0")
+                    put("MTU", 1500)
+                    put("userLevel", 8)
+                })
+                put("sniffing", sniffing())
             })
         }
     }
@@ -531,6 +549,9 @@ object XrayConfigBuilder {
     // - direct DNS (223.5.5.5) for local/cn traffic
     private fun buildDns(settings: AppSettings) = JSONObject().apply {
         put("tag", "dns-in")
+        // When IPv6 transport is disabled, suppress AAAA answers instead of handing
+        // applications unreachable IPv6 destinations and waiting for slow fallback.
+        put("queryStrategy", if (settings.enableIpv6) "UseIP" else "UseIPv4")
         put("hosts", JSONObject().apply {
             // Hardcoded per v2rayNG to fix DNS loop for popular DoH providers
             put("dns.google",         JSONArray().apply { put("8.8.8.8"); put("8.8.4.4") })
@@ -570,9 +591,8 @@ object XrayConfigBuilder {
 
     // ── Routing ───────────────────────────────────────────────────────────────
 
-    // HEV forwards both TCP and UDP DNS packets through the SOCKS inbound. Intercept
-    // port 53 before general routing and resolve only with the configured remote DNS;
-    // no localhost/direct fallback is present, so resolver failure is fail-closed.
+    // Intercept DNS from both the native TUN and the private SOCKS health endpoint
+    // before general routing. Resolver failure is fail-closed.
     private fun buildRouting(settings: AppSettings) = JSONObject().apply {
         put("domainStrategy", settings.domainStrategy.name)   // #7 user-selectable
         put("domainMatcher",  "hybrid")
@@ -582,10 +602,10 @@ object XrayConfigBuilder {
         val applyChina       = settings.routingMode == RoutingMode.RULE_BASED && settings.bypassChina
         put("rules", JSONArray().apply {
 
-            // Rule 1: DNS from HEV/SOCKS → dns-out (MUST be first)
+            // Rule 1: DNS from native TUN/SOCKS → dns-out (MUST be first)
             put(JSONObject().apply {
                 put("type", "field")
-                put("inboundTag", JSONArray().apply { put("socks") })
+                put("inboundTag", JSONArray().apply { put("socks"); put("tun") })
                 put("outboundTag", "dns-out")
                 put("port", "53")
             })
