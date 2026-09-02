@@ -10,9 +10,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -47,7 +46,7 @@ fun HomeScreen(
     vm: MainViewModel,
     permLauncher: ActivityResultLauncher<Intent>,
 ) {
-    val ui           by vm.ui.collectAsStateWithLifecycle()
+    val ui           by vm.homeUi.collectAsStateWithLifecycle()
     val vpnState     = ui.vpnState
     val isConnected  = vpnState == VpnState.CONNECTED
     val isTransition = vpnState == VpnState.CONNECTING || vpnState == VpnState.DISCONNECTING
@@ -138,7 +137,7 @@ fun HomeScreen(
     )
 
     val lightTheme = MaterialTheme.colorScheme.background.luminance() > 0.5f
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -150,13 +149,17 @@ fun HomeScreen(
                     )
                 )
             )
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp)
-            .padding(top = 24.dp, bottom = 16.dp),
+            .statusBarsPadding(),
+        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.Top,
     ) {
+        item(key = "home_hero", contentType = "home_hero") {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
 
         // ── Header ────────────────────────────────────────────────────────────
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -377,18 +380,36 @@ fun HomeScreen(
         ) {
             ConnectedStats(vm = vm, profileName = ui.activeProfile?.name ?: "", isConnected = isConnected)
         }
+            }
+        }
 
         if (homeProfiles.isNotEmpty()) {
-            HomeServerSwitcher(
-                profiles = homeProfiles,
-                activeId = ui.activeProfile?.id,
-                switching = isTransition,
-                displayMode = ui.settings.pingDisplayMode,
-                onSelect = vm::selectProfile,
-                onPingAll = { homeSubscription?.let { vm.pingSubscription(it.id) } ?: vm.pingAll() },
-                onUpdate = { homeSubscription?.let(vm::updateSubscription) },
-                canUpdate = homeSubscription != null,
-            )
+            item(key = "home_servers_header", contentType = "home_servers_header") {
+                HomeServerHeader(
+                    count = homeProfiles.size,
+                    switching = isTransition,
+                    onPingAll = { homeSubscription?.let { vm.pingSubscription(it.id) } ?: vm.pingAll() },
+                    onUpdate = { homeSubscription?.let(vm::updateSubscription) },
+                    canUpdate = homeSubscription != null,
+                )
+            }
+            itemsIndexed(
+                items = homeProfiles,
+                key = { index, profile -> "home_server_${profile.id}_$index" },
+                contentType = { _, _ -> "home_server" },
+            ) { index, profile ->
+                HomeServerRow(
+                    profile = profile,
+                    selected = profile.id == ui.activeProfile?.id,
+                    isLast = index == homeProfiles.lastIndex,
+                    switching = isTransition,
+                    displayMode = ui.settings.pingDisplayMode,
+                    onSelect = { vm.selectProfile(profile.id) },
+                )
+            }
+            item(key = "home_servers_bottom_space", contentType = "spacer") {
+                Spacer(Modifier.height(16.dp))
+            }
         }
 
         // ── Quick ping ────────────────────────────────────────────────────────
@@ -397,106 +418,128 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeServerSwitcher(
-    profiles: List<VpnProfile>,
-    activeId: String?,
+private fun HomeServerHeader(
+    count: Int,
     switching: Boolean,
-    displayMode: PingDisplayMode,
-    onSelect: (String) -> Unit,
     onPingAll: () -> Unit,
     onUpdate: () -> Unit,
     canUpdate: Boolean,
 ) {
-    ElevatedCard(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.70f), MaterialTheme.shapes.extraLarge),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
-        ),
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.70f),
+                RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            ),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+        tonalElevation = 3.dp,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Серверы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        if (switching) "Переключение профиля…" else "VPN перезапустится на выбранной локации",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), shape = CircleShape) {
-                    Text(
-                        profiles.size.toString(),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-                IconButton(onClick = onPingAll) {
-                    Icon(Icons.Rounded.NetworkCheck, "Проверить пинг всех локаций", tint = MaterialTheme.colorScheme.primary)
-                }
-                if (canUpdate) {
-                    IconButton(onClick = onUpdate) {
-                        Icon(Icons.Rounded.Refresh, "Обновить подписку", tint = MaterialTheme.colorScheme.primary)
-                    }
-                }
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Серверы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    if (switching) "Переключение профиля…" else "VPN перезапустится на выбранной локации",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Spacer(Modifier.height(10.dp))
-            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 620.dp)) {
-                itemsIndexed(profiles, key = { _, profile -> profile.id }) { index, profile ->
-                val selected = profile.id == activeId
-                Surface(
-                    onClick = { onSelect(profile.id) },
-                    enabled = !switching,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent,
-                ) {
-                    Row(
-                        Modifier.padding(horizontal = 10.dp, vertical = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Surface(
-                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            shape = MaterialTheme.shapes.medium,
-                        ) {
-                            Icon(
-                                Icons.Rounded.Public,
-                                null,
-                                Modifier.padding(9.dp).size(20.dp),
-                                tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(profile.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "${profile.protocol.name.replace('_', ' ')} · ${profile.transport.name.replace('_', ' ')} · ${profile.security.name}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        if (profile.lastTested > 0L) {
-                            if (profile.latencyMs >= 0L) {
-                                PingIndicator(profile.latencyMs, displayMode)
-                            } else {
-                                Text("н/д", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                        if (selected) Icon(Icons.Rounded.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
-                    }
-                }
-                if (index != profiles.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+            Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), shape = CircleShape) {
+                Text(
+                    count.toString(),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            IconButton(onClick = onPingAll) {
+                Icon(Icons.Rounded.NetworkCheck, "Проверить пинг всех локаций", tint = MaterialTheme.colorScheme.primary)
+            }
+            if (canUpdate) {
+                IconButton(onClick = onUpdate) {
+                    Icon(Icons.Rounded.Refresh, "Обновить подписку", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
     }
+}
 
+@Composable
+private fun HomeServerRow(
+    profile: VpnProfile,
+    selected: Boolean,
+    isLast: Boolean,
+    switching: Boolean,
+    displayMode: PingDisplayMode,
+    onSelect: () -> Unit,
+) {
+    val rowShape = if (isLast) {
+        RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
+    } else {
+        RoundedCornerShape(0.dp)
+    }
+    Surface(
+        onClick = onSelect,
+        enabled = !switching,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = if (selected) 0.85f else 0.36f),
+                rowShape,
+            ),
+        shape = rowShape,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.17f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.90f)
+        },
+    ) {
+        Row(
+            Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Icon(
+                    Icons.Rounded.Public,
+                    null,
+                    Modifier.padding(9.dp).size(20.dp),
+                    tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(profile.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${profile.protocol.name.replace('_', ' ')} · ${profile.transport.name.replace('_', ' ')} · ${profile.security.name}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (profile.lastTested > 0L) {
+                if (profile.latencyMs >= 0L) {
+                    PingIndicator(profile.latencyMs, displayMode)
+                } else {
+                    Text("н/д", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            if (selected) {
+                Spacer(Modifier.width(6.dp))
+                Icon(Icons.Rounded.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
 }
 
 @Composable

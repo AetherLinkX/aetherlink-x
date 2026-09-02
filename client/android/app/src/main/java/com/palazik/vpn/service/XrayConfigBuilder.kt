@@ -502,7 +502,10 @@ object XrayConfigBuilder {
                     put("serverName",  p.sni.ifEmpty { p.address })
                     put("fingerprint", p.fingerprint.ifEmpty { "chrome" })
                     put("shortId",     p.shortId)
-                    put("publicKey",   p.publicKey)
+                    // Xray v26.7.28 names the REALITY client credential `password`.
+                    // `publicKey` is only a compatibility alias and is no longer the
+                    // canonical generated form.
+                    put("password",    p.publicKey)
                     put("spiderX",     p.spiderX)
                 })
             }

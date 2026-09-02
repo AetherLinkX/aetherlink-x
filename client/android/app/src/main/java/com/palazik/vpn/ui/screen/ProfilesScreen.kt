@@ -73,7 +73,7 @@ fun ProfilesScreen(
     onOpenSubscriptions: () -> Unit = {},
     onOpenJson: (String) -> Unit = {},
 ) {
-    val ui        by vm.ui.collectAsStateWithLifecycle()
+    val ui        by vm.profilesUi.collectAsStateWithLifecycle()
     val context   = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val keyboard  = LocalSoftwareKeyboardController.current

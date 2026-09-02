@@ -48,6 +48,7 @@ object AppSettingsCodec {
                                 "AetherLinkX/0.6",
                                 "AetherLinkX/0.6.4",
                                 "AetherLinkX/0.6.5",
+                                "AetherLinkX/0.6.6",
                             )
                         ) {
                             d.subscriptionUserAgent

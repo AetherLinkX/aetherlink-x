@@ -12,8 +12,6 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.border
@@ -160,30 +158,13 @@ fun AppNavHost(
             navController = navController,
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(innerPadding),
-            enterTransition = {
-                if (shell.animationsEnabled) {
-                    fadeIn(tween(180, easing = EaseOutQuart)) +
-                        slideInHorizontally(tween(180, easing = EaseOutQuart)) { it / 14 }
-                } else EnterTransition.None
-            },
-            exitTransition = {
-                if (shell.animationsEnabled) {
-                    fadeOut(tween(140)) +
-                        slideOutHorizontally(tween(140)) { -it / 14 }
-                } else ExitTransition.None
-            },
-            popEnterTransition = {
-                if (shell.animationsEnabled) {
-                    fadeIn(tween(180, easing = EaseOutQuart)) +
-                        slideInHorizontally(tween(180, easing = EaseOutQuart)) { -it / 14 }
-                } else EnterTransition.None
-            },
-            popExitTransition = {
-                if (shell.animationsEnabled) {
-                    fadeOut(tween(140)) +
-                        slideOutHorizontally(tween(140)) { it / 14 }
-                } else ExitTransition.None
-            },
+            // Screen-sized fade/slide transitions force both heavy destination trees to
+            // render simultaneously. Keeping navigation itself immediate removes the tab
+            // hitch; the pill and controls retain their lightweight local animations.
+            enterTransition = { EnterTransition.None },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { ExitTransition.None },
         ) {
             val back: () -> Unit = { navController.popBackStack() }
             composable(Screen.Home.route)          { HomeScreen(vm, permLauncher) }

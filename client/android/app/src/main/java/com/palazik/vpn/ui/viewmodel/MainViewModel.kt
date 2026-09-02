@@ -62,6 +62,22 @@ data class ShellUiState(
     val animationsEnabled: Boolean = false,
 )
 
+data class HomeUiState(
+    val vpnState: VpnState = VpnState.DISCONNECTED,
+    val activeProfile: VpnProfile? = null,
+    val profiles: List<VpnProfile> = emptyList(),
+    val subscriptions: List<Subscription> = emptyList(),
+    val settings: AppSettings = AppSettings(),
+    val lastError: String? = null,
+)
+
+data class ProfilesUiState(
+    val activeProfile: VpnProfile? = null,
+    val profiles: List<VpnProfile> = emptyList(),
+    val subscriptions: List<Subscription> = emptyList(),
+    val shareLink: String? = null,
+)
+
 private const val THEME_PREFS       = "palazik_theme"
 private const val KEY_THEME         = "app_theme"
 private const val KEY_DARKMODE      = "dark_mode"
@@ -86,6 +102,23 @@ class MainViewModel @Inject constructor(
         .map { ShellUiState(it.snackMessage, it.snackActionLabel, it.settings.uiAnimationsEnabled) }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.Eagerly, ShellUiState())
+    val homeUi: StateFlow<HomeUiState> = ui
+        .map {
+            HomeUiState(
+                vpnState = it.vpnState,
+                activeProfile = it.activeProfile,
+                profiles = it.profiles,
+                subscriptions = it.subscriptions,
+                settings = it.settings,
+                lastError = it.lastError,
+            )
+        }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
+    val profilesUi: StateFlow<ProfilesUiState> = ui
+        .map { ProfilesUiState(it.activeProfile, it.profiles, it.subscriptions, it.shareLink) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ProfilesUiState())
 
     // High-frequency values (update ~1×/sec) are exposed as dedicated flows instead of
     // living in the big UiState — so a traffic tick doesn't recompose every screen that
