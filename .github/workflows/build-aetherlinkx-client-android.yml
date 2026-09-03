@@ -28,6 +28,7 @@ jobs:
       ANDROIDLIB_COMMIT: c634d1baea97e94320c0bf6a9cf637369c4f11d4
       HEV_REPOSITORY: https://github.com/heiher/hev-socks5-tunnel.git
       HEV_COMMIT: 64cc609
+      CLIENT_RELEASE_TAG: client-v0.6.11-alpha
 
     steps:
       - uses: actions/checkout@v7
@@ -156,3 +157,25 @@ jobs:
           gh release upload client-dev \
             aetherlink-x-client-android-universal-debug.apk \
             aetherlink-x-client-android-SHA256SUMS.txt --clobber
+
+      - name: Publish versioned Android release
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK=$(find client/android/app/build/outputs/apk/debug -type f -name '*universal*.apk' | head -1)
+          test -n "$APK"
+          cp "$APK" aetherlink-x-client-android-v0.6.11-alpha.apk
+          sha256sum aetherlink-x-client-android-v0.6.11-alpha.apk > aetherlink-x-client-android-v0.6.11-alpha-SHA256SUMS.txt
+          if ! gh release view "$CLIENT_RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$CLIENT_RELEASE_TAG" \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "AetherLink X Client 0.6.11 Alpha" \
+              --notes "Android data-plane fix: the VpnService TUN is now bridged through pinned hev-socks5-tunnel to the patched Xray SOCKS inbound. Includes TCP, UDP/DNS, AetherLink X + REALITY, bridge health monitoring, and the ProcessFinder UID fix. Experimental build; not independently security-audited."
+          fi
+          gh release upload "$CLIENT_RELEASE_TAG" \
+            aetherlink-x-client-android-v0.6.11-alpha.apk \
+            aetherlink-x-client-android-v0.6.11-alpha-SHA256SUMS.txt --clobber
