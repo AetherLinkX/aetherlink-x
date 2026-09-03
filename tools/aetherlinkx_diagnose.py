@@ -444,7 +444,7 @@ def parser() -> argparse.ArgumentParser:
 
     fetch = sub.add_parser("subscription", help="fetch and safely summarize a subscription")
     fetch.add_argument("url")
-    fetch.add_argument("--user-agent", default="AetherLinkX/0.6.12")
+    fetch.add_argument("--user-agent", default="AetherLinkX/0.6.13")
     fetch.add_argument("--hwid", default="")
     fetch.add_argument("--device-os", default="Android")
     fetch.add_argument("--os-version", default="diagnostic")

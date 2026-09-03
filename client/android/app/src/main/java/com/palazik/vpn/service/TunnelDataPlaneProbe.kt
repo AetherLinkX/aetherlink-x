@@ -1,5 +1,6 @@
 package com.palazik.vpn.service
 
+import com.palazik.vpn.data.network.LocalProxyEndpoint
 import java.io.EOFException
 import java.io.InputStream
 import java.net.DatagramPacket
@@ -74,7 +75,7 @@ internal object TunnelDataPlaneProbe {
         command.socket.use {
             val relay = command.bound
             val relayAddress = if (relay.address.isAnyLocalAddress) {
-                InetAddress.getLoopbackAddress()
+                LocalProxyEndpoint.ipv4Loopback
             } else relay.address
 
             DatagramSocket().use { udp ->
@@ -118,7 +119,7 @@ internal object TunnelDataPlaneProbe {
         val socket = Socket()
         try {
             socket.soTimeout = timeoutMs
-            socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), socksPort), timeoutMs)
+            socket.connect(InetSocketAddress(LocalProxyEndpoint.ipv4Loopback, socksPort), timeoutMs)
             val output = socket.getOutputStream()
             output.write(byteArrayOf(0x05, 0x01, 0x00))
             output.flush()

@@ -9,6 +9,8 @@ import java.util.concurrent.atomic.AtomicInteger
 /** Runtime address of Xray's private SOCKS listener. */
 object LocalProxyEndpoint {
     private val activePort = AtomicInteger(0)
+    /** Numeric IPv4 loopback used by Xray's IPv4-only private inbounds. */
+    val ipv4Loopback: InetAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
     val port: Int get() = activePort.get()
 
     fun publish(port: Int) {
@@ -21,8 +23,8 @@ object LocalProxyEndpoint {
     }
 
     fun proxyOrNull(): Proxy? = port.takeIf { it > 0 }?.let {
-        Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", it))
+        Proxy(Proxy.Type.SOCKS, InetSocketAddress(ipv4Loopback, it))
     }
 
-    fun allocate(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+    fun allocate(): Int = ServerSocket(0, 1, ipv4Loopback).use { it.localPort }
 }

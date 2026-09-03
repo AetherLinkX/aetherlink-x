@@ -28,7 +28,7 @@ jobs:
       ANDROIDLIB_COMMIT: c634d1baea97e94320c0bf6a9cf637369c4f11d4
       HEV_REPOSITORY: https://github.com/heiher/hev-socks5-tunnel.git
       HEV_COMMIT: 64cc609
-      CLIENT_RELEASE_TAG: client-v0.6.12-alpha
+      CLIENT_RELEASE_TAG: client-v0.6.13-alpha
 
     steps:
       - uses: actions/checkout@v7
@@ -167,15 +167,15 @@ jobs:
           set -euo pipefail
           APK=$(find client/android/app/build/outputs/apk/debug -type f -name '*universal*.apk' | head -1)
           test -n "$APK"
-          cp "$APK" aetherlink-x-client-android-v0.6.12-alpha.apk
-          sha256sum aetherlink-x-client-android-v0.6.12-alpha.apk > aetherlink-x-client-android-v0.6.12-alpha-SHA256SUMS.txt
+          cp "$APK" aetherlink-x-client-android-v0.6.13-alpha.apk
+          sha256sum aetherlink-x-client-android-v0.6.13-alpha.apk > aetherlink-x-client-android-v0.6.13-alpha-SHA256SUMS.txt
           if ! gh release view "$CLIENT_RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$CLIENT_RELEASE_TAG" \
               --prerelease \
               --target "$GITHUB_SHA" \
-              --title "AetherLink X Client 0.6.12 Alpha" \
-              --notes "Android data-plane hardening and exact diagnostics. The HEV TUN-to-SOCKS bridge now uses upstream production stack and buffer sizes, strict RFC 1928 negotiation, stable-start verification, native packet counters, and a live 32 KiB HTTPS plus UDP/DNS self-test through the selected AetherLink X + REALITY outbound. Experimental build; not independently security-audited."
+              --title "AetherLink X Client 0.6.13 Alpha" \
+              --notes "Android TUN startup hotfix. All private SOCKS readiness and data-plane probes now use the same explicit IPv4 loopback address as Xray instead of Android's device-dependent loopback selection, which could resolve to ::1 and reject every profile before HEV started. Nested startup diagnostics are preserved. Includes the 0.6.12 data-plane hardening and self-tests. Experimental build; not independently security-audited."
           fi
           gh release upload "$CLIENT_RELEASE_TAG" \
-            aetherlink-x-client-android-v0.6.12-alpha.apk \
-            aetherlink-x-client-android-v0.6.12-alpha-SHA256SUMS.txt --clobber
+            aetherlink-x-client-android-v0.6.13-alpha.apk \
+            aetherlink-x-client-android-v0.6.13-alpha-SHA256SUMS.txt --clobber

@@ -76,7 +76,7 @@ signature, so a later store/release-signed APK will require uninstalling this al
 ## Diagnosing an Android tunnel
 
 Open **Настройки → Диагностика**, connect the affected location, try to open a
-website, then copy or save the log. Version 0.6.12 distinguishes the layers without
+website, then copy or save the log. Version 0.6.13 distinguishes the layers without
 including profile credentials:
 
 - `Client core verified via live SOCKS` proves the APK's selected protocol,

@@ -7,6 +7,12 @@ import org.junit.Test
 
 class LocalProxyEndpointTest {
     @Test
+    fun localProxyAddressIsAlwaysIpv4Loopback() {
+        assertEquals("127.0.0.1", LocalProxyEndpoint.ipv4Loopback.hostAddress)
+        assertEquals(4, LocalProxyEndpoint.ipv4Loopback.address.size)
+    }
+
+    @Test
     fun allocatedPortCanBePublishedAndClearedByOwner() {
         val port = LocalProxyEndpoint.allocate()
         assertTrue(port in 1..65535)

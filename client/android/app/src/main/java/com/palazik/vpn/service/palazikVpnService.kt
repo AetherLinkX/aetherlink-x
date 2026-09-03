@@ -277,7 +277,11 @@ class palazikVpnService : VpnService() {
                         check(it.awaitRunning()) { "hev worker exited during startup: ${it.logTail()}" }
                     }
                 }.getOrElse { cause ->
-                    throw IllegalStateException("Не удалось запустить системный TUN-мост", cause)
+                    throw IllegalStateException(
+                        "Не удалось запустить системный TUN-мост: " +
+                            (cause.message ?: cause.javaClass.simpleName),
+                        cause,
+                    )
                 }
                 tunBridge = bridge
                 addDiagnostic("Android data plane: hev-tun → SOCKS → Xray")

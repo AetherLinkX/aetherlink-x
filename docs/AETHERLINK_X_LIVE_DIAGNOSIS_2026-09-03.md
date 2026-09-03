@@ -56,3 +56,17 @@ with substantially smaller values.
 The server-side diagnostic process was independent of the production process. It
 was stopped after the tests, its temporary files were deleted, and the production
 node remained running with restart count zero.
+
+## Android startup regression and 0.6.13 hotfix
+
+Version 0.6.12 introduced an Android-only false negative in the new SOCKS
+readiness check. Xray binds its private inbound to `127.0.0.1`, while
+`InetAddress.getLoopbackAddress()` may select IPv6 `::1` on a device. The check
+then waited five seconds, reported that the system TUN bridge could not start,
+and stopped Xray before HEV was launched. This matches the device timestamps and
+affected every protocol because they share the same local data plane.
+
+Version 0.6.13 pins allocation, readiness checks, HTTPS probes, and UDP relay
+fallback to the numeric IPv4 loopback address. A regression test asserts both
+the address value and its four-byte address family. Startup errors now retain
+the nested failure message instead of reporting only the generic bridge error.

@@ -3,8 +3,8 @@ package com.palazik.vpn.service
 import android.content.Context
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import com.palazik.vpn.data.network.LocalProxyEndpoint
 import java.io.File
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 
@@ -96,7 +96,7 @@ class TProxyService(
             try {
                 Socket().use { socket ->
                     socket.soTimeout = 750
-                    socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), socksPort), 750)
+                    socket.connect(InetSocketAddress(LocalProxyEndpoint.ipv4Loopback, socksPort), 750)
                     socket.getOutputStream().apply {
                         write(byteArrayOf(0x05, 0x01, 0x00))
                         flush()
