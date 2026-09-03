@@ -1,0 +1,47 @@
+name: Build ALX diagnostic client
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "source/proxy/aetherlinkx/**"
+      - "patches/aetherlinkx-xray-core-v26.7.28.patch"
+      - ".github/workflows/build-alx-diagnostic-client.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-amd64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.0"
+          cache: false
+
+      - name: Build patched Xray diagnostic executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$RUNNER_TEMP/Xray-core"
+          git clone --depth 1 --branch v26.7.28 https://github.com/XTLS/Xray-core.git "$CORE"
+          git -C "$CORE" apply --check "$GITHUB_WORKSPACE/patches/aetherlinkx-xray-core-v26.7.28.patch"
+          git -C "$CORE" apply "$GITHUB_WORKSPACE/patches/aetherlinkx-xray-core-v26.7.28.patch"
+          diff -ru "$GITHUB_WORKSPACE/source/proxy/aetherlinkx" "$CORE/proxy/aetherlinkx"
+          (
+            cd "$CORE"
+            go test ./proxy/aetherlinkx
+            go test ./testing/scenarios -run AetherLinkX -count=1 -timeout=3m
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o "$GITHUB_WORKSPACE/xray-alx-diagnostic-windows-amd64.exe" ./main
+          )
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: xray-alx-diagnostic-windows-amd64
+          retention-days: 7
+          path: xray-alx-diagnostic-windows-amd64.exe
