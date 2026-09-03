@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import java.io.File
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /**
  * Reliable Android TUN -> SOCKS bridge based on hev-socks5-tunnel.
@@ -39,9 +42,13 @@ class TProxyService(
     }
 
     private var configFile: File? = null
+    private var logFile: File? = null
 
     fun start(): Boolean {
         val file = File(context.filesDir, "aetherlink-hev.yaml")
+        val nativeLog = File(context.cacheDir, "aetherlink-hev.log")
+        nativeLog.delete()
+        logFile = nativeLog
         file.writeText(buildConfig())
         configFile = file
         val started = TProxyStartService(file.absolutePath, vpnInterface.fd)
@@ -53,6 +60,64 @@ class TProxyService(
         // fatal; isRunning can briefly lag behind start and is therefore diagnostic.
         Log.i(TAG, "TUN-to-SOCKS bridge started (running=${TProxyIsRunning()})")
         return true
+    }
+
+    /**
+     * The JNI start call only confirms that the native worker thread was created.
+     * Wait for the worker to finish parsing its config before declaring the Android
+     * data plane ready.  This also turns an early native exit into a deterministic
+     * startup error instead of a connected-looking VPN with no traffic.
+     */
+    fun awaitRunning(timeoutMs: Long = 3_000L): Boolean {
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        var stableSince = 0L
+        do {
+            val now = System.nanoTime()
+            if (isRunning()) {
+                if (stableSince == 0L) stableSince = now
+                // JNI marks the worker as running before all native initialization has
+                // settled.  Require a short stable interval so an immediate config or
+                // descriptor failure cannot briefly masquerade as a healthy bridge.
+                if (now - stableSince >= 250_000_000L) return true
+            } else {
+                stableSince = 0L
+            }
+            Thread.sleep(25L)
+        } while (System.nanoTime() < deadline)
+        Log.e(TAG, "Native tunnel did not enter running state: ${logTail()}")
+        return false
+    }
+
+    /** Confirm that Xray's private SOCKS listener is accepting RFC 1928 handshakes. */
+    fun awaitSocksReady(timeoutMs: Long = 5_000L): Boolean {
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        var lastError: Throwable?
+        do {
+            try {
+                Socket().use { socket ->
+                    socket.soTimeout = 750
+                    socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), socksPort), 750)
+                    socket.getOutputStream().apply {
+                        write(byteArrayOf(0x05, 0x01, 0x00))
+                        flush()
+                    }
+                    val reply = ByteArray(2)
+                    var offset = 0
+                    while (offset < reply.size) {
+                        val read = socket.getInputStream().read(reply, offset, reply.size - offset)
+                        if (read < 0) error("SOCKS listener closed during greeting")
+                        offset += read
+                    }
+                    if (reply.contentEquals(byteArrayOf(0x05, 0x00))) return true
+                    error("unexpected SOCKS greeting ${reply.joinToString("") { "%02x".format(it) }}")
+                }
+            } catch (error: Throwable) {
+                lastError = error
+                Thread.sleep(50L)
+            }
+        } while (System.nanoTime() < deadline)
+        Log.e(TAG, "SOCKS listener was not ready", lastError)
+        return false
     }
 
     fun stop() {
@@ -67,6 +132,10 @@ class TProxyService(
     fun stats(): LongArray = runCatching { TProxyGetStats() ?: longArrayOf() }
         .getOrDefault(longArrayOf())
 
+    fun logTail(maxLines: Int = 12): String = runCatching {
+        logFile?.takeIf(File::isFile)?.readLines()?.takeLast(maxLines)?.joinToString(" | ")
+    }.getOrNull().orEmpty()
+
     private fun buildConfig(): String = buildString {
         appendLine("tunnel:")
         appendLine("  mtu: 1500")
@@ -78,13 +147,22 @@ class TProxyService(
         appendLine("  address: 127.0.0.1")
         appendLine("  port: $socksPort")
         appendLine("  udp: 'udp'")
-        appendLine("  pipeline: true")
+        // Xray implements standard RFC 1928 negotiation.  Do not send CONNECT before
+        // the method-selection reply. The optional HEV pipeline extension is not part
+        // of RFC 1928 and provides no benefit for this loopback-only connection.
+        appendLine("  pipeline: false")
         appendLine("misc:")
         appendLine("  log-level: warn")
+        appendLine("  log-file: '${logFile?.absolutePath ?: "stderr"}'")
         appendLine("  connect-timeout: 10000")
         appendLine("  tcp-read-write-timeout: 300000")
         appendLine("  udp-read-write-timeout: 60000")
-        appendLine("  task-stack-size: 24576")
-        appendLine("  tcp-buffer-size: 8192")
+        // Upstream HEV and v2rayNG use substantially larger worker stacks/buffers.
+        // The previous small stack/buffer pair was below the upstream production
+        // defaults used for many concurrent browser and game sessions.
+        appendLine("  task-stack-size: 86016")
+        appendLine("  tcp-buffer-size: 65536")
+        appendLine("  udp-recv-buffer-size: 524288")
+        appendLine("  udp-copy-buffer-nums: 10")
     }
 }

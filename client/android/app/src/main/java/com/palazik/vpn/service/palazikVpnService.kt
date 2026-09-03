@@ -78,6 +78,8 @@ class palazikVpnService : VpnService() {
     private var localSocksPort: Int = 0
     private var sessionBytesIn: Long = 0L
     private var sessionBytesOut: Long = 0L
+    private var lastBridgeStats = longArrayOf()
+    private var lastBridgeDiagnosticAt = 0L
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
     private var egressVerificationJob: Job? = null
@@ -266,7 +268,14 @@ class palazikVpnService : VpnService() {
                         vpnInterface = iface,
                         socksPort = socksPort,
                         enableIpv6 = settings.enableIpv6,
-                    ).also { check(it.start()) { "hev tunnel failed to start" } }
+                    ).also {
+                        // startLoop() starts Xray synchronously, nevertheless verify the
+                        // actual listener that HEV will use.  A process-level running flag
+                        // cannot prove that a specific inbound is reachable.
+                        check(it.awaitSocksReady()) { "Xray SOCKS listener is not ready" }
+                        check(it.start()) { "hev tunnel failed to start" }
+                        check(it.awaitRunning()) { "hev worker exited during startup: ${it.logTail()}" }
+                    }
                 }.getOrElse { cause ->
                     throw IllegalStateException("Не удалось запустить системный TUN-мост", cause)
                 }
@@ -562,6 +571,8 @@ class palazikVpnService : VpnService() {
         statsJob?.cancel()
         sessionBytesIn = 0L
         sessionBytesOut = 0L
+        lastBridgeStats = longArrayOf()
+        lastBridgeDiagnosticAt = 0L
         statsJob = scope.launch {
             var transientFailures = 0
             while (isActive) {
@@ -584,6 +595,24 @@ class palazikVpnService : VpnService() {
                         }
                     _bytesOut.value = sessionBytesOut
                     _bytesIn.value = sessionBytesIn
+
+                    // Native HEV counters show whether Android packets actually reach
+                    // the TUN bridge.  Keep a low-frequency snapshot in the exportable
+                    // diagnostic log so a report identifies the broken layer precisely.
+                    val bridgeStats = tunBridge?.stats() ?: longArrayOf()
+                    if (bridgeStats.size >= 4) {
+                        val now = System.currentTimeMillis()
+                        val changed = !bridgeStats.contentEquals(lastBridgeStats)
+                        if (changed && now - lastBridgeDiagnosticAt >= 5_000L) {
+                            addDiagnostic(
+                                "HEV packets tx=${bridgeStats[0]}/${bridgeStats[1]}B " +
+                                    "rx=${bridgeStats[2]}/${bridgeStats[3]}B; " +
+                                    "Xray proxy up=$sessionBytesOut down=$sessionBytesIn",
+                            )
+                            lastBridgeStats = bridgeStats.copyOf()
+                            lastBridgeDiagnosticAt = now
+                        }
+                    }
                     transientFailures = 0
                 } catch (e: Exception) {
                     transientFailures++
@@ -700,17 +729,32 @@ class palazikVpnService : VpnService() {
             // Let Android publish the VPN network and the underlying-network callback
             // settle before the first cold cryptographic handshake.
             delay(1_200L)
-            val result = runCatching { verifyCoreEgress(controller, settings) }
+            val socksPort = localSocksPort
+            val dataPlaneResult = runCatching {
+                withTimeout(30_000L) { TunnelDataPlaneProbe.run(socksPort) }
+            }
             if (!isActive || coreController !== controller || !controller.isRunning) return@launch
-            result.onSuccess { delayMs ->
-                addDiagnostic("End-to-end egress verified ($delayMs ms)")
+            dataPlaneResult.onSuccess { probe ->
+                addDiagnostic(
+                    "Client core verified via live SOCKS: HTTP ${probe.tcpStatus}, " +
+                        "payload=${probe.tcpBytes}B, UDP/DNS answers=${probe.dnsAnswers}",
+                )
                 updateNotification("Подключено — $profileName")
             }.onFailure { error ->
-                // Do not tear down a healthy TUN because a synthetic URL is filtered,
-                // temporarily unavailable, or the cold PQ handshake took too long.
-                addDiagnostic("Egress probe deferred: ${error.message ?: error.javaClass.simpleName}")
+                addDiagnostic(
+                    "Client core/SOCKS self-test failed: " +
+                        (error.message ?: error.javaClass.simpleName),
+                )
                 updateNotification("Подключено — $profileName (проверка сети ожидается)")
             }
+
+            // Preserve the Xray-native timing probe as a second independent signal. It
+            // must not replace the SOCKS test above because it bypasses HEV's endpoint.
+            runCatching { verifyCoreEgress(controller, settings) }
+                .onSuccess { delayMs -> addDiagnostic("Xray native egress verified ($delayMs ms)") }
+                .onFailure { error ->
+                    addDiagnostic("Xray native probe deferred: ${error.message ?: error.javaClass.simpleName}")
+                }
         }
     }
 
@@ -746,6 +790,11 @@ class palazikVpnService : VpnService() {
                 "В приложении отсутствуют служебные гео-файлы"
             raw.contains("core stopped", ignoreCase = true) ->
                 "Ядро Xray остановилось во время запуска туннеля"
+            raw.contains("SOCKS listener", ignoreCase = true) ->
+                "Ядро запущено, но локальный SOCKS-вход не открылся"
+            raw.contains("hev worker", ignoreCase = true) ||
+                raw.contains("hev tunnel", ignoreCase = true) ->
+                "Системный TUN-мост Android не запустился"
             else -> "Не удалось запустить туннель. Проверьте профиль и сеть"
         }
     }

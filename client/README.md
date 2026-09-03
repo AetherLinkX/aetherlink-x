@@ -43,6 +43,7 @@ signature, so a later store/release-signed APK will require uninstalling this al
 **Connection**
 - Full-device VPN via Xray, with a Quick Settings tile, a home-screen widget, and a notification **Disconnect** action
 - Live connection state, duration, and traffic counters
+- Startup verifies the private SOCKS listener and the native TUN bridge; a background self-test transfers 32 KiB over HTTPS and performs a real UDP/DNS query through the selected outbound
 - Auto-connect on boot (when VPN permission is already granted)
 - Kill switch that blocks traffic until the tunnel is ready
 - In-app update checker against GitHub releases
@@ -71,6 +72,24 @@ signature, so a later store/release-signed APK will require uninstalling this al
 
 **First run**
 - A short onboarding flow that points new users at importing a config and granting VPN permission
+
+## Diagnosing an Android tunnel
+
+Open **Настройки → Диагностика**, connect the affected location, try to open a
+website, then copy or save the log. Version 0.6.12 distinguishes the layers without
+including profile credentials:
+
+- `Client core verified via live SOCKS` proves the APK's selected protocol,
+  REALITY handshake, TCP payload, UDP association, and DNS egress.
+- Increasing `HEV packets tx/rx` proves that Android application packets reached
+  the native TUN bridge.
+- Increasing HEV counters with unchanged `Xray proxy up/down` isolates a
+  TUN-to-SOCKS bridge failure.
+- Increasing Xray uplink with no downlink isolates the remote/server return path.
+
+For server-side checks, use the redacting utility documented in
+[`../tools/README-diagnostics.md`](../tools/README-diagnostics.md). It prints only
+lengths and short SHA-256 fingerprints for credentials and keys.
 
 ## Supported import schemes
 

@@ -53,6 +53,8 @@ Installer сначала выполняет `git apply --check`. Patch прим�
 - `source/proxy/aetherlinkx/BENCHMARKS.md` — baseline производительности.
 - `docs/AETHERLINK_X_CLIENT_REMNAWAVE.md` — установка клиента и импорт подписки.
 - `docs/ANDROID_INSTALLATION_RU.md` — полная сборка, установка, импорты, транспорты и диагностика Android-клиента.
+- `docs/AETHERLINK_X_LIVE_DIAGNOSIS_2026-09-03.md` — проверенный отчёт о панели, FI-ноде, REALITY, TCP/UDP и границе Android-сбоя без публикации секретов.
+- `tools/aetherlinkx_diagnose.py` и `tools/README-diagnostics.md` — безопасная диагностика подписки, согласованности ключей и реального TCP/UDP-трафика без вывода секретов.
 
 ## AetherLink X Client
 
