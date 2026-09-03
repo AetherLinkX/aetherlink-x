@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.StrictMode
 import android.provider.Settings
+import android.system.OsConstants
 import android.util.Base64
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -36,6 +37,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicBoolean
 
 class palazikVpnService : VpnService() {
@@ -72,6 +74,7 @@ class palazikVpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var coreController: CoreController? = null
+    private var tunBridge: TProxyService? = null
     private var localSocksPort: Int = 0
     private var sessionBytesIn: Long = 0L
     private var sessionBytesOut: Long = 0L
@@ -208,7 +211,7 @@ class palazikVpnService : VpnService() {
                     settings = settings,
                     localSocksPort = socksPort,
                     includeHttpInbound = false,
-                    includeNativeTun = true,
+                    includeNativeTun = false,
                 )
                 Log.d(TAG, "Xray config built for ${profile.name}")
 
@@ -231,14 +234,44 @@ class palazikVpnService : VpnService() {
                     override fun findProcessByConnection(
                         network: String, src: String, srcPort: Long,
                         dst: String, dstPort: Long,
-                    ): Long = 0L
+                    ): Long {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return -1L
+                        val protocol = when (network.lowercase()) {
+                            "tcp" -> OsConstants.IPPROTO_TCP
+                            "udp" -> OsConstants.IPPROTO_UDP
+                            else -> return -1L
+                        }
+                        if (src.isBlank() || dst.isBlank() || dstPort == 0L) return -1L
+                        return runCatching {
+                            connectivity.getConnectionOwnerUid(
+                                protocol,
+                                InetSocketAddress(src, srcPort.toInt()),
+                                InetSocketAddress(dst, dstPort.toInt()),
+                            ).toLong()
+                        }.getOrDefault(-1L)
+                    }
                 })
                 coreController = controller
 
-                // The patched Xray core owns the Android TUN descriptor directly. This
-                // avoids a second JNI event loop and an extra TUN -> SOCKS packet copy.
-                controller.startLoop(config, iface.fd)
+                // Keep the protocol core behind a regular SOCKS inbound and let the
+                // dedicated hev bridge own Android's TUN descriptor. Passing the fd to
+                // Xray's built-in TUN works on some devices but can create a routing loop
+                // where core probes pass while device traffic never reaches the outbound.
+                controller.startLoop(config, 0)
                 check(controller.isRunning) { "Xray core stopped during startup" }
+
+                val bridge = runCatching {
+                    TProxyService(
+                        context = applicationContext,
+                        vpnInterface = iface,
+                        socksPort = socksPort,
+                        enableIpv6 = settings.enableIpv6,
+                    ).also { check(it.start()) { "hev tunnel failed to start" } }
+                }.getOrElse { cause ->
+                    throw IllegalStateException("Не удалось запустить системный TUN-мост", cause)
+                }
+                tunBridge = bridge
+                addDiagnostic("Android data plane: hev-tun → SOCKS → Xray")
                 LocalProxyEndpoint.publish(socksPort)
 
                 _connectionState.value = ServiceState.RUNNING
@@ -452,6 +485,8 @@ class palazikVpnService : VpnService() {
     private fun teardownCore() {
         LocalProxyEndpoint.clear(localSocksPort)
         localSocksPort = 0
+        try { tunBridge?.stop() } catch (e: Throwable) { Log.w(TAG, "hev stop: ${e.message}") }
+        tunBridge = null
         try { coreController?.stopLoop() } catch (e: Exception) { Log.w(TAG, "stopLoop: ${e.message}") }
         coreController = null
 
@@ -483,6 +518,9 @@ class palazikVpnService : VpnService() {
         localSocksPort = 0
         sessionBytesIn = 0L
         sessionBytesOut = 0L
+
+        try { tunBridge?.stop() } catch (e: Throwable) { Log.w(TAG, "hev stop: ${e.message}") }
+        tunBridge = null
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try { connectivity.unregisterNetworkCallback(defaultNetworkCallback) } catch (_: Exception) {}
@@ -531,6 +569,7 @@ class palazikVpnService : VpnService() {
                 try {
                     val controller = coreController ?: break
                     check(controller.isRunning) { "Xray core stopped unexpectedly" }
+                    check(tunBridge?.isRunning() == true) { "Android TUN bridge stopped unexpectedly" }
                     controller.queryAllOutboundTrafficStats()
                         .split(';')
                         .filter(String::isNotBlank)

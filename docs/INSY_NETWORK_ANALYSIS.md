@@ -13,30 +13,29 @@ public statement that it uses Xray-core, this strongly indicates the following A
 Android apps → VpnService TUN → HEV tun2socks → loopback SOCKS → Xray-core → remote server
 ```
 
-AetherLink X initially implemented that architecture from open sources, then moved the production
-data path to Xray's native TUN after end-to-end diagnostics isolated the extra bridge as the only
-component not covered by the core handshake test:
+AetherLink X uses that architecture from open sources. Exact production TCP and UDP tests proved
+the AetherLink X/REALITY core path independently; Android tests then isolated the built-in Xray TUN
+as the layer where a core probe could pass while device packets stalled. The production data path
+therefore uses the mature HEV bridge:
 
 - Xray-core through `AndroidLibXrayLite` (LGPL-3.0 wrapper and Xray's MPL-2.0 core);
 - lifecycle and configuration concepts cross-checked against the GPL-3.0 v2rayNG implementation.
 
 ## Fixed traffic path
 
-Version 0.6.8 passes Android's TUN file descriptor directly to Xray's native `tun` inbound and keeps
-a private random-port SOCKS listener only for subscription refresh and diagnostics. Version 0.6.9
-starts the VPN as soon as both the native TUN and Xray loop are alive, then performs a sequential
-end-to-end HTTP check in the background. A slow or filtered synthetic probe is diagnostic only and
-can no longer tear down a working tunnel. Periodic core-state and outbound-stat checks still turn a
-real native-core stop into an explicit error.
+Version 0.6.11 gives Android's TUN descriptor to pinned `hev-socks5-tunnel`; HEV forwards TCP and UDP
+to a private random-port SOCKS inbound owned by the patched Xray core. The core is started first and
+the packet bridge second, and both lifecycles are monitored. A slow or filtered synthetic probe is
+diagnostic only and can no longer tear down a working tunnel.
 
-The native inbound handles TCP and UDP without a second JNI event loop or packet copy. IPv6 is
-captured only when enabled. With IPv6 disabled, Xray's DNS `queryStrategy` is `UseIPv4`, preventing
+HEV handles TCP and UDP and Xray applies the selected outbound identically to both. IPv6 is captured
+only when enabled. With IPv6 disabled, Xray's DNS `queryStrategy` is `UseIPv4`, preventing
 applications from receiving unreachable AAAA answers and stalling before IPv4 fallback.
 
 ## DNS leak prevention
 
-Android DNS servers point into the captured VPN path. Xray's first routing rule redirects native
-TUN or private SOCKS destination port 53 to `dns-out`. The DNS
+Android DNS servers point into the captured VPN path. Xray's first routing rule redirects the
+private SOCKS inbound's destination port 53 to `dns-out`. The DNS
 configuration has only the selected remote resolver; the former direct and `localhost` fallbacks
 were removed. Resolver failure therefore fails closed instead of silently querying the ISP DNS.
 

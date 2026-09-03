@@ -30,8 +30,8 @@ android {
         applicationId = "io.aetherlinkx.client"
         minSdk        = 26
         targetSdk     = 36
-        versionCode   = 16
-        versionName   = "0.6.10-alpha"
+        versionCode   = 17
+        versionName   = "0.6.11-alpha"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Only real-device ABIs — dropping x86/x86_64 saves ~36MB from libgojni.so
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -93,6 +93,13 @@ android {
     }
     kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21 } }
     buildFeatures { compose = true }
+
+    sourceSets {
+        getByName("main") {
+            // Built from the pinned upstream hev-socks5-tunnel source in CI.
+            jniLibs.srcDirs("libs")
+        }
+    }
 
     lint {
         disable += setOf("BlockedPrivateApi")

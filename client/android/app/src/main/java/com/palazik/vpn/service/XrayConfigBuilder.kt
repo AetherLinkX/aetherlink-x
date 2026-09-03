@@ -11,7 +11,7 @@ object XrayConfigBuilder {
         settings: AppSettings = AppSettings(),
         localSocksPort: Int = 10808,
         includeHttpInbound: Boolean = true,
-        includeNativeTun: Boolean = true,
+        includeNativeTun: Boolean = false,
     ): String =
         JSONObject().apply {
             put("log",       buildLog())
@@ -40,9 +40,10 @@ object XrayConfigBuilder {
 
     // ── Inbounds ──────────────────────────────────────────────────────────────
 
-    // The native TUN inbound owns Android's VPN descriptor. The loopback SOCKS
-    // inbound remains available for subscription refreshes and end-to-end health
-    // checks without putting another packet-copying bridge in the data path.
+    // Android uses hev-socks5-tunnel as the packet bridge. Keeping the Xray side
+    // as a regular loopback SOCKS inbound avoids the native core-TUN routing loop
+    // seen on some devices and gives every outbound (including AetherLink X) the
+    // same proven data path. Native TUN remains available only for diagnostics.
     private fun buildInbounds(
         settings: AppSettings,
         localSocksPort: Int,

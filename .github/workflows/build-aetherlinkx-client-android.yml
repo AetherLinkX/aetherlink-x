@@ -26,6 +26,8 @@ jobs:
       XRAY_TAG: v26.7.28
       ANDROIDLIB_REPO: https://github.com/2dust/AndroidLibXrayLite.git
       ANDROIDLIB_COMMIT: c634d1baea97e94320c0bf6a9cf637369c4f11d4
+      HEV_REPOSITORY: https://github.com/heiher/hev-socks5-tunnel.git
+      HEV_COMMIT: 64cc609
 
     steps:
       - uses: actions/checkout@v7
@@ -86,6 +88,14 @@ jobs:
           unzip -p client/android/app/libs/libv2ray.aar jni/arm64-v8a/libgojni.so \
             | strings | grep -F -m1 "aetherlinkx" >/dev/null
 
+      - name: Build reliable Android TUN bridge
+        shell: bash
+        run: |
+          chmod +x client/android/scripts/build-hev-tunnel.sh
+          client/android/scripts/build-hev-tunnel.sh
+          test -s client/android/app/libs/arm64-v8a/libhev-socks5-tunnel.so
+          test -s client/android/app/libs/armeabi-v7a/libhev-socks5-tunnel.so
+
       - name: Download GeoData
         shell: bash
         run: |
@@ -120,6 +130,7 @@ jobs:
             client/android/app/build/outputs/apk/debug/*.apk
             client/android/app/build/outputs/apk/release/*.apk
             client/android/app/libs/libv2ray.aar
+            client/android/app/libs/*/libhev-socks5-tunnel.so
 
       - name: Publish installable Android alpha
         if: github.ref == 'refs/heads/main'
