@@ -3,7 +3,7 @@ name: Build AetherLink X Client (Android)
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, "alx/**"]
     paths:
       - "client/android/**"
       - "source/proxy/aetherlinkx/**"
