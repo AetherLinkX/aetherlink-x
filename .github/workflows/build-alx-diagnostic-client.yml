@@ -40,7 +40,10 @@ jobs:
             CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o "$GITHUB_WORKSPACE/xray-alx-diagnostic-windows-amd64.exe" ./main
           )
 
+      # The executable is only a short-lived diagnostic convenience. A full
+      # GitHub Actions artifact quota must not turn a verified core build red.
       - uses: actions/upload-artifact@v7
+        continue-on-error: true
         with:
           name: xray-alx-diagnostic-windows-amd64
           retention-days: 7
