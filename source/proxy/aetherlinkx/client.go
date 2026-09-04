@@ -30,6 +30,13 @@ type Client struct {
 	stealth       StealthSettings
 }
 
+func detachedPayloadContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if !session.TimeoutOnlyFromContext(ctx) {
+		return nil, nil
+	}
+	return context.WithCancel(context.Background())
+}
+
 func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 	if config.Server == nil {
 		return nil, errors.New("no AetherLink X server configured")
@@ -128,9 +135,28 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		markClientStage("tcp-ready")
 	}
 
+	// Xray marks links created by its internal mux/XUDP machinery as
+	// timeout-only. Their parent context describes request setup, not the
+	// lifetime of the transported stream, and may be cancelled immediately
+	// after the link is handed to the outbound. VLESS, VMess and Trojan detach
+	// such payload loops from that parent for the same reason. Without this,
+	// ALX completed REALITY + ClientInit/ServerAccept and then intermittently
+	// lost an otherwise healthy stream with "context canceled".
+	payloadCtx, payloadCancel := detachedPayloadContext(ctx)
+
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	timer := signal.CancelAfterInactivity(ctx, cancel, sessionPolicy.Timeouts.ConnectionIdle)
+	defer func() {
+		cancel()
+		if payloadCancel != nil {
+			payloadCancel()
+		}
+	}()
+	timer := signal.CancelAfterInactivity(ctx, func() {
+		cancel()
+		if payloadCancel != nil {
+			payloadCancel()
+		}
+	}, sessionPolicy.Timeouts.ConnectionIdle)
 	defer timer.SetTimeout(0)
 
 	uplink := func() error {
@@ -157,6 +183,9 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		return nil
 	}
 
+	if payloadCtx != nil {
+		ctx = payloadCtx
+	}
 	if err := task.Run(ctx, uplink, task.OnSuccess(downlink, task.Close(link.Writer))); err != nil {
 		wrapped := errors.New("AetherLink X connection ended").Base(err)
 		markClientError("payload", wrapped)

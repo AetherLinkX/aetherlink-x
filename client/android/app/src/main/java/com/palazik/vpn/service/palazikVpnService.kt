@@ -205,13 +205,24 @@ class palazikVpnService : VpnService() {
                 initializeLibv2ray()
 
                 val settings = loadAppSettings()
+                // Resolve ALX before establish(): once the TUN is active, resolving
+                // the transport server through the tunnel can recursively invoke the
+                // same outbound. Keep the subscription hostname as REALITY SNI while
+                // giving Xray an immutable IP endpoint for this VPN session.
+                val runtimeProfile = AetherLinkXEndpointBootstrap.resolve(
+                    profile = profile,
+                    enableIpv6 = settings.enableIpv6,
+                )
+                if (runtimeProfile.address != profile.address) {
+                    addDiagnostic("ALX endpoint pinned for this session: ${runtimeProfile.address}")
+                }
                 // Android permits only one active VpnService, but another app can keep a
                 // loopback proxy alive for a moment after the system revokes its VPN. A
                 // fresh private port avoids collisions without trying to kill other apps.
                 val socksPort = LocalProxyEndpoint.allocate()
                 localSocksPort = socksPort
                 val config = XrayConfigBuilder.build(
-                    profile = profile,
+                    profile = runtimeProfile,
                     settings = settings,
                     localSocksPort = socksPort,
                     includeHttpInbound = false,

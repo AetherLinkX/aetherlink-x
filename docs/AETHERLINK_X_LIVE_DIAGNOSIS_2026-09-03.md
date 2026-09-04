@@ -88,3 +88,22 @@ on Android and uses a 60-second user timeout. It also exports credential-free
 stage counters for `dial`, `ClientInit`, `ServerAccept`, TCP/UDP readiness and the
 last bounded error. CI now verifies five client-core restarts against one
 persistent ALX+REALITY server process.
+
+## Android cancellation cascade and 0.6.15 fix
+
+The device trace from 2026-09-04 proved that REALITY, X-Wing, ALX
+authentication and both UDP/TCP payload setup completed. At the same time,
+`connections` rose from 5 to 42 while `dial_ok` rose only from 1 to 4, followed
+by `lookup saf.sinfor.fun: operation was canceled` and payload
+`context canceled`.
+
+Version 0.6.15 addresses both demonstrated cancellation paths:
+
+- Android resolves an ALX domain before establishing the TUN and uses the
+  selected numeric endpoint for that VPN session. The original domain remains
+  the REALITY SNI, so certificate authentication and camouflage do not change.
+- The ALX outbound now handles Xray timeout-only contexts exactly like VLESS,
+  VMess and Trojan: a completed stream owns a separately cancellable payload
+  context instead of inheriting a short-lived setup context.
+
+No server credential, cryptographic primitive or wire-format field changed.
