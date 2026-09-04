@@ -127,6 +127,9 @@ jobs:
 
       - name: Upload APKs and core
         uses: actions/upload-artifact@v7
+        # A full Actions artifact quota must not block the versioned GitHub
+        # Release below; both release steps use the APK already on this runner.
+        continue-on-error: true
         with:
           name: aetherlink-x-client-android
           retention-days: 30
