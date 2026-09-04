@@ -61,9 +61,12 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 
 // Process implements proxy.Outbound.
 func (c *Client) Process(ctx context.Context, link *transport.Link, dialer internet.Dialer) error {
+	markClientStage("process")
 	outbounds := session.OutboundsFromContext(ctx)
 	if len(outbounds) == 0 || !outbounds[len(outbounds)-1].Target.IsValid() {
-		return errors.New("AetherLink X target is not specified")
+		err := errors.New("AetherLink X target is not specified")
+		markClientError("target", err)
+		return err
 	}
 	outbound := outbounds[len(outbounds)-1]
 	outbound.Name = "aetherlinkx"
@@ -78,26 +81,35 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		}
 		return err
 	}); err != nil {
-		return errors.New("failed to dial AetherLink X server").Base(err).AtWarning()
+		wrapped := errors.New("failed to dial AetherLink X server").Base(err).AtWarning()
+		markClientError("dial", wrapped)
+		return wrapped
 	}
 	defer connection.Close()
+	markClientStage("dial")
 
 	user := c.server.User
 	account, ok := user.Account.(*MemoryAccount)
 	if !ok {
-		return errors.New("invalid AetherLink X user account")
+		err := errors.New("invalid AetherLink X user account")
+		markClientError("account", err)
+		return err
 	}
 	sessionState, err := EncodeRequestHeader(connection, target, account, HandshakeOptions{Turbo: c.turbo, Security: c.security})
 	if err != nil {
+		markClientError("client-init", err)
 		return err
 	}
+	markClientStage("client-init")
 	sessionPolicy := c.policyManager.ForLevel(user.Level)
 	if err := connection.SetReadDeadline(time.Now().Add(sessionPolicy.Timeouts.Handshake)); err != nil {
 		return errors.New("failed to set AetherLink X response deadline").Base(err)
 	}
 	if err := DecodeResponseHeader(connection, sessionState); err != nil {
+		markClientError("server-accept", err)
 		return err
 	}
+	markClientStage("server-accept")
 	if err := connection.SetReadDeadline(time.Time{}); err != nil {
 		return errors.New("failed to clear AetherLink X response deadline").Base(err)
 	}
@@ -106,8 +118,14 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	if sessionState.InnerAEAD {
 		payloadReader, payloadWriter, err = newRecordLayer(connection, connection, sessionState, true, c.stealth)
 		if err != nil {
+			markClientError("record-layer", err)
 			return err
 		}
+	}
+	if target.Network == net.Network_UDP {
+		markClientStage("udp-ready")
+	} else {
+		markClientStage("tcp-ready")
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -140,7 +158,9 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	}
 
 	if err := task.Run(ctx, uplink, task.OnSuccess(downlink, task.Close(link.Writer))); err != nil {
-		return errors.New("AetherLink X connection ended").Base(err)
+		wrapped := errors.New("AetherLink X connection ended").Base(err)
+		markClientError("payload", wrapped)
+		return wrapped
 	}
 	return nil
 }

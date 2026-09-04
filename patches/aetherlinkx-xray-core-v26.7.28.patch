@@ -382,7 +382,7 @@ index 0000000..3071d63
 +	}
 +}
 diff --git a/infra/conf/xray.go b/infra/conf/xray.go
-index bdcabbd..c85d3b2 100644
+index bdcabbd..1eb6ea4 100644
 --- a/infra/conf/xray.go
 +++ b/infra/conf/xray.go
 @@ -26,6 +26,8 @@ var (
@@ -403,6 +403,15 @@ index bdcabbd..c85d3b2 100644
  		"vless":       func() interface{} { return new(VLessOutboundConfig) },
  		"vmess":       func() interface{} { return new(VMessOutboundConfig) },
  		"trojan":      func() interface{} { return new(TrojanClientConfig) },
+@@ -140,7 +144,7 @@ func (c *InboundDetourConfig) Build() (*core.InboundHandlerConfig, error) {
+ 	// TUN inbound doesn't need port configuration as it uses network interface instead
+ 	if strings.ToLower(c.Protocol) == "tun" {
+ 		// Skip port validation for TUN
+-	} else if c.ListenOn == nil {
++	} else if c.ListenOn == nil || len(c.ListenOn.String()) == 0 {
+ 		// Listen on anyip, must set PortList
+ 		if c.PortList == nil {
+ 			return nil, errors.New("Listen on AnyIP but no Port(s) set in InboundDetour.")
 @@ -198,6 +202,12 @@ func (c *InboundDetourConfig) Build() (*core.InboundHandlerConfig, error) {
  	if dokodemoConfig, ok := rawConfig.(*DokodemoConfig); ok {
  		receiverSettings.ReceiveOriginalDestination = dokodemoConfig.FollowRedirect
@@ -416,7 +425,20 @@ index bdcabbd..c85d3b2 100644
  	ts, err := rawConfig.(Buildable).Build()
  	if err != nil {
  		return nil, errors.New("failed to build inbound handler for protocol ", c.Protocol).Base(err)
-@@ -262,9 +272,87 @@ func validateOutboundTransportSecurity(rawConfig interface{}, senderSettings *pr
+@@ -251,20 +261,98 @@ func validateOutboundTransportSecurity(rawConfig interface{}, senderSettings *pr
+ 		if vlessCfg.Encryption != "" && vlessCfg.Encryption != "none" {
+ 			return nil
+ 		}
+-		if requiresTransportSecurity(vlessCfg.Address) {
++		if requiresTransportSecurity(vlessCfg.Vnext[0].Address) {
+ 			return errors.New("vless without TLS or other encryption is prohibited unless the server address is a private IP or domain")
+ 		}
+ 	}
+ 
+ 	if tjCfg, ok := rawConfig.(*TrojanClientConfig); ok {
+-		if requiresTransportSecurity(tjCfg.Address) {
++		if requiresTransportSecurity(tjCfg.Servers[0].Address) {
+ 			return errors.New("trojan without TLS is prohibited unless the server address is a private IP or domain")
  		}
  	}
  
@@ -1034,10 +1056,10 @@ index 0000000..2af82e1
 +}
 diff --git a/proxy/aetherlinkx/client.go b/proxy/aetherlinkx/client.go
 new file mode 100644
-index 0000000..29e06cd
+index 0000000..003f3ac
 --- /dev/null
 +++ b/proxy/aetherlinkx/client.go
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,172 @@
 +package aetherlinkx
 +
 +import (
@@ -1101,9 +1123,12 @@ index 0000000..29e06cd
 +
 +// Process implements proxy.Outbound.
 +func (c *Client) Process(ctx context.Context, link *transport.Link, dialer internet.Dialer) error {
++	markClientStage("process")
 +	outbounds := session.OutboundsFromContext(ctx)
 +	if len(outbounds) == 0 || !outbounds[len(outbounds)-1].Target.IsValid() {
-+		return errors.New("AetherLink X target is not specified")
++		err := errors.New("AetherLink X target is not specified")
++		markClientError("target", err)
++		return err
 +	}
 +	outbound := outbounds[len(outbounds)-1]
 +	outbound.Name = "aetherlinkx"
@@ -1118,26 +1143,35 @@ index 0000000..29e06cd
 +		}
 +		return err
 +	}); err != nil {
-+		return errors.New("failed to dial AetherLink X server").Base(err).AtWarning()
++		wrapped := errors.New("failed to dial AetherLink X server").Base(err).AtWarning()
++		markClientError("dial", wrapped)
++		return wrapped
 +	}
 +	defer connection.Close()
++	markClientStage("dial")
 +
 +	user := c.server.User
 +	account, ok := user.Account.(*MemoryAccount)
 +	if !ok {
-+		return errors.New("invalid AetherLink X user account")
++		err := errors.New("invalid AetherLink X user account")
++		markClientError("account", err)
++		return err
 +	}
 +	sessionState, err := EncodeRequestHeader(connection, target, account, HandshakeOptions{Turbo: c.turbo, Security: c.security})
 +	if err != nil {
++		markClientError("client-init", err)
 +		return err
 +	}
++	markClientStage("client-init")
 +	sessionPolicy := c.policyManager.ForLevel(user.Level)
 +	if err := connection.SetReadDeadline(time.Now().Add(sessionPolicy.Timeouts.Handshake)); err != nil {
 +		return errors.New("failed to set AetherLink X response deadline").Base(err)
 +	}
 +	if err := DecodeResponseHeader(connection, sessionState); err != nil {
++		markClientError("server-accept", err)
 +		return err
 +	}
++	markClientStage("server-accept")
 +	if err := connection.SetReadDeadline(time.Time{}); err != nil {
 +		return errors.New("failed to clear AetherLink X response deadline").Base(err)
 +	}
@@ -1146,8 +1180,14 @@ index 0000000..29e06cd
 +	if sessionState.InnerAEAD {
 +		payloadReader, payloadWriter, err = newRecordLayer(connection, connection, sessionState, true, c.stealth)
 +		if err != nil {
++			markClientError("record-layer", err)
 +			return err
 +		}
++	}
++	if target.Network == net.Network_UDP {
++		markClientStage("udp-ready")
++	} else {
++		markClientStage("tcp-ready")
 +	}
 +
 +	ctx, cancel := context.WithCancel(ctx)
@@ -1180,7 +1220,9 @@ index 0000000..29e06cd
 +	}
 +
 +	if err := task.Run(ctx, uplink, task.OnSuccess(downlink, task.Close(link.Writer))); err != nil {
-+		return errors.New("AetherLink X connection ended").Base(err)
++		wrapped := errors.New("AetherLink X connection ended").Base(err)
++		markClientError("payload", wrapped)
++		return wrapped
 +	}
 +	return nil
 +}
@@ -1916,6 +1958,134 @@ index 0000000..73474fb
 +  TurboConfig turbo = 4;
 +  SecurityConfig security = 5;
 +  StealthConfig stealth = 6;
++}
+diff --git a/proxy/aetherlinkx/diagnostics.go b/proxy/aetherlinkx/diagnostics.go
+new file mode 100644
+index 0000000..993f54f
+--- /dev/null
++++ b/proxy/aetherlinkx/diagnostics.go
+@@ -0,0 +1,90 @@
++package aetherlinkx
++
++import (
++	"fmt"
++	"strings"
++	"sync"
++	"sync/atomic"
++)
++
++// clientDiagnosticState exposes protocol-stage counters to embedders such as
++// AndroidLibXrayLite.  It deliberately contains no address, user id, key or
++// target information, so a user can safely attach the snapshot to a bug report.
++type clientDiagnosticState struct {
++	connections  atomic.Uint64
++	dialOK       atomic.Uint64
++	clientInitOK atomic.Uint64
++	serverAccept atomic.Uint64
++	tcpReady     atomic.Uint64
++	udpReady     atomic.Uint64
++	failures     atomic.Uint64
++
++	mu        sync.Mutex
++	lastStage string
++	lastError string
++}
++
++var clientDiagnostics clientDiagnosticState
++
++func markClientStage(stage string) {
++	switch stage {
++	case "process":
++		clientDiagnostics.connections.Add(1)
++	case "dial":
++		clientDiagnostics.dialOK.Add(1)
++	case "client-init":
++		clientDiagnostics.clientInitOK.Add(1)
++	case "server-accept":
++		clientDiagnostics.serverAccept.Add(1)
++	case "tcp-ready":
++		clientDiagnostics.tcpReady.Add(1)
++	case "udp-ready":
++		clientDiagnostics.udpReady.Add(1)
++	}
++	clientDiagnostics.mu.Lock()
++	clientDiagnostics.lastStage = stage
++	clientDiagnostics.mu.Unlock()
++}
++
++func markClientError(stage string, err error) {
++	clientDiagnostics.failures.Add(1)
++	message := "unknown"
++	if err != nil {
++		message = strings.NewReplacer("\n", " ", "\r", " ", ";", ",").Replace(err.Error())
++		if len(message) > 240 {
++			message = message[:240]
++		}
++	}
++	clientDiagnostics.mu.Lock()
++	clientDiagnostics.lastStage = stage
++	clientDiagnostics.lastError = message
++	clientDiagnostics.mu.Unlock()
++}
++
++// ClientDiagnostics returns a stable, credential-free snapshot.  Counters are
++// process-lifetime totals, allowing Android to prove whether a new connection
++// reached the transport, authenticated ALX, or entered the payload phase.
++func ClientDiagnostics() string {
++	clientDiagnostics.mu.Lock()
++	stage := clientDiagnostics.lastStage
++	lastError := clientDiagnostics.lastError
++	clientDiagnostics.mu.Unlock()
++	if stage == "" {
++		stage = "idle"
++	}
++	if lastError == "" {
++		lastError = "none"
++	}
++	return fmt.Sprintf(
++		"connections=%d,dial_ok=%d,client_init=%d,server_accept=%d,tcp_ready=%d,udp_ready=%d,failures=%d,last_stage=%s,last_error=%s",
++		clientDiagnostics.connections.Load(),
++		clientDiagnostics.dialOK.Load(),
++		clientDiagnostics.clientInitOK.Load(),
++		clientDiagnostics.serverAccept.Load(),
++		clientDiagnostics.tcpReady.Load(),
++		clientDiagnostics.udpReady.Load(),
++		clientDiagnostics.failures.Load(),
++		stage,
++		lastError,
++	)
++}
+diff --git a/proxy/aetherlinkx/diagnostics_test.go b/proxy/aetherlinkx/diagnostics_test.go
+new file mode 100644
+index 0000000..a367079
+--- /dev/null
++++ b/proxy/aetherlinkx/diagnostics_test.go
+@@ -0,0 +1,26 @@
++package aetherlinkx
++
++import (
++	"errors"
++	"strings"
++	"testing"
++)
++
++func TestClientDiagnosticsNeverExposeMultilineData(t *testing.T) {
++	before := ClientDiagnostics()
++	markClientStage("process")
++	markClientStage("dial")
++	markClientError("server-accept", errors.New("first line\nsecond line;third line"))
++	after := ClientDiagnostics()
++	if before == after {
++		t.Fatal("diagnostic counters did not change")
++	}
++	if strings.ContainsAny(after, "\r\n;") {
++		t.Fatalf("diagnostic snapshot is not single-line safe: %q", after)
++	}
++	for _, expected := range []string{"connections=", "dial_ok=", "failures=", "last_stage=server-accept", "second line,third line"} {
++		if !strings.Contains(after, expected) {
++			t.Fatalf("missing %q in %q", expected, after)
++		}
++	}
 +}
 diff --git a/proxy/aetherlinkx/examples/client-reality.json b/proxy/aetherlinkx/examples/client-reality.json
 new file mode 100644
@@ -4245,10 +4415,10 @@ index 0000000..15a9789
 +}
 diff --git a/testing/scenarios/aetherlinkx_test.go b/testing/scenarios/aetherlinkx_test.go
 new file mode 100644
-index 0000000..edf6c33
+index 0000000..8c95f3c
 --- /dev/null
 +++ b/testing/scenarios/aetherlinkx_test.go
-@@ -0,0 +1,315 @@
+@@ -0,0 +1,336 @@
 +package scenarios
 +
 +import (
@@ -4277,6 +4447,7 @@ index 0000000..edf6c33
 +	"github.com/xtls/xray-core/transport/internet/reality"
 +	transportTCP "github.com/xtls/xray-core/transport/internet/tcp"
 +	"github.com/xtls/xray-core/transport/internet/tls"
++	"google.golang.org/protobuf/proto"
 +)
 +
 +func TestAetherLinkXReality(t *testing.T) {
@@ -4357,6 +4528,10 @@ index 0000000..edf6c33
 +		}},
 +	}
 +
++	// Keep an untouched template: InitializeServerConfig appends the default
++	// applications to the supplied config. Recreating the client process from a
++	// clone reproduces Android's stop/start lifecycle without accumulating state.
++	clientTemplate := proto.Clone(clientConfig).(*core.Config)
 +	servers, err := InitializeServerConfigs(serverConfig, clientConfig)
 +	common.Must(err)
 +	defer CloseAllServers(servers)
@@ -4367,6 +4542,22 @@ index 0000000..edf6c33
 +	}
 +	if err := group.Wait(); err != nil {
 +		t.Fatal(err)
++	}
++
++	// REALITY, X-Wing, replay protection and inner AEAD must survive repeated
++	// client-core restarts while the same server process remains alive.
++	for restart := 0; restart < 5; restart++ {
++		CloseServer(servers[1])
++		servers = servers[:1]
++		clientProcess, startErr := InitializeServerConfig(proto.Clone(clientTemplate).(*core.Config))
++		if startErr != nil {
++			t.Fatalf("client restart %d failed: %v", restart+1, startErr)
++		}
++		servers = append(servers, clientProcess)
++		time.Sleep(300 * time.Millisecond)
++		if probeErr := testTCPConn(clientPort, 32*1024, 20*time.Second)(); probeErr != nil {
++			t.Fatalf("traffic after client restart %d failed: %v", restart+1, probeErr)
++		}
 +	}
 +}
 +

@@ -76,7 +76,7 @@ signature, so a later store/release-signed APK will require uninstalling this al
 ## Diagnosing an Android tunnel
 
 Open **Настройки → Диагностика**, connect the affected location, try to open a
-website, then copy or save the log. Version 0.6.13 distinguishes the layers without
+website, then copy or save the log. Version 0.6.14 distinguishes the layers without
 including profile credentials:
 
 - `Client core verified via live SOCKS` proves the APK's selected protocol,
@@ -86,6 +86,8 @@ including profile credentials:
 - Increasing HEV counters with unchanged `Xray proxy up/down` isolates a
   TUN-to-SOCKS bridge failure.
 - Increasing Xray uplink with no downlink isolates the remote/server return path.
+- `ALX stages` shows whether each custom-protocol connection reached the socket,
+  authenticated `ClientInit`/`ServerAccept`, and entered TCP or UDP payload mode.
 
 For server-side checks, use the redacting utility documented in
 [`../tools/README-diagnostics.md`](../tools/README-diagnostics.md). It prints only

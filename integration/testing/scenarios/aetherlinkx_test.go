@@ -26,6 +26,7 @@ import (
 	"github.com/xtls/xray-core/transport/internet/reality"
 	transportTCP "github.com/xtls/xray-core/transport/internet/tcp"
 	"github.com/xtls/xray-core/transport/internet/tls"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestAetherLinkXReality(t *testing.T) {
@@ -106,6 +107,10 @@ func TestAetherLinkXReality(t *testing.T) {
 		}},
 	}
 
+	// Keep an untouched template: InitializeServerConfig appends the default
+	// applications to the supplied config. Recreating the client process from a
+	// clone reproduces Android's stop/start lifecycle without accumulating state.
+	clientTemplate := proto.Clone(clientConfig).(*core.Config)
 	servers, err := InitializeServerConfigs(serverConfig, clientConfig)
 	common.Must(err)
 	defer CloseAllServers(servers)
@@ -116,6 +121,22 @@ func TestAetherLinkXReality(t *testing.T) {
 	}
 	if err := group.Wait(); err != nil {
 		t.Fatal(err)
+	}
+
+	// REALITY, X-Wing, replay protection and inner AEAD must survive repeated
+	// client-core restarts while the same server process remains alive.
+	for restart := 0; restart < 5; restart++ {
+		CloseServer(servers[1])
+		servers = servers[:1]
+		clientProcess, startErr := InitializeServerConfig(proto.Clone(clientTemplate).(*core.Config))
+		if startErr != nil {
+			t.Fatalf("client restart %d failed: %v", restart+1, startErr)
+		}
+		servers = append(servers, clientProcess)
+		time.Sleep(300 * time.Millisecond)
+		if probeErr := testTCPConn(clientPort, 32*1024, 20*time.Second)(); probeErr != nil {
+			t.Fatalf("traffic after client restart %d failed: %v", restart+1, probeErr)
+		}
 	}
 }
 

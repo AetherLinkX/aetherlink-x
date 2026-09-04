@@ -1,0 +1,25 @@
+diff --git a/libv2ray_main.go b/libv2ray_main.go
+index cbf2b6f..344809f 100644
+--- a/libv2ray_main.go
++++ b/libv2ray_main.go
+@@ -14,6 +14,7 @@ import (
+ 	corefilesystem "github.com/xtls/xray-core/common/platform/filesystem"
+ 	core "github.com/xtls/xray-core/core"
+ 	corestats "github.com/xtls/xray-core/features/stats"
++	aetherlinkx "github.com/xtls/xray-core/proxy/aetherlinkx"
+ 	coreserial "github.com/xtls/xray-core/infra/conf/serial"
+ 	_ "github.com/xtls/xray-core/main/distro/all"
+ 	browser_dialer "github.com/xtls/xray-core/transport/internet/browser_dialer"
+@@ -140,6 +141,12 @@ func CheckVersionX() string {
+ 	return fmt.Sprintf("Lib v%d, Xray-core v%s", libVersion, core.Version())
+ }
+ 
++// AetherLinkXDiagnostics returns credential-free protocol-stage counters for
++// Android support reports. It never includes the server, target, UUID or keys.
++func AetherLinkXDiagnostics() string {
++	return aetherlinkx.ClientDiagnostics()
++}
++
+ // ReconcileBrowserDialer updates the browser dialer address and reloads its configuration
+ // If the dialer address is empty, it will disable the browser dialer and close existing connections
+ func ReconcileBrowserDialer(dialerAddr string) {

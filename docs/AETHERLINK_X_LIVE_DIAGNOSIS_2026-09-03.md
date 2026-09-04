@@ -70,3 +70,21 @@ Version 0.6.13 pins allocation, readiness checks, HTTPS probes, and UDP relay
 fallback to the numeric IPv4 loopback address. A regression test asserts both
 the address value and its four-byte address family. Startup errors now retain
 the nested failure message instead of reporting only the generic bridge error.
+
+## Reconnect isolation and 0.6.14 fix
+
+The later device log proved that the shared Android route works: VLESS produced
+bidirectional HEV and Xray counters immediately. ALX then accepted one session,
+but subsequent sessions sometimes left Xray counters at zero. On the FI host,
+the same ALX credentials and REALITY parameters completed repeated 32 KiB HTTP
+transfers, including five requests matching the Android self-test. This excludes
+the panel, FI listener, authentication data, REALITY, X-Wing and server egress.
+
+ALX was the only Android outbound that unconditionally requested MPTCP and a
+10-second TCP user timeout. Both are kernel/carrier-sensitive mobile socket
+features; neither is part of ALX authentication or encryption. Version 0.6.14
+retains Turbo framing, REALITY, X-Wing, inner AEAD and Stealth, but disables MPTCP
+on Android and uses a 60-second user timeout. It also exports credential-free
+stage counters for `dial`, `ClientInit`, `ServerAccept`, TCP/UDP readiness and the
+last bounded error. CI now verifies five client-core restarts against one
+persistent ALX+REALITY server process.

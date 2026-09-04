@@ -21,6 +21,7 @@ import com.palazik.vpn.R
 import com.palazik.vpn.data.SecurePreferences
 import com.palazik.vpn.data.network.LocalProxyEndpoint
 import com.palazik.vpn.data.model.AppSettings
+import com.palazik.vpn.data.model.Protocol
 import com.palazik.vpn.data.model.SplitTunnelMode
 import com.palazik.vpn.data.model.VpnProfile
 import com.palazik.vpn.palazikVPNApp
@@ -80,6 +81,7 @@ class palazikVpnService : VpnService() {
     private var sessionBytesOut: Long = 0L
     private var lastBridgeStats = longArrayOf()
     private var lastBridgeDiagnosticAt = 0L
+    private var lastAetherLinkXDiagnostics = ""
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
     private var egressVerificationJob: Job? = null
@@ -577,6 +579,7 @@ class palazikVpnService : VpnService() {
         sessionBytesOut = 0L
         lastBridgeStats = longArrayOf()
         lastBridgeDiagnosticAt = 0L
+        lastAetherLinkXDiagnostics = ""
         statsJob = scope.launch {
             var transientFailures = 0
             while (isActive) {
@@ -617,6 +620,7 @@ class palazikVpnService : VpnService() {
                             lastBridgeDiagnosticAt = now
                         }
                     }
+                    captureAetherLinkXDiagnostics()
                     transientFailures = 0
                 } catch (e: Exception) {
                     transientFailures++
@@ -664,6 +668,15 @@ class palazikVpnService : VpnService() {
         val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
         _diagnostics.value = (_diagnostics.value + "$stamp  $message").takeLast(80)
+    }
+
+    /** Add only changed, credential-free ALX protocol-stage counters. */
+    private fun captureAetherLinkXDiagnostics(force: Boolean = false) {
+        if (activeProfile?.protocol != Protocol.AETHERLINK_X) return
+        val snapshot = runCatching { Libv2ray.aetherLinkXDiagnostics() }.getOrNull().orEmpty()
+        if (snapshot.isBlank() || (!force && snapshot == lastAetherLinkXDiagnostics)) return
+        lastAetherLinkXDiagnostics = snapshot
+        addDiagnostic("ALX stages: $snapshot")
     }
 
     /**
@@ -749,6 +762,7 @@ class palazikVpnService : VpnService() {
                     "Client core/SOCKS self-test failed: " +
                         (error.message ?: error.javaClass.simpleName),
                 )
+                captureAetherLinkXDiagnostics(force = true)
                 updateNotification("Подключено — $profileName (проверка сети ожидается)")
             }
 
