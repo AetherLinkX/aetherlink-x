@@ -35,3 +35,14 @@ connection. Its redacted results and HEV native packet counters are available at
 **Настройки → Диагностика**. A successful SOCKS HTTPS/UDP test together with zero
 HEV counters means the protocol and server are healthy and the fault is before the
 bridge (Android VPN routing or per-app filtering), not in REALITY.
+
+For repeated desktop core restarts, use the PowerShell harness with the standalone
+patched Xray executable:
+
+```powershell
+.\tools\test-live-reconnect.ps1 -XrayPath .\xray.exe `
+  -SubscriptionUrl 'https://example/sub/token' -Attempts 8 -DisableMultipathTcp
+```
+
+The harness emits one redacted JSON result per fresh core process. It never prints
+the imported link or its credentials.

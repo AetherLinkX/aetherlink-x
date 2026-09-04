@@ -208,6 +208,16 @@ object XrayConfigBuilder {
                 // applications could not resolve or load anything.
                 if (turbo.optBoolean("enabled", false)) {
                     turbo.put("maxDatagramAgeMs", 0)
+                    // MPTCP availability and behaviour differs between Android kernels
+                    // and carrier networks. Enabling it unconditionally made the first
+                    // ALX connection occasionally work while subsequent sockets stalled.
+                    // Keep the protocol Turbo framing, but let Android use ordinary TCP.
+                    turbo.put("multipathTcp", false)
+                    turbo.put("congestion", "auto")
+                    // Ten seconds is too aggressive across radio hand-off and device
+                    // sleep. A bounded one-minute timeout still clears dead sockets
+                    // without aborting healthy mobile connections.
+                    turbo.put("tcpUserTimeout", 60_000)
                 }
                 put("turbo", turbo)
             }
