@@ -136,13 +136,12 @@ jobs:
           test -n "$APK"
           cp "$APK" aetherlink-x-client-android-universal-debug.apk
           sha256sum aetherlink-x-client-android-universal-debug.apk > aetherlink-x-client-android-SHA256SUMS.txt
+          git tag --force client-dev "$GITHUB_SHA"
+          git push origin refs/tags/client-dev --force
           if ! gh release view client-dev >/dev/null 2>&1; then
-            gh release create client-dev --prerelease --target "$GITHUB_REF_NAME" \
+            gh release create client-dev --prerelease --verify-tag \
               --title "AetherLink X Client — development build" \
               --notes "Android client built with an unmodified upstream Xray core. AetherLink X is currently a clean VLESS-compatible baseline name."
-          else
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/client-dev" \
-              -f sha="$GITHUB_SHA" -F force=true >/dev/null
           fi
           gh release delete-asset client-dev aetherlink-x-client-linux-x64.tar.gz --yes 2>/dev/null || true
           gh release delete-asset client-dev aetherlink-x-client-linux-SHA256SUMS.txt --yes 2>/dev/null || true
@@ -161,10 +160,14 @@ jobs:
           test -n "$APK"
           cp "$APK" aetherlink-x-client-android-v0.7.0-vless-baseline.apk
           sha256sum aetherlink-x-client-android-v0.7.0-vless-baseline.apk > aetherlink-x-client-android-v0.7.0-vless-baseline-SHA256SUMS.txt
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$CLIENT_RELEASE_TAG" >/dev/null 2>&1; then
+            git tag "$CLIENT_RELEASE_TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$CLIENT_RELEASE_TAG"
+          fi
           if ! gh release view "$CLIENT_RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$CLIENT_RELEASE_TAG" \
               --prerelease \
-              --target "$GITHUB_REF_NAME" \
+              --verify-tag \
               --title "AetherLink X Client 0.7.0 — VLESS baseline" \
               --notes "Clean test baseline. AetherLink X keeps only its product name and uses the unmodified upstream VLESS implementation and upstream Xray core. No custom handshake, Turbo, PQ, Stealth, patched Remnawave backend, or custom node image is included."
           fi
