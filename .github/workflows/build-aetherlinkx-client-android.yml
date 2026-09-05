@@ -137,7 +137,7 @@ jobs:
           cp "$APK" aetherlink-x-client-android-universal-debug.apk
           sha256sum aetherlink-x-client-android-universal-debug.apk > aetherlink-x-client-android-SHA256SUMS.txt
           if ! gh release view client-dev >/dev/null 2>&1; then
-            gh release create client-dev --prerelease --target "$GITHUB_SHA" \
+            gh release create client-dev --prerelease --target "$GITHUB_REF_NAME" \
               --title "AetherLink X Client — development build" \
               --notes "Android client built with an unmodified upstream Xray core. AetherLink X is currently a clean VLESS-compatible baseline name."
           else
@@ -164,7 +164,7 @@ jobs:
           if ! gh release view "$CLIENT_RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$CLIENT_RELEASE_TAG" \
               --prerelease \
-              --target "$GITHUB_SHA" \
+              --target "$GITHUB_REF_NAME" \
               --title "AetherLink X Client 0.7.0 — VLESS baseline" \
               --notes "Clean test baseline. AetherLink X keeps only its product name and uses the unmodified upstream VLESS implementation and upstream Xray core. No custom handshake, Turbo, PQ, Stealth, patched Remnawave backend, or custom node image is included."
           fi
