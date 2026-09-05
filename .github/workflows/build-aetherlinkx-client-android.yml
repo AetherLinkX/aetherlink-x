@@ -1,0 +1,173 @@
+name: Build AetherLink X Client (Android)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "alx/**"]
+    paths:
+      - "client/android/**"
+      - ".github/workflows/build-aetherlinkx-client-android.yml"
+
+concurrency:
+  group: aetherlinkx-client-android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      XRAY_TAG: v26.7.28
+      ANDROIDLIB_REPO: https://github.com/2dust/AndroidLibXrayLite.git
+      ANDROIDLIB_COMMIT: c634d1baea97e94320c0bf6a9cf637369c4f11d4
+      HEV_REPOSITORY: https://github.com/heiher/hev-socks5-tunnel.git
+      HEV_COMMIT: 64cc609
+      CLIENT_RELEASE_TAG: client-v0.7.0-vless-baseline
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.0"
+          cache: false
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          sdkmanager "ndk;29.0.14206865"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - name: Build upstream Xray Android core
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$RUNNER_TEMP/Xray-core"
+          WRAPPER="$RUNNER_TEMP/AndroidLibXrayLite"
+          git clone --depth 1 --branch "$XRAY_TAG" https://github.com/XTLS/Xray-core.git "$CORE"
+          (cd "$CORE" && go test ./proxy/vless/...)
+          git clone "$ANDROIDLIB_REPO" "$WRAPPER"
+          git -C "$WRAPPER" checkout --detach "$ANDROIDLIB_COMMIT"
+          cd "$WRAPPER"
+          go mod edit -replace "github.com/xtls/xray-core=$CORE"
+          go mod tidy
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          "$(go env GOPATH)/bin/gomobile" init
+          "$(go env GOPATH)/bin/gomobile" bind -v -androidapi 24 -trimpath \
+            -ldflags='-s -w -buildid= -checklinkname=0' ./
+          install -d "$GITHUB_WORKSPACE/client/android/app/libs"
+          install -m 0644 libv2ray.aar "$GITHUB_WORKSPACE/client/android/app/libs/libv2ray.aar"
+          install -m 0644 libv2ray-sources.jar "$GITHUB_WORKSPACE/client/android/app/libs/libv2ray-sources.jar"
+
+      - name: Verify upstream core archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s client/android/app/libs/libv2ray.aar
+          unzip -t client/android/app/libs/libv2ray.aar >/dev/null
+
+      - name: Build reliable Android TUN bridge
+        shell: bash
+        run: |
+          chmod +x client/android/scripts/build-hev-tunnel.sh
+          client/android/scripts/build-hev-tunnel.sh
+          test -s client/android/app/libs/arm64-v8a/libhev-socks5-tunnel.so
+          test -s client/android/app/libs/armeabi-v7a/libhev-socks5-tunnel.so
+
+      - name: Download GeoData
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p client/android/app/src/main/assets
+          curl -fL --retry 3 -o client/android/app/src/main/assets/geoip.dat \
+            https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
+          curl -fL --retry 3 -o client/android/app/src/main/assets/geosite.dat \
+            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Generate Gradle wrapper
+        working-directory: client/android
+        run: gradle wrapper --gradle-version=9.4.1
+
+      - name: Test and assemble
+        working-directory: client/android
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest assembleDebug assembleRelease --no-daemon --stacktrace
+
+      - name: Upload APKs and core
+        uses: actions/upload-artifact@v7
+        # A full Actions artifact quota must not block the versioned GitHub
+        # Release below; both release steps use the APK already on this runner.
+        continue-on-error: true
+        with:
+          name: aetherlink-x-client-android
+          retention-days: 30
+          path: |
+            client/android/app/build/outputs/apk/debug/*.apk
+            client/android/app/build/outputs/apk/release/*.apk
+            client/android/app/libs/libv2ray.aar
+            client/android/app/libs/*/libhev-socks5-tunnel.so
+
+      - name: Publish installable Android alpha
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK=$(find client/android/app/build/outputs/apk/debug -type f -name '*universal*.apk' | head -1)
+          test -n "$APK"
+          cp "$APK" aetherlink-x-client-android-universal-debug.apk
+          sha256sum aetherlink-x-client-android-universal-debug.apk > aetherlink-x-client-android-SHA256SUMS.txt
+          if ! gh release view client-dev >/dev/null 2>&1; then
+            gh release create client-dev --prerelease --target "$GITHUB_SHA" \
+              --title "AetherLink X Client — development build" \
+              --notes "Android client built with an unmodified upstream Xray core. AetherLink X is currently a clean VLESS-compatible baseline name."
+          else
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/client-dev" \
+              -f sha="$GITHUB_SHA" -F force=true >/dev/null
+          fi
+          gh release delete-asset client-dev aetherlink-x-client-linux-x64.tar.gz --yes 2>/dev/null || true
+          gh release delete-asset client-dev aetherlink-x-client-linux-SHA256SUMS.txt --yes 2>/dev/null || true
+          gh release upload client-dev \
+            aetherlink-x-client-android-universal-debug.apk \
+            aetherlink-x-client-android-SHA256SUMS.txt --clobber
+
+      - name: Publish versioned Android release
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK=$(find client/android/app/build/outputs/apk/debug -type f -name '*universal*.apk' | head -1)
+          test -n "$APK"
+          cp "$APK" aetherlink-x-client-android-v0.7.0-vless-baseline.apk
+          sha256sum aetherlink-x-client-android-v0.7.0-vless-baseline.apk > aetherlink-x-client-android-v0.7.0-vless-baseline-SHA256SUMS.txt
+          if ! gh release view "$CLIENT_RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$CLIENT_RELEASE_TAG" \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "AetherLink X Client 0.7.0 — VLESS baseline" \
+              --notes "Clean test baseline. AetherLink X keeps only its product name and uses the unmodified upstream VLESS implementation and upstream Xray core. No custom handshake, Turbo, PQ, Stealth, patched Remnawave backend, or custom node image is included."
+          fi
+          gh release upload "$CLIENT_RELEASE_TAG" \
+            aetherlink-x-client-android-v0.7.0-vless-baseline.apk \
+            aetherlink-x-client-android-v0.7.0-vless-baseline-SHA256SUMS.txt --clobber

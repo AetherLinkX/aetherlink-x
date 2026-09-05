@@ -1,0 +1,15 @@
+{
+  "name": "AetherLink X",
+  "version": "0.7.0-vless-baseline",
+  "status": "test-baseline",
+  "platform": "android",
+  "wireProtocol": "vless",
+  "xrayCore": {
+    "source": "XTLS/Xray-core",
+    "version": "v26.7.28",
+    "patched": false
+  },
+  "customHandshake": false,
+  "customCryptography": false,
+  "remnawavePatchRequired": false
+}

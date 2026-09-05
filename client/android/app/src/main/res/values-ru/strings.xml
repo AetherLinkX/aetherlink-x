@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connect">Подключить</string>
+    <string name="disconnect">Отключить</string>
+    <string name="connecting">Подключение…</string>
+    <string name="stopping">Отключение…</string>
+    <string name="connected">Подключено</string>
+    <string name="disconnected">Отключено</string>
+    <string name="no_profile_selected">Профиль не выбран</string>
+    <string name="connection_error">Ошибка подключения</string>
+    <string name="connection_failed">Не удалось подключиться</string>
+    <string name="retry">Повторить</string>
+    <string name="home_ping_profile">Пинг %1$s</string>
+    <string name="home_download">↓ Получено</string>
+    <string name="home_upload">↑ Отправлено</string>
+    <string name="home_connected_summary">Подключено %1$s • всего %2$s</string>
+    <string name="notification_title">AetherLink X активен</string>
+    <string name="notification_text">Нажмите, чтобы управлять подключением</string>
+
+    <!-- Home-screen widget -->
+    <string name="widget_connected">Подключено</string>
+    <string name="widget_connecting">Подключение…</string>
+    <string name="widget_disconnected">Отключено</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_home">Главная</string>
+    <string name="nav_profiles">Профили</string>
+    <string name="nav_subs">Подписки</string>
+    <string name="nav_settings">Настройки</string>
+
+    <!-- Settings hub -->
+    <string name="settings_title">Настройки</string>
+    <string name="group_appearance">Оформление</string>
+    <string name="group_connection">Подключение</string>
+    <string name="group_profiles_data">Профили и данные</string>
+    <string name="group_system">Система</string>
+
+    <string name="settings_style">Стиль</string>
+    <string name="settings_style_summary">Дизайн, тёмная тема, цветовая схема</string>
+    <string name="settings_language">Язык</string>
+    <string name="settings_language_summary">Язык интерфейса приложения</string>
+    <string name="settings_connection">Подключение</string>
+    <string name="settings_connection_summary">Режим проверки пинга</string>
+    <string name="settings_dns">DNS</string>
+    <string name="settings_dns_summary">VPN и защищённый удалённый DNS</string>
+    <string name="settings_routing">Маршрутизация и приватность</string>
+    <string name="settings_routing_summary">Блокировка рекламы, обход Китая, IPv6, аварийный выключатель</string>
+    <string name="settings_geo">Гео-файлы</string>
+    <string name="settings_geo_summary">Обновить geoip / geosite по ссылке</string>
+    <string name="settings_subscriptions">Подписки</string>
+    <string name="settings_subscriptions_summary">Автообновление и User-Agent</string>
+    <string name="settings_split">Раздельное туннелирование</string>
+    <string name="settings_split_summary">Какие приложения используют VPN или обходят его</string>
+    <string name="settings_backup">Резервная копия</string>
+    <string name="settings_backup_summary">Экспорт / импорт профилей</string>
+    <string name="settings_startup">Запуск</string>
+    <string name="settings_startup_summary">Автоподключение при загрузке</string>
+    <string name="settings_diagnostics">Диагностика</string>
+    <string name="settings_diagnostics_summary">Журнал подключения</string>
+    <string name="settings_about">О приложении</string>
+    <string name="settings_about_summary">Версия и информация</string>
+
+    <!-- Language picker -->
+    <string name="language_system">Системный язык</string>
+</resources>

@@ -1,0 +1,10 @@
+.tools/
+generated/
+*.tmp
+*.log
+client/android/app/src/main/jniLibs/
+dist/**/*.zip
+dist/**/*.sha256
+dist/**/*.exe
+dist/linux-*/xray-aetherlinkx
+/SHA256SUMS

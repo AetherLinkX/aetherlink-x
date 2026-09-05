@@ -1,0 +1,44 @@
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [
+    {
+      "tag": "local-socks",
+      "listen": "127.0.0.1",
+      "port": 10809,
+      "protocol": "socks",
+      "settings": { "udp": true }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "SERVER_ADDRESS",
+            "port": 443,
+            "users": [
+              {
+                "id": "REPLACE_WITH_UUID",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "www.yahoo.com",
+          "fingerprint": "chrome",
+          "password": "REPLACE_WITH_REALITY_PUBLIC_KEY",
+          "shortId": "REPLACE_WITH_SHORT_ID",
+          "spiderX": "/"
+        }
+      }
+    }
+  ]
+}
