@@ -30,8 +30,8 @@ android {
         applicationId = "io.aetherlinkx.client"
         minSdk        = 26
         targetSdk     = 36
-        versionCode   = 24
-        versionName   = "0.7.1-reality-compat"
+        versionCode   = 25
+        versionName   = "0.7.2-reality-compat-signed"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Only real-device ABIs — dropping x86/x86_64 saves ~36MB from libgojni.so
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -75,6 +75,9 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             isDebuggable        = true
+            // CI uses the same private update key for every published debug APK.
+            // This makes development Releases safely upgradeable in place.
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             // Enable splits for debug too so CI sends small per-ABI APKs to TG
             splits {
                 abi {

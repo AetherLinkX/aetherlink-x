@@ -2,6 +2,7 @@
 generated/
 *.tmp
 *.log
+*.apk
 client/android/app/src/main/jniLibs/
 dist/**/*.zip
 dist/**/*.sha256
@@ -9,3 +10,5 @@ dist/**/*.exe
 dist/linux-*/xray-aetherlinkx
 /SHA256SUMS
 test-server/*.private.*
+test-server/android-update-key.private.p12
+test-server/android-signing-secrets.private.json

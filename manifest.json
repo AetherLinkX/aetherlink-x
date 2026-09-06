@@ -1,6 +1,6 @@
 {
   "name": "AetherLink X",
-  "version": "0.7.1-reality-compat",
+  "version": "0.7.2-reality-compat-signed",
   "status": "test-reality-compat",
   "platform": "android",
   "wireProtocol": "vless",

@@ -25,10 +25,28 @@ jobs:
       ANDROIDLIB_COMMIT: c634d1baea97e94320c0bf6a9cf637369c4f11d4
       HEV_REPOSITORY: https://github.com/heiher/hev-socks5-tunnel.git
       HEV_COMMIT: 64cc609
-      CLIENT_RELEASE_TAG: client-v0.7.1-reality-compat
+      CLIENT_RELEASE_TAG: client-v0.7.2-reality-compat-signed
 
     steps:
       - uses: actions/checkout@v7
+
+      - name: Restore stable Android update key
+        shell: bash
+        env:
+          AETHERLINK_KEYSTORE_B64: ${{ secrets.AETHERLINK_KEYSTORE_B64 }}
+          AETHERLINK_KEYSTORE_PASSWORD: ${{ secrets.AETHERLINK_KEYSTORE_PASSWORD }}
+          AETHERLINK_KEY_ALIAS: ${{ secrets.AETHERLINK_KEY_ALIAS }}
+          AETHERLINK_KEY_PASSWORD: ${{ secrets.AETHERLINK_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$AETHERLINK_KEYSTORE_B64"
+          KEYSTORE_PATH="$RUNNER_TEMP/aetherlink-update-key.p12"
+          printf '%s' "$AETHERLINK_KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          echo "KEYSTORE_FILE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$AETHERLINK_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$AETHERLINK_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$AETHERLINK_KEY_PASSWORD" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v6
         with:
@@ -161,8 +179,8 @@ jobs:
           set -euo pipefail
           APK=$(find client/android/app/build/outputs/apk/debug -type f -name '*universal*.apk' | head -1)
           test -n "$APK"
-          cp "$APK" aetherlink-x-client-android-v0.7.1-reality-compat.apk
-          sha256sum aetherlink-x-client-android-v0.7.1-reality-compat.apk > aetherlink-x-client-android-v0.7.1-reality-compat-SHA256SUMS.txt
+          cp "$APK" aetherlink-x-client-android-v0.7.2-reality-compat-signed.apk
+          sha256sum aetherlink-x-client-android-v0.7.2-reality-compat-signed.apk > aetherlink-x-client-android-v0.7.2-reality-compat-signed-SHA256SUMS.txt
           if ! git ls-remote --exit-code --tags origin "refs/tags/$CLIENT_RELEASE_TAG" >/dev/null 2>&1; then
             git tag "$CLIENT_RELEASE_TAG" "$GITHUB_SHA"
             git push origin "refs/tags/$CLIENT_RELEASE_TAG"
@@ -171,9 +189,9 @@ jobs:
             gh release create "$CLIENT_RELEASE_TAG" \
               --prerelease \
               --verify-tag \
-              --title "AetherLink X Client 0.7.1 — REALITY compatibility" \
-              --notes "VLESS baseline with a verified REALITY compatibility fix. AetherLink X profiles using fp=chrome are run with the stable Safari uTLS preset; ordinary VLESS profiles remain unchanged. The wire protocol and upstream Xray core are not patched."
+              --title "AetherLink X Client 0.7.2 — REALITY compatibility" \
+              --notes "VLESS baseline with the verified REALITY compatibility fix and a stable Android update signature. AetherLink X profiles using fp=chrome are run with the stable Safari uTLS preset; ordinary VLESS profiles remain unchanged. One reinstall is required when migrating from older randomly signed CI builds; later versions update in place."
           fi
           gh release upload "$CLIENT_RELEASE_TAG" \
-            aetherlink-x-client-android-v0.7.1-reality-compat.apk \
-            aetherlink-x-client-android-v0.7.1-reality-compat-SHA256SUMS.txt --clobber
+            aetherlink-x-client-android-v0.7.2-reality-compat-signed.apk \
+            aetherlink-x-client-android-v0.7.2-reality-compat-signed-SHA256SUMS.txt --clobber

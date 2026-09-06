@@ -2,7 +2,7 @@
 
 ## Текущий базовый режим
 
-В версии `0.7.1-reality-compat` пункт **AetherLink X** является именованным
+В версии `0.7.2-reality-compat-signed` пункт **AetherLink X** является именованным
 профилем VLESS. При запуске приложение создаёт обычный Xray outbound
 `protocol: "vless"`; отдельный ALX handshake и изменённое ядро отсутствуют.
 

@@ -34,7 +34,7 @@ data class AppSettings(
     val pingDisplayMode: PingDisplayMode = PingDisplayMode.NUMBERS,
 
     // ── Subscriptions ──────────────────────────────────────────────────────────
-    val subscriptionUserAgent: String = "AetherLinkX/0.7.1",
+    val subscriptionUserAgent: String = "AetherLinkX/0.7.2",
 
     // ── Custom geo files (#6) — override the bundled geoip.dat/geosite.dat ───────
     val geoipUrl: String = "",
