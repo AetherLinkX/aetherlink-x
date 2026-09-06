@@ -33,7 +33,7 @@
         "security": "reality",
         "realitySettings": {
           "serverName": "www.yahoo.com",
-          "fingerprint": "chrome",
+          "fingerprint": "safari",
           "password": "REPLACE_WITH_REALITY_PUBLIC_KEY",
           "shortId": "REPLACE_WITH_SHORT_ID",
           "spiderX": "/"

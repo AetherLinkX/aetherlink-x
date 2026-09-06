@@ -10,6 +10,29 @@ object XrayConfigBuilder {
         else -> protocol.name.lowercase()
     }
 
+    /**
+     * AetherLink X is deliberately still VLESS on the wire, but it uses a stable
+     * uTLS preset for REALITY.  On some mobile networks the current Chrome preset
+     * sends its large post-quantum ClientHello in a record layout that is silently
+     * black-holed after the first 1024 bytes.  The Safari preset keeps REALITY's
+     * X25519MLKEM768 exchange while using a record layout that survives that path.
+     *
+     * Keep ordinary VLESS profiles byte-for-byte faithful to their subscription:
+     * this compatibility override applies only to profiles explicitly branded as
+     * AetherLink X.  An explicitly selected non-Chrome preset is also preserved.
+     */
+    internal fun effectiveRealityFingerprint(profile: VpnProfile): String {
+        val requested = profile.fingerprint.trim().ifEmpty { "chrome" }
+        return if (
+            profile.protocol == Protocol.AETHERLINK_X &&
+            requested.equals("chrome", ignoreCase = true)
+        ) {
+            "safari"
+        } else {
+            requested
+        }
+    }
+
     fun build(
         profile: VpnProfile,
         settings: AppSettings = AppSettings(),
@@ -512,7 +535,7 @@ object XrayConfigBuilder {
                 put("security", "reality")
                 put("realitySettings", JSONObject().apply {
                     put("serverName",  p.sni.ifEmpty { p.address })
-                    put("fingerprint", p.fingerprint.ifEmpty { "chrome" })
+                    put("fingerprint", effectiveRealityFingerprint(p))
                     put("shortId",     p.shortId)
                     // Xray v26.7.28 names the REALITY client credential `password`.
                     // `publicKey` is only a compatibility alias and is no longer the

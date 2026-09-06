@@ -2,9 +2,15 @@
 
 ## Текущий базовый режим
 
-В версии `0.7.0-vless-baseline` пункт **AetherLink X** является именованным
+В версии `0.7.1-reality-compat` пункт **AetherLink X** является именованным
 профилем VLESS. При запуске приложение создаёт обычный Xray outbound
 `protocol: "vless"`; отдельный ALX handshake и изменённое ядро отсутствуют.
+
+Для AetherLink X + REALITY клиент автоматически заменяет проблемный uTLS
+отпечаток `chrome` на проверенный `safari`. VLESS, UUID, flow, REALITY-ключи
+и постквантовый X25519MLKEM768 при этом не меняются. Исправление нужно для
+сетей, где Chrome ClientHello зависает после первых 1024 байт. Обычные VLESS
+профили сохраняют ровно тот отпечаток, который прислала подписка.
 
 Поддерживаются стандартные профили приложения: VLESS, VMess, Trojan,
 Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS5 и HTTP, а также
@@ -17,7 +23,7 @@ Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS5 и HTTP, а также
 содержащим `AetherLink X`, например:
 
 ```text
-vless://UUID@SERVER:PORT?type=tcp&security=reality&sni=SNI&fp=chrome&pbk=PUBLIC_KEY&sid=SHORT_ID#AetherLink%20X%20Test
+vless://UUID@SERVER:PORT?type=tcp&security=reality&sni=SNI&fp=safari&pbk=PUBLIC_KEY&sid=SHORT_ID#AetherLink%20X%20Test
 ```
 
 Клиент покажет такую локацию как AetherLink X, но передаст Xray стандартный

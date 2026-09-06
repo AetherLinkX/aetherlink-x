@@ -25,7 +25,7 @@ jobs:
       ANDROIDLIB_COMMIT: c634d1baea97e94320c0bf6a9cf637369c4f11d4
       HEV_REPOSITORY: https://github.com/heiher/hev-socks5-tunnel.git
       HEV_COMMIT: 64cc609
-      CLIENT_RELEASE_TAG: client-v0.7.0-vless-baseline
+      CLIENT_RELEASE_TAG: client-v0.7.1-reality-compat
 
     steps:
       - uses: actions/checkout@v7
@@ -161,8 +161,8 @@ jobs:
           set -euo pipefail
           APK=$(find client/android/app/build/outputs/apk/debug -type f -name '*universal*.apk' | head -1)
           test -n "$APK"
-          cp "$APK" aetherlink-x-client-android-v0.7.0-vless-baseline.apk
-          sha256sum aetherlink-x-client-android-v0.7.0-vless-baseline.apk > aetherlink-x-client-android-v0.7.0-vless-baseline-SHA256SUMS.txt
+          cp "$APK" aetherlink-x-client-android-v0.7.1-reality-compat.apk
+          sha256sum aetherlink-x-client-android-v0.7.1-reality-compat.apk > aetherlink-x-client-android-v0.7.1-reality-compat-SHA256SUMS.txt
           if ! git ls-remote --exit-code --tags origin "refs/tags/$CLIENT_RELEASE_TAG" >/dev/null 2>&1; then
             git tag "$CLIENT_RELEASE_TAG" "$GITHUB_SHA"
             git push origin "refs/tags/$CLIENT_RELEASE_TAG"
@@ -171,9 +171,9 @@ jobs:
             gh release create "$CLIENT_RELEASE_TAG" \
               --prerelease \
               --verify-tag \
-              --title "AetherLink X Client 0.7.0 — VLESS baseline" \
-              --notes "Clean test baseline. AetherLink X keeps only its product name and uses the unmodified upstream VLESS implementation and upstream Xray core. No custom handshake, Turbo, PQ, Stealth, patched Remnawave backend, or custom node image is included."
+              --title "AetherLink X Client 0.7.1 — REALITY compatibility" \
+              --notes "VLESS baseline with a verified REALITY compatibility fix. AetherLink X profiles using fp=chrome are run with the stable Safari uTLS preset; ordinary VLESS profiles remain unchanged. The wire protocol and upstream Xray core are not patched."
           fi
           gh release upload "$CLIENT_RELEASE_TAG" \
-            aetherlink-x-client-android-v0.7.0-vless-baseline.apk \
-            aetherlink-x-client-android-v0.7.0-vless-baseline-SHA256SUMS.txt --clobber
+            aetherlink-x-client-android-v0.7.1-reality-compat.apk \
+            aetherlink-x-client-android-v0.7.1-reality-compat-SHA256SUMS.txt --clobber

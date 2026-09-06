@@ -30,8 +30,8 @@ android {
         applicationId = "io.aetherlinkx.client"
         minSdk        = 26
         targetSdk     = 36
-        versionCode   = 23
-        versionName   = "0.7.0-vless-baseline"
+        versionCode   = 24
+        versionName   = "0.7.1-reality-compat"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Only real-device ABIs — dropping x86/x86_64 saves ~36MB from libgojni.so
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }

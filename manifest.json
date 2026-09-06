@@ -1,7 +1,7 @@
 {
   "name": "AetherLink X",
-  "version": "0.7.0-vless-baseline",
-  "status": "test-baseline",
+  "version": "0.7.1-reality-compat",
+  "status": "test-reality-compat",
   "platform": "android",
   "wireProtocol": "vless",
   "xrayCore": {
