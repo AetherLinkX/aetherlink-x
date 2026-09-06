@@ -13,16 +13,20 @@ import (
 
 func main() {
 	listen := flag.String("listen", envOr("ALX_LISTEN", ":443"), "UDP listen address")
+	tcpListen := flag.String("tcp-listen", envOr("ALX_TCP_LISTEN", ":8443"), "TCP fallback listen address")
+	tcpDefaultBackend := flag.String("tcp-default-backend", os.Getenv("ALX_TCP_DEFAULT_BACKEND"), "non-ALX TLS passthrough backend")
 	cert := flag.String("cert", envOr("ALX_CERT_FILE", "/etc/aetherlink-x/server.crt"), "TLS certificate")
 	key := flag.String("key", envOr("ALX_KEY_FILE", "/etc/aetherlink-x/server.key"), "TLS private key")
 	token := flag.String("token", os.Getenv("ALX_TOKEN"), "pre-shared client token")
 	flag.Parse()
 
 	instance, err := server.New(server.Config{
-		Listen:   *listen,
-		CertFile: *cert,
-		KeyFile:  *key,
-		Token:    *token,
+		Listen:            *listen,
+		TCPListen:         *tcpListen,
+		TCPDefaultBackend: *tcpDefaultBackend,
+		CertFile:          *cert,
+		KeyFile:           *key,
+		Token:             *token,
 	})
 	if err != nil {
 		log.Fatal(err)

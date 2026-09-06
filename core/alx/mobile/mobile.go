@@ -55,11 +55,11 @@ func StatsJson() string {
 	current := runtime
 	mutex.Unlock()
 	if current == nil {
-		return `{"bytesUp":0,"bytesDown":0,"connections":0,"lastError":""}`
+		return `{"bytesUp":0,"bytesDown":0,"connections":0,"lastError":"","transport":"stopped"}`
 	}
 	encoded, err := json.Marshal(current.Stats())
 	if err != nil {
-		return `{"bytesUp":0,"bytesDown":0,"connections":0,"lastError":"stats unavailable"}`
+		return `{"bytesUp":0,"bytesDown":0,"connections":0,"lastError":"stats unavailable","transport":"unknown"}`
 	}
 	return string(encoded)
 }

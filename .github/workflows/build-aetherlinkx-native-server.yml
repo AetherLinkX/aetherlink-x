@@ -9,7 +9,7 @@ on:
       - ".github/workflows/build-aetherlinkx-native-server.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   linux-amd64:
@@ -36,9 +36,28 @@ jobs:
           sha256sum ../../aetherlink-native-server-linux-amd64 \
             > ../../aetherlink-native-server-linux-amd64.sha256
       - uses: actions/upload-artifact@v7
+        continue-on-error: true
         with:
           name: aetherlink-native-server-linux-amd64
           retention-days: 30
           path: |
             aetherlink-native-server-linux-amd64
             aetherlink-native-server-linux-amd64.sha256
+      - name: Publish native server preview
+        if: github.ref == 'refs/heads/alx/native-preview'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SERVER_PREVIEW_TAG: server-v0.1.0-alx-native-preview.1
+        run: |
+          set -euo pipefail
+          git tag --force "$SERVER_PREVIEW_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$SERVER_PREVIEW_TAG" --force
+          if ! gh release view "$SERVER_PREVIEW_TAG" >/dev/null 2>&1; then
+            gh release create "$SERVER_PREVIEW_TAG" --prerelease --verify-tag \
+              --title "AetherLink Native Server 0.1.0 — preview 1" \
+              --notes "Independent ALX/1 server preview with QUIC/UDP, pinned TLS/TCP fallback, replay-resistant authentication, UDP relay, and ALPN-based coexistence with an existing Xray listener."
+          fi
+          gh release upload "$SERVER_PREVIEW_TAG" \
+            aetherlink-native-server-linux-amd64 \
+            aetherlink-native-server-linux-amd64.sha256 --clobber

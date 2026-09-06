@@ -630,6 +630,7 @@ object ProfileCodec {
             sni = params["sni"]?.ifBlank { "www.yahoo.com" } ?: "www.yahoo.com",
             publicKey = params["pin"] ?: "", // SHA-256 SPKI pin
             alpn = "h3",
+			fallbackPort = params["fallback"]?.toIntOrNull()?.takeIf { it in 1..65535 } ?: 443,
             muxEnabled = false,
         )
     }
@@ -921,6 +922,7 @@ object ProfileCodec {
             .encodedAuthority(buildEncodedAuthority(p.address, p.port, p.uuid))
             .appendQueryParameter("pin", p.publicKey)
             .appendQueryParameter("sni", p.sni.ifBlank { "www.yahoo.com" })
+			.appendQueryParameter("fallback", p.fallbackPort.toString())
             .fragment(p.name)
             .build()
             .toString()

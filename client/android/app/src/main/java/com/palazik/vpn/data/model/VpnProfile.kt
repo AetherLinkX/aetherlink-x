@@ -43,6 +43,7 @@ data class VpnProfile(
     val transportSeed: String = "",       // mKCP seed
     val transportSecurity: String = "none", // legacy QUIC packet cipher
     val transportKey: String = "",        // legacy QUIC packet key
+	val fallbackPort: Int = 443,          // ALX/1 TLS fallback when UDP/QUIC is blocked
 
     // ── security ─────────────────────────────────────────────────────────────
     val security: Security   = Security.TLS,

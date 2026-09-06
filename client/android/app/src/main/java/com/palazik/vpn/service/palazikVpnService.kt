@@ -237,15 +237,18 @@ class palazikVpnService : VpnService() {
                     val nativeConfig = JSONObject().apply {
                         put("listen", "${LocalProxyEndpoint.ipv4Loopback}:$socksPort")
                         put("server", "${profile.address}:${profile.port}")
+						put("fallbackServer", "${profile.address}:${profile.fallbackPort}")
                         put("token", profile.uuid)
                         put("certificatePin", profile.publicKey)
                         put("serverName", profile.sni.ifBlank { "www.yahoo.com" })
                         put("handshakeTimeoutMs", 10_000)
+						put("quicProbeTimeoutMs", 1_500)
                     }.toString()
                     Alxmobile.startClient(nativeConfig)
                     check(Alxmobile.isRunning()) { "ALX/1 native core stopped during startup" }
                     nativeCoreRunning = true
-                    addDiagnostic("ALX/1 authenticated QUIC channel established")
+					val nativeTransport = runCatching { JSONObject(Alxmobile.statsJson()).optString("transport", "unknown") }.getOrDefault("unknown")
+					addDiagnostic("ALX/1 authenticated channel established ($nativeTransport)")
                     null
                 } else {
                     Libv2ray.newCoreController(V2RayCallback()).also { created ->
@@ -303,7 +306,7 @@ class palazikVpnService : VpnService() {
                 }
                 tunBridge = bridge
                 addDiagnostic(
-                    if (isNativeAlx) "Android data plane: hev-tun → SOCKS → ALX/1 QUIC"
+					if (isNativeAlx) "Android data plane: hev-tun → SOCKS → ALX/1"
                     else "Android data plane: hev-tun → SOCKS → Xray"
                 )
                 LocalProxyEndpoint.publish(socksPort)

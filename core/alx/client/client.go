@@ -27,10 +27,12 @@ import (
 type Config struct {
 	Listen             string `json:"listen"`
 	Server             string `json:"server"`
+	FallbackServer     string `json:"fallbackServer"`
 	Token              string `json:"token"`
 	CertificatePin     string `json:"certificatePin"`
 	ServerName         string `json:"serverName"`
 	HandshakeTimeoutMS int    `json:"handshakeTimeoutMs"`
+	QUICProbeTimeoutMS int    `json:"quicProbeTimeoutMs"`
 }
 
 func ParseConfig(raw string) (Config, error) {
@@ -47,6 +49,11 @@ func ParseConfig(raw string) (Config, error) {
 	if _, _, err := net.SplitHostPort(config.Server); err != nil {
 		return config, fmt.Errorf("invalid ALX server: %w", err)
 	}
+	if config.FallbackServer != "" {
+		if _, _, err := net.SplitHostPort(config.FallbackServer); err != nil {
+			return config, fmt.Errorf("invalid ALX fallback server: %w", err)
+		}
+	}
 	if _, err := alx.DecodeToken(config.Token); err != nil {
 		return config, err
 	}
@@ -58,6 +65,9 @@ func ParseConfig(raw string) (Config, error) {
 	}
 	if config.HandshakeTimeoutMS <= 0 {
 		config.HandshakeTimeoutMS = 8000
+	}
+	if config.QUICProbeTimeoutMS <= 0 {
+		config.QUICProbeTimeoutMS = 1500
 	}
 	return config, nil
 }
@@ -84,6 +94,7 @@ type Stats struct {
 	BytesDown   uint64 `json:"bytesDown"`
 	Connections uint64 `json:"connections"`
 	LastError   string `json:"lastError"`
+	Transport   string `json:"transport"`
 }
 
 func Start(config Config) (*Runtime, error) {
@@ -105,7 +116,7 @@ func Start(config Config) (*Runtime, error) {
 
 	probeCtx, probeCancel := context.WithTimeout(ctx, time.Duration(config.HandshakeTimeoutMS)*time.Millisecond)
 	defer probeCancel()
-	if _, err := runtime.manager.connection(probeCtx); err != nil {
+	if err := runtime.manager.probe(probeCtx); err != nil {
 		_ = listener.Close()
 		cancel()
 		return nil, fmt.Errorf("connect ALX server: %w", err)
@@ -136,11 +147,16 @@ func (r *Runtime) Running() bool {
 
 func (r *Runtime) Stats() Stats {
 	lastError, _ := r.lastError.Load().(string)
+	transport := "quic"
+	if r.manager.fallback.Load() {
+		transport = "tls-tcp"
+	}
 	return Stats{
 		BytesUp:     r.bytesUp.Load(),
 		BytesDown:   r.bytesDown.Load(),
 		Connections: r.connections.Load(),
 		LastError:   lastError,
+		Transport:   transport,
 	}
 }
 
@@ -192,19 +208,16 @@ func (r *Runtime) handleSOCKS(local net.Conn) error {
 func (r *Runtime) handleTCP(local net.Conn, buffered *bufio.Reader, destination string) error {
 	ctx, cancel := context.WithTimeout(r.ctx, time.Duration(r.config.HandshakeTimeoutMS)*time.Millisecond)
 	defer cancel()
-	connection, err := r.manager.connection(ctx)
+	stream, connection, err := r.manager.openStream(ctx)
 	if err != nil {
-		_ = writeSOCKSReply(local, 0x01, nil)
-		return err
-	}
-	stream, err := connection.OpenStreamSync(ctx)
-	if err != nil {
-		r.manager.invalidate(connection)
 		_ = writeSOCKSReply(local, 0x01, nil)
 		return err
 	}
 	defer stream.Close()
 	if err := alx.WriteOpen(stream, alx.OpenRequest{Command: alx.CommandTCP, Address: destination}); err != nil {
+		if connection != nil {
+			r.manager.invalidate(connection)
+		}
 		_ = writeSOCKSReply(local, 0x01, nil)
 		return err
 	}
@@ -270,15 +283,53 @@ func (r *Runtime) handleUDP(control net.Conn) error {
 }
 
 type connectionManager struct {
-	runtime *Runtime
-	mutex   sync.Mutex
-	conn    *quic.Conn
-	udpMu   sync.RWMutex
-	udp     map[uint32]*udpAssociation
+	runtime  *Runtime
+	mutex    sync.Mutex
+	conn     *quic.Conn
+	fallback atomic.Bool
+	udpMu    sync.RWMutex
+	udp      map[uint32]*udpAssociation
 }
 
 func newConnectionManager(runtime *Runtime) *connectionManager {
 	return &connectionManager{runtime: runtime, udp: make(map[uint32]*udpAssociation)}
+}
+
+func (m *connectionManager) probe(ctx context.Context) error {
+	quicCtx, cancel := context.WithTimeout(ctx, time.Duration(m.runtime.config.QUICProbeTimeoutMS)*time.Millisecond)
+	defer cancel()
+	if _, err := m.connection(quicCtx); err == nil {
+		return nil
+	} else if m.runtime.config.FallbackServer == "" {
+		return err
+	}
+	connection, err := m.dialFallback(ctx)
+	if err != nil {
+		return fmt.Errorf("QUIC unavailable and TCP fallback failed: %w", err)
+	}
+	m.fallback.Store(true)
+	return connection.Close()
+}
+
+func (m *connectionManager) openStream(ctx context.Context) (io.ReadWriteCloser, *quic.Conn, error) {
+	if m.fallback.Load() {
+		connection, err := m.dialFallback(ctx)
+		return connection, nil, err
+	}
+	connection, err := m.connection(ctx)
+	if err != nil {
+		if m.runtime.config.FallbackServer == "" {
+			return nil, nil, err
+		}
+		fallback, fallbackErr := m.dialFallback(ctx)
+		if fallbackErr != nil {
+			return nil, nil, fmt.Errorf("QUIC unavailable and TCP fallback failed: %w", fallbackErr)
+		}
+		m.fallback.Store(true)
+		return fallback, nil, nil
+	}
+	stream, err := connection.OpenStreamSync(ctx)
+	return stream, connection, err
 }
 
 func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) {
@@ -287,29 +338,9 @@ func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) 
 	if m.conn != nil && m.conn.Context().Err() == nil {
 		return m.conn, nil
 	}
-	pin, err := normalizePin(m.runtime.config.CertificatePin)
+	tlsConfig, err := m.tlsConfig([]string{"h3"})
 	if err != nil {
 		return nil, err
-	}
-	tlsConfig := &tls.Config{
-		MinVersion:         tls.VersionTLS13,
-		ServerName:         m.runtime.config.ServerName,
-		NextProtos:         []string{"h3"},
-		InsecureSkipVerify: true, // Replaced by the mandatory SPKI verification below.
-		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-			if len(rawCerts) == 0 {
-				return errors.New("ALX server sent no certificate")
-			}
-			certificate, err := x509.ParseCertificate(rawCerts[0])
-			if err != nil {
-				return err
-			}
-			actual := sha256.Sum256(certificate.RawSubjectPublicKeyInfo)
-			if !constantEqual(actual[:], pin) {
-				return errors.New("ALX server certificate pin mismatch")
-			}
-			return nil
-		},
 	}
 	quicConfig := &quic.Config{
 		HandshakeIdleTimeout: time.Duration(m.runtime.config.HandshakeTimeoutMS) * time.Millisecond,
@@ -345,6 +376,59 @@ func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) 
 	return connection, nil
 }
 
+func (m *connectionManager) dialFallback(ctx context.Context) (*tls.Conn, error) {
+	tlsConfig, err := m.tlsConfig([]string{"alx/1"})
+	if err != nil {
+		return nil, err
+	}
+	dialer := &tls.Dialer{Config: tlsConfig, NetDialer: &net.Dialer{Timeout: time.Duration(m.runtime.config.HandshakeTimeoutMS) * time.Millisecond, KeepAlive: 30 * time.Second}}
+	raw, err := dialer.DialContext(ctx, "tcp", m.runtime.config.FallbackServer)
+	if err != nil {
+		return nil, err
+	}
+	connection := raw.(*tls.Conn)
+	if err := alx.WriteAuth(connection, m.runtime.token, time.Now()); err != nil {
+		_ = connection.Close()
+		return nil, err
+	}
+	status := []byte{0xff}
+	if _, err := io.ReadFull(connection, status); err != nil || status[0] != alx.StatusOK {
+		_ = connection.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("ALX fallback authentication rejected")
+	}
+	return connection, nil
+}
+
+func (m *connectionManager) tlsConfig(nextProtocols []string) (*tls.Config, error) {
+	pin, err := normalizePin(m.runtime.config.CertificatePin)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		ServerName:         m.runtime.config.ServerName,
+		NextProtos:         nextProtocols,
+		InsecureSkipVerify: true, // Replaced by mandatory SPKI verification below.
+		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			if len(rawCerts) == 0 {
+				return errors.New("ALX server sent no certificate")
+			}
+			certificate, err := x509.ParseCertificate(rawCerts[0])
+			if err != nil {
+				return err
+			}
+			actual := sha256.Sum256(certificate.RawSubjectPublicKeyInfo)
+			if !constantEqual(actual[:], pin) {
+				return errors.New("ALX server certificate pin mismatch")
+			}
+			return nil
+		},
+	}, nil
+}
+
 func (m *connectionManager) invalidate(connection *quic.Conn) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -373,11 +457,7 @@ func (m *connectionManager) close() {
 func (m *connectionManager) registerUDP(association *udpAssociation) error {
 	ctx, cancel := context.WithTimeout(association.ctx, time.Duration(m.runtime.config.HandshakeTimeoutMS)*time.Millisecond)
 	defer cancel()
-	connection, err := m.connection(ctx)
-	if err != nil {
-		return err
-	}
-	stream, err := connection.OpenStreamSync(ctx)
+	stream, connection, err := m.openStream(ctx)
 	if err != nil {
 		return err
 	}
@@ -444,7 +524,7 @@ type udpAssociation struct {
 	cancel     context.CancelFunc
 	runtime    *Runtime
 	connection *quic.Conn
-	stream     *quic.Stream
+	stream     io.ReadWriteCloser
 	writeMu    sync.Mutex
 	clientMu   sync.RWMutex
 }
@@ -465,7 +545,7 @@ func (a *udpAssociation) readLocal() error {
 		a.clientMu.Unlock()
 		a.runtime.bytesUp.Add(uint64(len(payload)))
 		datagram, encodeErr := alx.EncodeDatagram(alx.Datagram{AssociationID: a.id, Address: target, Payload: payload})
-		if encodeErr == nil && len(datagram) <= alx.FastDatagramLimit {
+		if a.connection != nil && encodeErr == nil && len(datagram) <= alx.FastDatagramLimit {
 			if err := a.connection.SendDatagram(datagram); err == nil {
 				continue
 			}
@@ -668,7 +748,7 @@ func (w countingWriter) Write(data []byte) (int, error) {
 	return n, err
 }
 
-func proxyTCP(local net.Conn, buffered *bufio.Reader, remote *quic.Stream, up, down *atomic.Uint64) error {
+func proxyTCP(local net.Conn, buffered *bufio.Reader, remote io.ReadWriteCloser, up, down *atomic.Uint64) error {
 	errorsChannel := make(chan error, 2)
 	go func() {
 		_, err := io.Copy(countingWriter{writer: remote, count: up}, buffered)

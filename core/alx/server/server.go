@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -17,11 +19,13 @@ import (
 )
 
 type Config struct {
-	Listen   string
-	CertFile string
-	KeyFile  string
-	Token    string
-	Logger   *log.Logger
+	Listen            string
+	TCPListen         string
+	TCPDefaultBackend string
+	CertFile          string
+	KeyFile           string
+	Token             string
+	Logger            *log.Logger
 }
 
 type Server struct {
@@ -34,6 +38,9 @@ type Server struct {
 func New(config Config) (*Server, error) {
 	if config.Listen == "" {
 		config.Listen = ":443"
+	}
+	if config.TCPListen == "" {
+		config.TCPListen = ":8443"
 	}
 	if config.CertFile == "" || config.KeyFile == "" {
 		return nil, errors.New("TLS certificate and key are required")
@@ -54,11 +61,25 @@ func (s *Server) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load TLS key pair: %w", err)
 	}
-	tlsConfig := &tls.Config{
+	quicTLS := &tls.Config{
 		MinVersion:   tls.VersionTLS13,
 		Certificates: []tls.Certificate{certificate},
 		NextProtos:   []string{"h3"},
 	}
+	tcpTLS := quicTLS.Clone()
+	tcpTLS.NextProtos = []string{"alx/1"}
+	errorChannel := make(chan error, 2)
+	go func() { errorChannel <- s.runTCP(ctx, tcpTLS) }()
+	go func() { errorChannel <- s.runQUIC(ctx, quicTLS) }()
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-errorChannel:
+		return err
+	}
+}
+
+func (s *Server) runQUIC(ctx context.Context, tlsConfig *tls.Config) error {
 	listener, err := quic.ListenAddr(s.config.Listen, tlsConfig, &quic.Config{
 		HandshakeIdleTimeout: 8 * time.Second,
 		MaxIdleTimeout:       75 * time.Second,
@@ -85,6 +106,143 @@ func (s *Server) Run(ctx context.Context) error {
 			return err
 		}
 		go s.handleConnection(connection)
+	}
+}
+
+func (s *Server) runTCP(ctx context.Context, tlsConfig *tls.Config) error {
+	listener, err := net.Listen("tcp", s.config.TCPListen)
+	if err != nil {
+		return fmt.Errorf("listen for ALX/1 TCP fallback: %w", err)
+	}
+	defer listener.Close()
+	go func() {
+		<-ctx.Done()
+		_ = listener.Close()
+	}()
+	if s.config.TCPDefaultBackend == "" {
+		s.logger.Printf("ALX/1 fallback listening on %s/tcp", s.config.TCPListen)
+	} else {
+		s.logger.Printf("ALX/1 TLS gateway listening on %s/tcp; default backend %s", s.config.TCPListen, s.config.TCPDefaultBackend)
+	}
+	for {
+		connection, err := listener.Accept()
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		go s.handleTCPGateway(connection, tlsConfig)
+	}
+}
+
+func (s *Server) handleTCPGateway(connection net.Conn, tlsConfig *tls.Config) {
+	if s.config.TCPDefaultBackend == "" {
+		s.handleTCPFallback(tls.Server(connection, tlsConfig))
+		return
+	}
+	reader := bufio.NewReaderSize(connection, 32*1024)
+	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))
+	isALX := clientHelloHasALPN(reader, "alx/1")
+	_ = connection.SetReadDeadline(time.Time{})
+	buffered := &bufferedConn{Conn: connection, reader: reader}
+	if isALX {
+		s.handleTCPFallback(tls.Server(buffered, tlsConfig))
+		return
+	}
+	defer connection.Close()
+	backend, err := net.DialTimeout("tcp", s.config.TCPDefaultBackend, 5*time.Second)
+	if err != nil {
+		return
+	}
+	defer backend.Close()
+	proxyBidirectional(buffered, backend)
+}
+
+func (s *Server) handleTCPFallback(connection net.Conn) {
+	defer connection.Close()
+	_ = connection.SetDeadline(time.Now().Add(10 * time.Second))
+	auth, err := alx.ReadAuth(connection)
+	if err != nil || !auth.Verify(s.token, time.Now(), 60*time.Second) || !s.replay.accept(auth.Nonce, time.Now()) {
+		_, _ = connection.Write([]byte{alx.StatusDenied})
+		return
+	}
+	if _, err := connection.Write([]byte{alx.StatusOK}); err != nil {
+		return
+	}
+	request, err := alx.ReadOpen(connection)
+	if err != nil {
+		_, _ = connection.Write([]byte{alx.StatusBadRequest})
+		return
+	}
+	_ = connection.SetDeadline(time.Time{})
+	switch request.Command {
+	case alx.CommandTCP:
+		s.handleFallbackTCP(connection, request.Address)
+	case alx.CommandUDP:
+		s.handleFallbackUDP(connection, request.AssociationID)
+	default:
+		_, _ = connection.Write([]byte{alx.StatusBadRequest})
+	}
+}
+
+func (s *Server) handleFallbackTCP(connection net.Conn, destination string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	remote, err := dialPublic(ctx, "tcp", destination)
+	cancel()
+	if err != nil {
+		_, _ = connection.Write([]byte{alx.StatusDialFailure})
+		return
+	}
+	defer remote.Close()
+	if _, err := connection.Write([]byte{alx.StatusOK}); err != nil {
+		return
+	}
+	proxyBidirectional(connection, remote)
+}
+
+func (s *Server) handleFallbackUDP(connection net.Conn, associationID uint32) {
+	if associationID == 0 {
+		_, _ = connection.Write([]byte{alx.StatusBadRequest})
+		return
+	}
+	udp, err := net.ListenUDP("udp", nil)
+	if err != nil {
+		_, _ = connection.Write([]byte{alx.StatusDialFailure})
+		return
+	}
+	defer udp.Close()
+	if _, err := connection.Write([]byte{alx.StatusOK}); err != nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		buffer := make([]byte, alx.MaxUDPPayload)
+		for {
+			n, source, readErr := udp.ReadFromUDP(buffer)
+			if readErr != nil {
+				return
+			}
+			if writeErr := alx.WriteUDPFrame(connection, source.String(), buffer[:n]); writeErr != nil {
+				return
+			}
+		}
+	}()
+	for {
+		destination, payload, readErr := alx.ReadUDPFrame(connection)
+		if readErr != nil {
+			return
+		}
+		address, resolveErr := resolvePublicUDP(destination)
+		if resolveErr == nil {
+			_, _ = udp.WriteToUDP(payload, address)
+		}
+		select {
+		case <-done:
+			return
+		default:
+		}
 	}
 }
 
@@ -358,6 +516,100 @@ func proxyBidirectional(left, right io.ReadWriteCloser) {
 		done <- struct{}{}
 	}()
 	<-done
+}
+
+type bufferedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c *bufferedConn) Read(buffer []byte) (int, error) {
+	return c.reader.Read(buffer)
+}
+
+// clientHelloHasALPN only inspects the first TLS ClientHello record. It never
+// consumes bytes, so non-ALX traffic can be forwarded byte-for-byte to Xray.
+func clientHelloHasALPN(reader *bufio.Reader, expected string) bool {
+	header, err := reader.Peek(5)
+	if err != nil || header[0] != 0x16 || header[1] != 0x03 {
+		return false
+	}
+	recordLength := int(binary.BigEndian.Uint16(header[3:5]))
+	if recordLength < 4 || recordLength > 32*1024-5 {
+		return false
+	}
+	record, err := reader.Peek(5 + recordLength)
+	if err != nil {
+		return false
+	}
+	handshake := record[5:]
+	if len(handshake) < 4 || handshake[0] != 0x01 {
+		return false
+	}
+	bodyLength := int(handshake[1])<<16 | int(handshake[2])<<8 | int(handshake[3])
+	if bodyLength+4 > len(handshake) {
+		return false
+	}
+	body := handshake[4 : 4+bodyLength]
+	if len(body) < 35 {
+		return false
+	}
+	offset := 34
+	sessionLength := int(body[offset])
+	offset++
+	if offset+sessionLength+2 > len(body) {
+		return false
+	}
+	offset += sessionLength
+	cipherLength := int(binary.BigEndian.Uint16(body[offset : offset+2]))
+	offset += 2
+	if offset+cipherLength+1 > len(body) {
+		return false
+	}
+	offset += cipherLength
+	compressionLength := int(body[offset])
+	offset++
+	if offset+compressionLength+2 > len(body) {
+		return false
+	}
+	offset += compressionLength
+	extensionsLength := int(binary.BigEndian.Uint16(body[offset : offset+2]))
+	offset += 2
+	if offset+extensionsLength > len(body) {
+		return false
+	}
+	end := offset + extensionsLength
+	for offset+4 <= end {
+		extensionType := binary.BigEndian.Uint16(body[offset : offset+2])
+		extensionLength := int(binary.BigEndian.Uint16(body[offset+2 : offset+4]))
+		offset += 4
+		if offset+extensionLength > end {
+			return false
+		}
+		if extensionType == 16 && alpnContains(body[offset:offset+extensionLength], expected) {
+			return true
+		}
+		offset += extensionLength
+	}
+	return false
+}
+
+func alpnContains(extension []byte, expected string) bool {
+	if len(extension) < 2 || int(binary.BigEndian.Uint16(extension[:2])) != len(extension)-2 {
+		return false
+	}
+	for offset := 2; offset < len(extension); {
+		length := int(extension[offset])
+		offset++
+		if length == 0 || offset+length > len(extension) {
+			return false
+		}
+		if string(extension[offset:offset+length]) == expected {
+			return true
+		}
+		offset += length
+	}
+	return false
 }
 
 type replayCache struct {
