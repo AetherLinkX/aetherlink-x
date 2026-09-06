@@ -143,6 +143,9 @@ jobs:
               --title "AetherLink X Client — development build" \
               --notes "Android client built with an unmodified upstream Xray core. AetherLink X is currently a clean VLESS-compatible baseline name."
           fi
+          gh release edit client-dev --prerelease \
+            --title "AetherLink X Client — development build" \
+            --notes "Android client built with an unmodified upstream Xray core. AetherLink X is currently a clean VLESS-compatible baseline name."
           gh release delete-asset client-dev aetherlink-x-client-linux-x64.tar.gz --yes 2>/dev/null || true
           gh release delete-asset client-dev aetherlink-x-client-linux-SHA256SUMS.txt --yes 2>/dev/null || true
           gh release upload client-dev \
