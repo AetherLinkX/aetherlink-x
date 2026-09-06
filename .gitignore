@@ -8,3 +8,4 @@ dist/**/*.sha256
 dist/**/*.exe
 dist/linux-*/xray-aetherlinkx
 /SHA256SUMS
+test-server/*.private.*
