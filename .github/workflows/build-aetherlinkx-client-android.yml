@@ -6,6 +6,7 @@ on:
     branches: [main, "alx/**"]
     paths:
       - "client/android/**"
+      - "core/alx/**"
       - ".github/workflows/build-aetherlinkx-client-android.yml"
 
 concurrency:
@@ -61,6 +62,10 @@ jobs:
 
       - uses: android-actions/setup-android@v4
 
+      - name: Test AetherLink Native core
+        working-directory: core/alx
+        run: go test ./...
+
       - name: Install Android NDK
         shell: bash
         run: |
@@ -79,12 +84,15 @@ jobs:
           git -C "$WRAPPER" checkout --detach "$ANDROIDLIB_COMMIT"
           cd "$WRAPPER"
           go mod edit -replace "github.com/xtls/xray-core=$CORE"
+          go mod edit -require "github.com/AetherLinkX/aetherlink-x/core/alx@v0.0.0"
+          go mod edit -replace "github.com/AetherLinkX/aetherlink-x/core/alx=$GITHUB_WORKSPACE/core/alx"
           go mod tidy
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           "$(go env GOPATH)/bin/gomobile" init
           "$(go env GOPATH)/bin/gomobile" bind -v -androidapi 24 -trimpath \
-            -ldflags='-s -w -buildid= -checklinkname=0' ./
+            -ldflags='-s -w -buildid= -checklinkname=0' \
+            -o libv2ray.aar ./ github.com/AetherLinkX/aetherlink-x/core/alx/mobile
           install -d "$GITHUB_WORKSPACE/client/android/app/libs"
           install -m 0644 libv2ray.aar "$GITHUB_WORKSPACE/client/android/app/libs/libv2ray.aar"
           install -m 0644 libv2ray-sources.jar "$GITHUB_WORKSPACE/client/android/app/libs/libv2ray-sources.jar"

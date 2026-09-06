@@ -3,7 +3,7 @@ package com.palazik.vpn.data.model
 import java.util.UUID
 
 enum class Protocol {
-    AETHERLINK_X, VMESS, VLESS, SHADOWSOCKS, TROJAN,
+    AETHERLINK_X, AETHERLINK_NATIVE, VMESS, VLESS, SHADOWSOCKS, TROJAN,
     HYSTERIA2, WIREGUARD, SOCKS5, HTTP,
     TUIC, ANYTLS
     // XHTTP removed — it is a Transport, not a Protocol (use VLESS + Transport.XHTTP)

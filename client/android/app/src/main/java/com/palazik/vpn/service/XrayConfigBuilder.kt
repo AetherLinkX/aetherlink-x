@@ -7,6 +7,7 @@ import org.json.JSONObject
 object XrayConfigBuilder {
     internal fun coreProtocolName(protocol: Protocol): String = when (protocol) {
         Protocol.AETHERLINK_X, Protocol.VLESS -> "vless"
+        Protocol.AETHERLINK_NATIVE -> error("ALX/1 native profiles do not use Xray")
         else -> protocol.name.lowercase()
     }
 
@@ -170,6 +171,7 @@ object XrayConfigBuilder {
         put("tag", "proxy")
 
         when (profile.protocol) {
+            Protocol.AETHERLINK_NATIVE -> error("ALX/1 native profiles do not use Xray")
             // Clean baseline: AetherLink X is a product name for an unchanged
             // VLESS profile. The generated Xray config is byte-for-byte the same
             // shape as the ordinary VLESS branch and needs no patched core.
@@ -188,7 +190,8 @@ object XrayConfigBuilder {
 
         // SS handles its own framing; streamSettings causes TLS handshake against plain SS servers
         val needsStream = profile.protocol !in listOf(
-            Protocol.HYSTERIA2, Protocol.WIREGUARD, Protocol.SHADOWSOCKS, Protocol.HTTP
+            Protocol.AETHERLINK_NATIVE, Protocol.HYSTERIA2, Protocol.WIREGUARD,
+            Protocol.SHADOWSOCKS, Protocol.HTTP
         )
         if (needsStream) {
             val stream = buildStreamSettings(profile)
@@ -208,7 +211,7 @@ object XrayConfigBuilder {
         // AnyTLS has its own session multiplexing, so xray mux must stay off.
         // Per-profile override (#22): the user can force mux off via profile.muxEnabled.
         val useMux = profile.muxEnabled && profile.protocol !in listOf(
-            Protocol.SHADOWSOCKS, Protocol.TROJAN, Protocol.ANYTLS,
+            Protocol.AETHERLINK_NATIVE, Protocol.SHADOWSOCKS, Protocol.TROJAN, Protocol.ANYTLS,
             Protocol.HYSTERIA2, Protocol.WIREGUARD, Protocol.TUIC, Protocol.SOCKS5, Protocol.HTTP
         ) && profile.transport !in listOf(
             Transport.XHTTP, Transport.GRPC, Transport.H2, Transport.QUIC,

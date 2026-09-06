@@ -10,7 +10,8 @@ import java.util.UUID
  * Encodes/decodes share-links for all supported protocols.
  *
  * Supported import schemes:
- *   aetherlinkx://  vmess://  vless://  ss://  trojan://  hysteria2://  wireguard://  socks5://
+ *   aetherlink:// (native ALX/1)  aetherlinkx:// (VLESS baseline)  vmess://  vless://
+ *   ss://  trojan://  hysteria2://  wireguard://  socks5://
  *   tuic://   xhttp://  palazikvpn://  (palazikVPN proprietary share)
  *
  * Export always produces a palazikvpn:// URI plus the native URI.
@@ -72,6 +73,7 @@ object ProfileCodec {
         val scheme = trimmed.substringBefore("://", "").lowercase()
         when {
             scheme == "palazikvpn" || scheme == "alxclient" -> decodePalazik(trimmed)
+            trimmed.startsWith("aetherlink://", true) -> decodeAetherLinkNative(trimmed)
             trimmed.startsWith("aetherlinkx://", true) -> decodeAetherLinkX(trimmed)
             trimmed.startsWith("vmess://")      -> decodeVmess(trimmed)
             trimmed.startsWith("vless://")      -> decodeVless(trimmed)
@@ -412,6 +414,7 @@ object ProfileCodec {
 
     fun encodeNative(p: VpnProfile): String = when (p.protocol) {
         Protocol.AETHERLINK_X -> encodeAetherLinkX(p)
+        Protocol.AETHERLINK_NATIVE -> encodeAetherLinkNative(p)
         Protocol.VMESS       -> encodeVmess(p)
         Protocol.VLESS       -> encodeVless(p)      // covers XHTTP transport too
         Protocol.SHADOWSOCKS -> encodeShadowsocks(p)
@@ -611,6 +614,25 @@ object ProfileCodec {
     private fun decodeAetherLinkX(raw: String): VpnProfile =
         decodeVless(raw.replaceFirst("aetherlinkx://", "vless://", ignoreCase = true))
             .copy(protocol = Protocol.AETHERLINK_X)
+
+    /** Native ALX/1 links never pass through the VLESS decoder. */
+    private fun decodeAetherLinkNative(raw: String): VpnProfile {
+        val uri = Uri.parse(raw)
+        val params = uri.queryParameterNames.associateWith { uri.getQueryParameter(it) ?: "" }
+        return VpnProfile(
+            name = Uri.decode(uri.fragment ?: "AetherLink Native"),
+            protocol = Protocol.AETHERLINK_NATIVE,
+            address = uri.host ?: "",
+            port = uri.port.takeIf { it > 0 } ?: 443,
+            uuid = uri.userInfo ?: "", // per-client 256-bit ALX token
+            transport = Transport.QUIC,
+            security = Security.TLS,
+            sni = params["sni"]?.ifBlank { "www.yahoo.com" } ?: "www.yahoo.com",
+            publicKey = params["pin"] ?: "", // SHA-256 SPKI pin
+            alpn = "h3",
+            muxEnabled = false,
+        )
+    }
 
     private fun decodeShadowsocks(raw: String): VpnProfile {
         val fragment = raw.substringAfter("#", "Shadowsocks")
@@ -893,6 +915,15 @@ object ProfileCodec {
 
     private fun encodeAetherLinkX(p: VpnProfile): String =
         encodeVless(p).replaceFirst("vless://", "aetherlinkx://")
+
+    private fun encodeAetherLinkNative(p: VpnProfile): String =
+        Uri.Builder().scheme("aetherlink")
+            .encodedAuthority(buildEncodedAuthority(p.address, p.port, p.uuid))
+            .appendQueryParameter("pin", p.publicKey)
+            .appendQueryParameter("sni", p.sni.ifBlank { "www.yahoo.com" })
+            .fragment(p.name)
+            .build()
+            .toString()
 
     /**
      * XHTTP `extra` is transported as URI-escaped raw JSON by v2rayNG/Remnawave.

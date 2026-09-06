@@ -1,5 +1,6 @@
 package com.palazik.vpn.service
 
+import alxmobile.Alxmobile
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
@@ -74,6 +75,7 @@ class palazikVpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var coreController: CoreController? = null
+    private var nativeCoreRunning: Boolean = false
     private var tunBridge: TProxyService? = null
     private var localSocksPort: Int = 0
     private var sessionBytesIn: Long = 0L
@@ -208,14 +210,14 @@ class palazikVpnService : VpnService() {
                 // fresh private port avoids collisions without trying to kill other apps.
                 val socksPort = LocalProxyEndpoint.allocate()
                 localSocksPort = socksPort
-                val config = XrayConfigBuilder.build(
+                val isNativeAlx = profile.protocol == com.palazik.vpn.data.model.Protocol.AETHERLINK_NATIVE
+                val xrayConfig = if (isNativeAlx) null else XrayConfigBuilder.build(
                     profile = profile,
                     settings = settings,
                     localSocksPort = socksPort,
                     includeHttpInbound = false,
                     includeNativeTun = false,
                 )
-                Log.d(TAG, "Xray config built for ${profile.name}")
 
                 // Register network callback BEFORE establish() so setUnderlyingNetworks
                 // is set before the TUN interface captures all traffic
@@ -231,36 +233,49 @@ class palazikVpnService : VpnService() {
                 vpnInterface = iface
                 Log.d(TAG, "TUN established, fd=${iface.fd}")
 
-                val controller = Libv2ray.newCoreController(V2RayCallback())
-                controller.registerProcessFinder(object : ProcessFinder {
-                    override fun findProcessByConnection(
-                        network: String, src: String, srcPort: Long,
-                        dst: String, dstPort: Long,
-                    ): Long {
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return -1L
-                        val protocol = when (network.lowercase()) {
-                            "tcp" -> OsConstants.IPPROTO_TCP
-                            "udp" -> OsConstants.IPPROTO_UDP
-                            else -> return -1L
-                        }
-                        if (src.isBlank() || dst.isBlank() || dstPort == 0L) return -1L
-                        return runCatching {
-                            connectivity.getConnectionOwnerUid(
-                                protocol,
-                                InetSocketAddress(src, srcPort.toInt()),
-                                InetSocketAddress(dst, dstPort.toInt()),
-                            ).toLong()
-                        }.getOrDefault(-1L)
+                val controller = if (isNativeAlx) {
+                    val nativeConfig = JSONObject().apply {
+                        put("listen", "${LocalProxyEndpoint.ipv4Loopback}:$socksPort")
+                        put("server", "${profile.address}:${profile.port}")
+                        put("token", profile.uuid)
+                        put("certificatePin", profile.publicKey)
+                        put("serverName", profile.sni.ifBlank { "www.yahoo.com" })
+                        put("handshakeTimeoutMs", 10_000)
+                    }.toString()
+                    Alxmobile.startClient(nativeConfig)
+                    check(Alxmobile.isRunning()) { "ALX/1 native core stopped during startup" }
+                    nativeCoreRunning = true
+                    addDiagnostic("ALX/1 authenticated QUIC channel established")
+                    null
+                } else {
+                    Libv2ray.newCoreController(V2RayCallback()).also { created ->
+                        created.registerProcessFinder(object : ProcessFinder {
+                            override fun findProcessByConnection(
+                                network: String, src: String, srcPort: Long,
+                                dst: String, dstPort: Long,
+                            ): Long {
+                                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return -1L
+                                val protocol = when (network.lowercase()) {
+                                    "tcp" -> OsConstants.IPPROTO_TCP
+                                    "udp" -> OsConstants.IPPROTO_UDP
+                                    else -> return -1L
+                                }
+                                if (src.isBlank() || dst.isBlank() || dstPort == 0L) return -1L
+                                return runCatching {
+                                    connectivity.getConnectionOwnerUid(
+                                        protocol,
+                                        InetSocketAddress(src, srcPort.toInt()),
+                                        InetSocketAddress(dst, dstPort.toInt()),
+                                    ).toLong()
+                                }.getOrDefault(-1L)
+                            }
+                        })
+                        coreController = created
+                        // The known-good Xray path remains unchanged for every baseline profile.
+                        created.startLoop(requireNotNull(xrayConfig), 0)
+                        check(created.isRunning) { "Xray core stopped during startup" }
                     }
-                })
-                coreController = controller
-
-                // Keep the protocol core behind a regular SOCKS inbound and let the
-                // dedicated hev bridge own Android's TUN descriptor. Passing the fd to
-                // Xray's built-in TUN works on some devices but can create a routing loop
-                // where core probes pass while device traffic never reaches the outbound.
-                controller.startLoop(config, 0)
-                check(controller.isRunning) { "Xray core stopped during startup" }
+                }
 
                 val bridge = runCatching {
                     TProxyService(
@@ -272,7 +287,10 @@ class palazikVpnService : VpnService() {
                         // startLoop() starts Xray synchronously, nevertheless verify the
                         // actual listener that HEV will use.  A process-level running flag
                         // cannot prove that a specific inbound is reachable.
-                        check(it.awaitSocksReady()) { "Xray SOCKS listener is not ready" }
+                        check(it.awaitSocksReady()) {
+                            if (isNativeAlx) "ALX/1 SOCKS listener is not ready"
+                            else "Xray SOCKS listener is not ready"
+                        }
                         check(it.start()) { "hev tunnel failed to start" }
                         check(it.awaitRunning()) { "hev worker exited during startup: ${it.logTail()}" }
                     }
@@ -284,15 +302,22 @@ class palazikVpnService : VpnService() {
                     )
                 }
                 tunBridge = bridge
-                addDiagnostic("Android data plane: hev-tun → SOCKS → Xray")
+                addDiagnostic(
+                    if (isNativeAlx) "Android data plane: hev-tun → SOCKS → ALX/1 QUIC"
+                    else "Android data plane: hev-tun → SOCKS → Xray"
+                )
                 LocalProxyEndpoint.publish(socksPort)
 
                 _connectionState.value = ServiceState.RUNNING
                 _connectedSince.value = System.currentTimeMillis()
                 addDiagnostic("Connected: ${profile.name}")
                 updateNotification("Подключено — ${profile.name}")
-                startStatsPolling()
-                startEgressVerification(controller, settings, profile.name)
+                startStatsPolling(isNativeAlx)
+                if (isNativeAlx) {
+                    startNativeEgressVerification(profile.name)
+                } else {
+                    startEgressVerification(requireNotNull(controller), settings, profile.name)
+                }
 
             } catch (e: Exception) {
                 Log.e(TAG, "VPN start failed: ${e.message}", e)
@@ -500,6 +525,10 @@ class palazikVpnService : VpnService() {
         localSocksPort = 0
         try { tunBridge?.stop() } catch (e: Throwable) { Log.w(TAG, "hev stop: ${e.message}") }
         tunBridge = null
+        if (nativeCoreRunning) {
+            try { Alxmobile.stopClient() } catch (e: Throwable) { Log.w(TAG, "ALX stop: ${e.message}") }
+            nativeCoreRunning = false
+        }
         try { coreController?.stopLoop() } catch (e: Exception) { Log.w(TAG, "stopLoop: ${e.message}") }
         coreController = null
 
@@ -534,6 +563,11 @@ class palazikVpnService : VpnService() {
 
         try { tunBridge?.stop() } catch (e: Throwable) { Log.w(TAG, "hev stop: ${e.message}") }
         tunBridge = null
+
+        if (nativeCoreRunning) {
+            try { Alxmobile.stopClient() } catch (e: Throwable) { Log.w(TAG, "ALX stop: ${e.message}") }
+            nativeCoreRunning = false
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try { connectivity.unregisterNetworkCallback(defaultNetworkCallback) } catch (_: Exception) {}
@@ -571,7 +605,7 @@ class palazikVpnService : VpnService() {
 
     // ── Stats polling ─────────────────────────────────────────────────────────
 
-    private fun startStatsPolling() {
+    private fun startStatsPolling(nativeAlx: Boolean = false) {
         statsJob?.cancel()
         sessionBytesIn = 0L
         sessionBytesOut = 0L
@@ -582,21 +616,28 @@ class palazikVpnService : VpnService() {
             while (isActive) {
                 delay(1000)
                 try {
-                    val controller = coreController ?: break
-                    check(controller.isRunning) { "Xray core stopped unexpectedly" }
                     check(tunBridge?.isRunning() == true) { "Android TUN bridge stopped unexpectedly" }
-                    controller.queryAllOutboundTrafficStats()
-                        .split(';')
-                        .filter(String::isNotBlank)
-                        .forEach { row ->
-                            val parts = row.split(',')
-                            if (parts.size != 3 || parts[0] != "proxy") return@forEach
-                            val value = parts[2].toLongOrNull()?.coerceAtLeast(0L) ?: return@forEach
-                            when (parts[1]) {
-                                "uplink" -> sessionBytesOut += value
-                                "downlink" -> sessionBytesIn += value
+                    if (nativeAlx) {
+                        check(nativeCoreRunning && Alxmobile.isRunning()) { "ALX/1 core stopped unexpectedly" }
+                        val stats = JSONObject(Alxmobile.statsJson())
+                        sessionBytesOut = stats.optLong("bytesUp", 0L).coerceAtLeast(0L)
+                        sessionBytesIn = stats.optLong("bytesDown", 0L).coerceAtLeast(0L)
+                    } else {
+                        val controller = coreController ?: break
+                        check(controller.isRunning) { "Xray core stopped unexpectedly" }
+                        controller.queryAllOutboundTrafficStats()
+                            .split(';')
+                            .filter(String::isNotBlank)
+                            .forEach { row ->
+                                val parts = row.split(',')
+                                if (parts.size != 3 || parts[0] != "proxy") return@forEach
+                                val value = parts[2].toLongOrNull()?.coerceAtLeast(0L) ?: return@forEach
+                                when (parts[1]) {
+                                    "uplink" -> sessionBytesOut += value
+                                    "downlink" -> sessionBytesIn += value
+                                }
                             }
-                        }
+                    }
                     _bytesOut.value = sessionBytesOut
                     _bytesIn.value = sessionBytesIn
 
@@ -611,7 +652,8 @@ class palazikVpnService : VpnService() {
                             addDiagnostic(
                                 "HEV packets tx=${bridgeStats[0]}/${bridgeStats[1]}B " +
                                     "rx=${bridgeStats[2]}/${bridgeStats[3]}B; " +
-                                    "Xray proxy up=$sessionBytesOut down=$sessionBytesIn",
+                                    "${if (nativeAlx) "ALX/1" else "Xray proxy"} " +
+                                        "up=$sessionBytesOut down=$sessionBytesIn",
                             )
                             lastBridgeStats = bridgeStats.copyOf()
                             lastBridgeDiagnosticAt = now
@@ -621,7 +663,9 @@ class palazikVpnService : VpnService() {
                 } catch (e: Exception) {
                     transientFailures++
                     addDiagnostic("Tunnel health check failed ($transientFailures/3)")
-                    if (transientFailures >= 3 || coreController?.isRunning != true) {
+                    val coreStopped = if (nativeAlx) !nativeCoreRunning || !Alxmobile.isRunning()
+                        else coreController?.isRunning != true
+                    if (transientFailures >= 3 || coreStopped) {
                         _lastError.value = "Туннель неожиданно остановился. Повторите подключение"
                         withContext(Dispatchers.Main) { failVpn() }
                         break
@@ -723,6 +767,30 @@ class palazikVpnService : VpnService() {
      * REALITY handshake can exceed a short synthetic-probe timeout on a slow device
      * while normal application traffic succeeds moments later.
      */
+    private fun startNativeEgressVerification(profileName: String) {
+        egressVerificationJob?.cancel()
+        egressVerificationJob = scope.launch {
+            delay(1_200L)
+            val socksPort = localSocksPort
+            val result = runCatching {
+                withTimeout(30_000L) { TunnelDataPlaneProbe.run(socksPort) }
+            }
+            if (!isActive || !nativeCoreRunning || !Alxmobile.isRunning() || localSocksPort != socksPort) {
+                return@launch
+            }
+            result.onSuccess { probe ->
+                addDiagnostic(
+                    "ALX/1 verified via live SOCKS: HTTP ${probe.tcpStatus}, " +
+                        "payload=${probe.tcpBytes}B, UDP/DNS answers=${probe.dnsAnswers}",
+                )
+                updateNotification("Подключено — $profileName")
+            }.onFailure { error ->
+                addDiagnostic("ALX/1 self-test failed: ${error.message ?: error.javaClass.simpleName}")
+                updateNotification("Подключено — $profileName (проверка сети ожидается)")
+            }
+        }
+    }
+
     private fun startEgressVerification(
         controller: CoreController,
         settings: AppSettings,

@@ -1,0 +1,44 @@
+name: Build AetherLink Native Server
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "alx/**"]
+    paths:
+      - "core/alx/**"
+      - ".github/workflows/build-aetherlinkx-native-server.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  linux-amd64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.0"
+          cache-dependency-path: core/alx/go.sum
+      - name: Test protocol
+        working-directory: core/alx
+        run: go test -race ./...
+      - name: Build server
+        working-directory: core/alx
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go build -trimpath -ldflags='-s -w -buildid=' \
+            -o ../../aetherlink-native-server-linux-amd64 ./cmd/alx-server
+          sha256sum ../../aetherlink-native-server-linux-amd64 \
+            > ../../aetherlink-native-server-linux-amd64.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aetherlink-native-server-linux-amd64
+          retention-days: 30
+          path: |
+            aetherlink-native-server-linux-amd64
+            aetherlink-native-server-linux-amd64.sha256

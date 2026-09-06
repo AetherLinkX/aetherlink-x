@@ -35,6 +35,11 @@ object ProfileValidator {
         }
 
         when (profile.protocol) {
+            Protocol.AETHERLINK_NATIVE -> {
+                if (profile.uuid.length < 32) errors += "Для ALX/1 нужен 256-битный токен"
+                if (profile.publicKey.isBlank()) errors += "Для ALX/1 нужен отпечаток ключа сервера"
+                if (profile.transport != Transport.QUIC) errors += "ALX/1 Preview использует транспорт QUIC"
+            }
             Protocol.AETHERLINK_X, Protocol.VMESS, Protocol.VLESS -> {
                 if (!uuidRegex.matches(profile.uuid)) errors += "Для ${profile.protocol.name} нужен корректный UUID"
                 if (profile.security == Security.REALITY && profile.publicKey.isBlank()) {

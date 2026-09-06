@@ -1085,7 +1085,7 @@ private fun ManualProfileDialog(
                         modifier = Modifier.fillMaxWidth().menuAnchor(),
                     )
                     ExposedDropdownMenu(expanded = protoExpanded, onDismissRequest = { protoExpanded = false }) {
-                        listOf(Protocol.AETHERLINK_X, Protocol.VLESS, Protocol.VMESS, Protocol.SHADOWSOCKS, Protocol.TROJAN,
+                        listOf(Protocol.AETHERLINK_NATIVE, Protocol.AETHERLINK_X, Protocol.VLESS, Protocol.VMESS, Protocol.SHADOWSOCKS, Protocol.TROJAN,
                             Protocol.HYSTERIA2, Protocol.WIREGUARD, Protocol.SOCKS5, Protocol.HTTP, Protocol.TUIC,
                             Protocol.ANYTLS).forEach { p ->
                             DropdownMenuItem(text = { Text(p.name) }, onClick = { protocol = p; protoExpanded = false })
@@ -1100,7 +1100,7 @@ private fun ManualProfileDialog(
 
                 // Protocol-specific fields
                 when (protocol) {
-                    Protocol.AETHERLINK_X, Protocol.VMESS, Protocol.VLESS, Protocol.TROJAN, Protocol.SOCKS5, Protocol.HTTP, Protocol.TUIC, Protocol.ANYTLS -> {
+                    Protocol.AETHERLINK_NATIVE, Protocol.AETHERLINK_X, Protocol.VMESS, Protocol.VLESS, Protocol.TROJAN, Protocol.SOCKS5, Protocol.HTTP, Protocol.TUIC, Protocol.ANYTLS -> {
                         if (protocol == Protocol.TROJAN || protocol == Protocol.ANYTLS) {
                             SecretTextField(value = uuid, onValueChange = { uuid = it }, label = "Пароль")
                         } else if (protocol == Protocol.SOCKS5 || protocol == Protocol.HTTP) {

@@ -59,6 +59,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="palazikvpn" />
                 <data android:scheme="alxclient" />
+                <data android:scheme="aetherlink" />
                 <data android:scheme="aetherlinkx" />
                 <data android:scheme="vmess" />
                 <data android:scheme="vless" />
