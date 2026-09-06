@@ -87,13 +87,23 @@ jobs:
           go mod edit -replace "github.com/xtls/xray-core=$CORE"
           go mod edit -require "github.com/AetherLinkX/aetherlink-x/core/alx@v0.0.0"
           go mod edit -replace "github.com/AetherLinkX/aetherlink-x/core/alx=$GITHUB_WORKSPACE/core/alx"
+          cat > alx_native.go <<'EOF'
+          package libv2ray
+
+          import alxmobile "github.com/AetherLinkX/aetherlink-x/core/alx/mobile"
+
+          func AlxStartClient(configJSON string) error { return alxmobile.StartClient(configJSON) }
+          func AlxStopClient()                         { alxmobile.StopClient() }
+          func AlxIsRunning() bool                     { return alxmobile.IsRunning() }
+          func AlxStatsJson() string                   { return alxmobile.StatsJson() }
+          EOF
           go mod tidy
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           "$(go env GOPATH)/bin/gomobile" init
           "$(go env GOPATH)/bin/gomobile" bind -v -androidapi 24 -trimpath \
             -ldflags='-s -w -buildid= -checklinkname=0' \
-            -o libv2ray.aar ./ github.com/AetherLinkX/aetherlink-x/core/alx/mobile
+            -o libv2ray.aar ./
           install -d "$GITHUB_WORKSPACE/client/android/app/libs"
           install -m 0644 libv2ray.aar "$GITHUB_WORKSPACE/client/android/app/libs/libv2ray.aar"
           install -m 0644 libv2ray-sources.jar "$GITHUB_WORKSPACE/client/android/app/libs/libv2ray-sources.jar"

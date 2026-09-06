@@ -1,6 +1,5 @@
 package com.palazik.vpn.service
 
-import alxmobile.Alxmobile
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
@@ -244,10 +243,10 @@ class palazikVpnService : VpnService() {
                         put("handshakeTimeoutMs", 10_000)
 						put("quicProbeTimeoutMs", 1_500)
                     }.toString()
-                    Alxmobile.startClient(nativeConfig)
-                    check(Alxmobile.isRunning()) { "ALX/1 native core stopped during startup" }
+					Libv2ray.alxStartClient(nativeConfig)
+					check(Libv2ray.alxIsRunning()) { "ALX/1 native core stopped during startup" }
                     nativeCoreRunning = true
-					val nativeTransport = runCatching { JSONObject(Alxmobile.statsJson()).optString("transport", "unknown") }.getOrDefault("unknown")
+					val nativeTransport = runCatching { JSONObject(Libv2ray.alxStatsJson()).optString("transport", "unknown") }.getOrDefault("unknown")
 					addDiagnostic("ALX/1 authenticated channel established ($nativeTransport)")
                     null
                 } else {
@@ -529,7 +528,7 @@ class palazikVpnService : VpnService() {
         try { tunBridge?.stop() } catch (e: Throwable) { Log.w(TAG, "hev stop: ${e.message}") }
         tunBridge = null
         if (nativeCoreRunning) {
-            try { Alxmobile.stopClient() } catch (e: Throwable) { Log.w(TAG, "ALX stop: ${e.message}") }
+			try { Libv2ray.alxStopClient() } catch (e: Throwable) { Log.w(TAG, "ALX stop: ${e.message}") }
             nativeCoreRunning = false
         }
         try { coreController?.stopLoop() } catch (e: Exception) { Log.w(TAG, "stopLoop: ${e.message}") }
@@ -568,7 +567,7 @@ class palazikVpnService : VpnService() {
         tunBridge = null
 
         if (nativeCoreRunning) {
-            try { Alxmobile.stopClient() } catch (e: Throwable) { Log.w(TAG, "ALX stop: ${e.message}") }
+			try { Libv2ray.alxStopClient() } catch (e: Throwable) { Log.w(TAG, "ALX stop: ${e.message}") }
             nativeCoreRunning = false
         }
 
@@ -621,8 +620,8 @@ class palazikVpnService : VpnService() {
                 try {
                     check(tunBridge?.isRunning() == true) { "Android TUN bridge stopped unexpectedly" }
                     if (nativeAlx) {
-                        check(nativeCoreRunning && Alxmobile.isRunning()) { "ALX/1 core stopped unexpectedly" }
-                        val stats = JSONObject(Alxmobile.statsJson())
+						check(nativeCoreRunning && Libv2ray.alxIsRunning()) { "ALX/1 core stopped unexpectedly" }
+						val stats = JSONObject(Libv2ray.alxStatsJson())
                         sessionBytesOut = stats.optLong("bytesUp", 0L).coerceAtLeast(0L)
                         sessionBytesIn = stats.optLong("bytesDown", 0L).coerceAtLeast(0L)
                     } else {
@@ -666,7 +665,7 @@ class palazikVpnService : VpnService() {
                 } catch (e: Exception) {
                     transientFailures++
                     addDiagnostic("Tunnel health check failed ($transientFailures/3)")
-                    val coreStopped = if (nativeAlx) !nativeCoreRunning || !Alxmobile.isRunning()
+					val coreStopped = if (nativeAlx) !nativeCoreRunning || !Libv2ray.alxIsRunning()
                         else coreController?.isRunning != true
                     if (transientFailures >= 3 || coreStopped) {
                         _lastError.value = "Туннель неожиданно остановился. Повторите подключение"
@@ -778,7 +777,7 @@ class palazikVpnService : VpnService() {
             val result = runCatching {
                 withTimeout(30_000L) { TunnelDataPlaneProbe.run(socksPort) }
             }
-            if (!isActive || !nativeCoreRunning || !Alxmobile.isRunning() || localSocksPort != socksPort) {
+			if (!isActive || !nativeCoreRunning || !Libv2ray.alxIsRunning() || localSocksPort != socksPort) {
                 return@launch
             }
             result.onSuccess { probe ->
