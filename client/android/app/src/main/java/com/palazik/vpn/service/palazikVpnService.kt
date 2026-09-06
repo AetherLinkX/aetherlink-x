@@ -234,7 +234,7 @@ class palazikVpnService : VpnService() {
 
                 val controller = if (isNativeAlx) {
                     val nativeConfig = JSONObject().apply {
-                        put("listen", "${LocalProxyEndpoint.ipv4Loopback}:$socksPort")
+                        put("listen", "${LocalProxyEndpoint.ipv4Loopback.hostAddress}:$socksPort")
                         put("server", "${profile.address}:${profile.port}")
 						put("fallbackServer", "${profile.address}:${profile.fallbackPort}")
                         put("token", profile.uuid)

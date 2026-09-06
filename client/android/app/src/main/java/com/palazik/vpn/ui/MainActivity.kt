@@ -117,7 +117,7 @@ class MainActivity : ComponentActivity() {
             "palazikvpn", "alxclient" ->
                 vm.importFromText(data.getQueryParameter("config") ?: data.toString())
             // Other proxy schemes opened from a browser / file manager
-            "aetherlinkx", "vmess", "vless", "ss", "trojan", "hysteria2", "wireguard", "socks5", "tuic", "anytls", "xhttp", "httpproxy" ->
+            "aetherlink", "aetherlinkx", "vmess", "vless", "ss", "trojan", "hysteria2", "wireguard", "socks5", "tuic", "anytls", "xhttp", "httpproxy" ->
                 vm.importFromText(data.toString())
             "http", "https" -> vm.importFromText(data.toString())
         }
