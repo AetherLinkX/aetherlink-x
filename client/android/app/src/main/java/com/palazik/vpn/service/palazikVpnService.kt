@@ -74,6 +74,7 @@ class palazikVpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var coreController: CoreController? = null
+    private var coreCallback: V2RayCallback? = null
     private var nativeCoreRunning: Boolean = false
     private var tunBridge: TProxyService? = null
     private var localSocksPort: Int = 0
@@ -250,7 +251,9 @@ class palazikVpnService : VpnService() {
 					addDiagnostic("ALX/1 authenticated channel established ($nativeTransport)")
                     null
                 } else {
-                    Libv2ray.newCoreController(V2RayCallback()).also { created ->
+                    val callback = V2RayCallback()
+                    coreCallback = callback
+                    Libv2ray.newCoreController(callback).also { created ->
                         created.registerProcessFinder(object : ProcessFinder {
                             override fun findProcessByConnection(
                                 network: String, src: String, srcPort: Long,
@@ -531,8 +534,10 @@ class palazikVpnService : VpnService() {
 			try { Libv2ray.alxStopClient() } catch (e: Throwable) { Log.w(TAG, "ALX stop: ${e.message}") }
             nativeCoreRunning = false
         }
+        coreCallback?.expectShutdown()
         try { coreController?.stopLoop() } catch (e: Exception) { Log.w(TAG, "stopLoop: ${e.message}") }
         coreController = null
+        coreCallback = null
 
         // Small delay to allow async core stop before closing TUN (v2rayNG: Thread.sleep(100))
         try { Thread.sleep(100) } catch (_: InterruptedException) {}
@@ -575,8 +580,10 @@ class palazikVpnService : VpnService() {
             try { connectivity.unregisterNetworkCallback(defaultNetworkCallback) } catch (_: Exception) {}
         }
 
+        coreCallback?.expectShutdown()
         try { coreController?.stopLoop() } catch (e: Exception) { Log.w(TAG, "stopLoop: ${e.message}") }
         coreController = null
+        coreCallback = null
         try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
         try { vpnInterface?.close() } catch (e: Exception) { Log.w(TAG, "iface close: ${e.message}") }
         vpnInterface = null
@@ -591,6 +598,12 @@ class palazikVpnService : VpnService() {
     // ── CoreCallbackHandler ───────────────────────────────────────────────────
 
     private inner class V2RayCallback : CoreCallbackHandler {
+        private val expectedShutdown = AtomicBoolean(false)
+
+        fun expectShutdown() {
+            expectedShutdown.set(true)
+        }
+
         override fun onEmitStatus(level: Long, msg: String): Long {
             Log.d(TAG, "xray[$level]: $msg")
             addDiagnostic("xray[$level]: $msg")
@@ -598,6 +611,10 @@ class palazikVpnService : VpnService() {
         }
         override fun shutdown(): Long {
             Log.d(TAG, "xray: shutdown")
+            if (expectedShutdown.get()) {
+                addDiagnostic("xray stopped as requested")
+                return 0L
+            }
             addDiagnostic("xray requested shutdown")
             scope.launch(Dispatchers.Main) { stopVpn() }
             return 0L
