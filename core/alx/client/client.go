@@ -121,6 +121,7 @@ func Start(config Config) (*Runtime, error) {
 		cancel()
 		return nil, fmt.Errorf("connect ALX server: %w", err)
 	}
+	runtime.lastError.Store("")
 
 	runtime.wait.Add(1)
 	go runtime.acceptLoop()
@@ -334,6 +335,9 @@ func (m *connectionManager) openStream(ctx context.Context) (io.ReadWriteCloser,
 		return fallback, nil, nil
 	}
 	stream, err := connection.OpenStreamSync(ctx)
+	if err != nil {
+		m.invalidate(connection)
+	}
 	return stream, connection, err
 }
 
@@ -348,11 +352,11 @@ func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) 
 		return nil, err
 	}
 	quicConfig := &quic.Config{
-		HandshakeIdleTimeout:          time.Duration(m.runtime.config.HandshakeTimeoutMS) * time.Millisecond,
-		MaxIdleTimeout:                75 * time.Second,
-		KeepAlivePeriod:               15 * time.Second,
-		EnableDatagrams:               true,
-		MaxIncomingStreams:            256,
+		HandshakeIdleTimeout:           time.Duration(m.runtime.config.HandshakeTimeoutMS) * time.Millisecond,
+		MaxIdleTimeout:                 75 * time.Second,
+		KeepAlivePeriod:                15 * time.Second,
+		EnableDatagrams:                true,
+		MaxIncomingStreams:             256,
 		InitialStreamReceiveWindow:     1 << 20,
 		MaxStreamReceiveWindow:         8 << 20,
 		InitialConnectionReceiveWindow: 4 << 20,
@@ -420,7 +424,7 @@ func (m *connectionManager) tlsConfig(nextProtocols []string) (*tls.Config, erro
 		MinVersion:         tls.VersionTLS13,
 		ServerName:         m.runtime.config.ServerName,
 		NextProtos:         nextProtocols,
-		ClientSessionCache:  m.sessionCache,
+		ClientSessionCache: m.sessionCache,
 		InsecureSkipVerify: true, // Replaced by mandatory SPKI verification below.
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			if len(rawCerts) == 0 {
@@ -459,6 +463,7 @@ func (m *connectionManager) close() {
 	for _, association := range m.udp {
 		association.cancel()
 		_ = association.local.Close()
+		association.closeTransport()
 	}
 	clear(m.udp)
 	m.udpMu.Unlock()
@@ -467,28 +472,35 @@ func (m *connectionManager) close() {
 func (m *connectionManager) registerUDP(association *udpAssociation) error {
 	ctx, cancel := context.WithTimeout(association.ctx, time.Duration(m.runtime.config.HandshakeTimeoutMS)*time.Millisecond)
 	defer cancel()
-	stream, connection, err := m.openStream(ctx)
+	stream, connection, err := m.openUDPTransport(ctx, association.id)
 	if err != nil {
 		return err
 	}
-	if err := alx.WriteOpen(stream, alx.OpenRequest{Command: alx.CommandUDP, AssociationID: association.id}); err != nil {
+	association.replaceTransport(connection, stream)
+	m.udpMu.Lock()
+	m.udp[association.id] = association
+	m.udpMu.Unlock()
+	return nil
+}
+
+func (m *connectionManager) openUDPTransport(ctx context.Context, id uint32) (io.ReadWriteCloser, *quic.Conn, error) {
+	stream, connection, err := m.openStream(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := alx.WriteOpen(stream, alx.OpenRequest{Command: alx.CommandUDP, AssociationID: id}); err != nil {
 		_ = stream.Close()
-		return err
+		return nil, nil, err
 	}
 	status := []byte{0xff}
 	if _, err := io.ReadFull(stream, status); err != nil || status[0] != alx.StatusOK {
 		_ = stream.Close()
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
-		return errors.New("ALX UDP association rejected")
+		return nil, nil, errors.New("ALX UDP association rejected")
 	}
-	association.connection = connection
-	association.stream = stream
-	m.udpMu.Lock()
-	m.udp[association.id] = association
-	m.udpMu.Unlock()
-	return nil
+	return stream, connection, nil
 }
 
 func (m *connectionManager) unregisterUDP(id uint32) {
@@ -498,9 +510,7 @@ func (m *connectionManager) unregisterUDP(id uint32) {
 	m.udpMu.Unlock()
 	if association != nil {
 		association.cancel()
-		if association.stream != nil {
-			_ = association.stream.Close()
-		}
+		association.closeTransport()
 	}
 }
 
@@ -527,16 +537,18 @@ func (m *connectionManager) receiveDatagrams(connection *quic.Conn) {
 }
 
 type udpAssociation struct {
-	id         uint32
-	local      *net.UDPConn
-	clientAddr *net.UDPAddr
-	ctx        context.Context
-	cancel     context.CancelFunc
-	runtime    *Runtime
-	connection *quic.Conn
-	stream     io.ReadWriteCloser
-	writeMu    sync.Mutex
-	clientMu   sync.RWMutex
+	id          uint32
+	local       *net.UDPConn
+	clientAddr  *net.UDPAddr
+	ctx         context.Context
+	cancel      context.CancelFunc
+	runtime     *Runtime
+	connection  *quic.Conn
+	stream      io.ReadWriteCloser
+	transportMu sync.RWMutex
+	reconnectMu sync.Mutex
+	writeMu     sync.Mutex
+	clientMu    sync.RWMutex
 }
 
 func (a *udpAssociation) readLocal() error {
@@ -554,16 +566,7 @@ func (a *udpAssociation) readLocal() error {
 		a.clientAddr = sender
 		a.clientMu.Unlock()
 		a.runtime.bytesUp.Add(uint64(len(payload)))
-		datagram, encodeErr := alx.EncodeDatagram(alx.Datagram{AssociationID: a.id, Address: target, Payload: payload})
-		if a.connection != nil && encodeErr == nil && len(datagram) <= alx.FastDatagramLimit {
-			if err := a.connection.SendDatagram(datagram); err == nil {
-				continue
-			}
-		}
-		a.writeMu.Lock()
-		err = alx.WriteUDPFrame(a.stream, target, payload)
-		a.writeMu.Unlock()
-		if err != nil {
+		if err := a.send(target, payload); err != nil {
 			return err
 		}
 	}
@@ -571,11 +574,118 @@ func (a *udpAssociation) readLocal() error {
 
 func (a *udpAssociation) readReliable() error {
 	for {
-		address, payload, err := alx.ReadUDPFrame(a.stream)
+		_, stream := a.transport()
+		if stream == nil {
+			if err := a.reconnect(nil); err != nil {
+				a.runtime.setError(err)
+				if !a.waitRetry() {
+					return a.ctx.Err()
+				}
+				continue
+			}
+			continue
+		}
+		address, payload, err := alx.ReadUDPFrame(stream)
 		if err != nil {
-			return err
+			a.runtime.setError(err)
+			if reconnectErr := a.reconnect(stream); reconnectErr != nil {
+				a.runtime.setError(reconnectErr)
+				if !a.waitRetry() {
+					return a.ctx.Err()
+				}
+			}
+			continue
 		}
 		a.deliver(address, payload)
+	}
+}
+
+func (a *udpAssociation) send(address string, payload []byte) error {
+	datagram, encodeErr := alx.EncodeDatagram(alx.Datagram{AssociationID: a.id, Address: address, Payload: payload})
+	for {
+		if err := a.ctx.Err(); err != nil {
+			return err
+		}
+		connection, stream := a.transport()
+		if connection != nil && encodeErr == nil && len(datagram) <= alx.FastDatagramLimit {
+			if err := connection.SendDatagram(datagram); err == nil {
+				return nil
+			}
+		}
+		var writeErr error
+		if stream != nil {
+			a.writeMu.Lock()
+			writeErr = alx.WriteUDPFrame(stream, address, payload)
+			a.writeMu.Unlock()
+			if writeErr == nil {
+				return nil
+			}
+			a.runtime.setError(writeErr)
+		}
+		if err := a.reconnect(stream); err != nil {
+			a.runtime.setError(err)
+			if !a.waitRetry() {
+				return a.ctx.Err()
+			}
+		}
+	}
+}
+
+func (a *udpAssociation) reconnect(failed io.ReadWriteCloser) error {
+	a.reconnectMu.Lock()
+	defer a.reconnectMu.Unlock()
+	if err := a.ctx.Err(); err != nil {
+		return err
+	}
+	_, current := a.transport()
+	if current != nil && current != failed {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, time.Duration(a.runtime.config.HandshakeTimeoutMS)*time.Millisecond)
+	defer cancel()
+	stream, connection, err := a.runtime.manager.openUDPTransport(ctx, a.id)
+	if err != nil {
+		return fmt.Errorf("restore ALX UDP association: %w", err)
+	}
+	a.replaceTransport(connection, stream)
+	a.runtime.lastError.Store("")
+	return nil
+}
+
+func (a *udpAssociation) transport() (*quic.Conn, io.ReadWriteCloser) {
+	a.transportMu.RLock()
+	defer a.transportMu.RUnlock()
+	return a.connection, a.stream
+}
+
+func (a *udpAssociation) replaceTransport(connection *quic.Conn, stream io.ReadWriteCloser) {
+	a.transportMu.Lock()
+	previous := a.stream
+	a.connection = connection
+	a.stream = stream
+	a.transportMu.Unlock()
+	if previous != nil && previous != stream {
+		_ = previous.Close()
+	}
+}
+
+func (a *udpAssociation) closeTransport() {
+	a.transportMu.Lock()
+	stream := a.stream
+	a.connection = nil
+	a.stream = nil
+	a.transportMu.Unlock()
+	if stream != nil {
+		_ = stream.Close()
+	}
+}
+
+func (a *udpAssociation) waitRetry() bool {
+	select {
+	case <-a.ctx.Done():
+		return false
+	case <-time.After(250 * time.Millisecond):
+		return true
 	}
 }
 

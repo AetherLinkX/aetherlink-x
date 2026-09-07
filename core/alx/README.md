@@ -24,6 +24,8 @@ Properties of Preview 1:
   TLS/TCP without changing the profile;
 - QUIC flow-control windows grow adaptively up to 8 MiB per stream and 32 MiB
   per connection; TLS fallback reuses session tickets across connections;
+- long-lived SOCKS UDP associations reconnect in place after a transient QUIC
+  or server restart, so Android DNS does not require a manual VPN restart;
 - an optional ALPN gateway lets ALX and an existing Xray/REALITY service share
   TCP/443. ALX terminates only ClientHello messages advertising `alx/1`; every
   other byte stream is passed unchanged to the configured Xray backend.
