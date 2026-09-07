@@ -283,16 +283,21 @@ func (r *Runtime) handleUDP(control net.Conn) error {
 }
 
 type connectionManager struct {
-	runtime  *Runtime
-	mutex    sync.Mutex
-	conn     *quic.Conn
-	fallback atomic.Bool
-	udpMu    sync.RWMutex
-	udp      map[uint32]*udpAssociation
+	runtime      *Runtime
+	mutex        sync.Mutex
+	conn         *quic.Conn
+	fallback     atomic.Bool
+	sessionCache tls.ClientSessionCache
+	udpMu        sync.RWMutex
+	udp          map[uint32]*udpAssociation
 }
 
 func newConnectionManager(runtime *Runtime) *connectionManager {
-	return &connectionManager{runtime: runtime, udp: make(map[uint32]*udpAssociation)}
+	return &connectionManager{
+		runtime:      runtime,
+		sessionCache: tls.NewLRUClientSessionCache(64),
+		udp:          make(map[uint32]*udpAssociation),
+	}
 }
 
 func (m *connectionManager) probe(ctx context.Context) error {
@@ -343,11 +348,15 @@ func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) 
 		return nil, err
 	}
 	quicConfig := &quic.Config{
-		HandshakeIdleTimeout: time.Duration(m.runtime.config.HandshakeTimeoutMS) * time.Millisecond,
-		MaxIdleTimeout:       75 * time.Second,
-		KeepAlivePeriod:      15 * time.Second,
-		EnableDatagrams:      true,
-		MaxIncomingStreams:   256,
+		HandshakeIdleTimeout:          time.Duration(m.runtime.config.HandshakeTimeoutMS) * time.Millisecond,
+		MaxIdleTimeout:                75 * time.Second,
+		KeepAlivePeriod:               15 * time.Second,
+		EnableDatagrams:               true,
+		MaxIncomingStreams:            256,
+		InitialStreamReceiveWindow:     1 << 20,
+		MaxStreamReceiveWindow:         8 << 20,
+		InitialConnectionReceiveWindow: 4 << 20,
+		MaxConnectionReceiveWindow:     32 << 20,
 	}
 	connection, err := quic.DialAddr(ctx, m.runtime.config.Server, tlsConfig, quicConfig)
 	if err != nil {
@@ -411,6 +420,7 @@ func (m *connectionManager) tlsConfig(nextProtocols []string) (*tls.Config, erro
 		MinVersion:         tls.VersionTLS13,
 		ServerName:         m.runtime.config.ServerName,
 		NextProtos:         nextProtocols,
+		ClientSessionCache:  m.sessionCache,
 		InsecureSkipVerify: true, // Replaced by mandatory SPKI verification below.
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			if len(rawCerts) == 0 {

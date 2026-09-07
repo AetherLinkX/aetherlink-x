@@ -22,6 +22,8 @@ Properties of Preview 1:
 - 0-RTT is disabled until request replay rules are formally specified;
 - blocked UDP is detected during a short probe and transparently falls back to
   TLS/TCP without changing the profile;
+- QUIC flow-control windows grow adaptively up to 8 MiB per stream and 32 MiB
+  per connection; TLS fallback reuses session tickets across connections;
 - an optional ALPN gateway lets ALX and an existing Xray/REALITY service share
   TCP/443. ALX terminates only ClientHello messages advertising `alx/1`; every
   other byte stream is passed unchanged to the configured Xray backend.

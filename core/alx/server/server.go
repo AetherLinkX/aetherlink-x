@@ -81,12 +81,16 @@ func (s *Server) Run(ctx context.Context) error {
 
 func (s *Server) runQUIC(ctx context.Context, tlsConfig *tls.Config) error {
 	listener, err := quic.ListenAddr(s.config.Listen, tlsConfig, &quic.Config{
-		HandshakeIdleTimeout: 8 * time.Second,
-		MaxIdleTimeout:       75 * time.Second,
-		KeepAlivePeriod:      15 * time.Second,
-		EnableDatagrams:      true,
-		MaxIncomingStreams:   512,
-		Allow0RTT:            false,
+		HandshakeIdleTimeout:          8 * time.Second,
+		MaxIdleTimeout:                75 * time.Second,
+		KeepAlivePeriod:               15 * time.Second,
+		EnableDatagrams:               true,
+		MaxIncomingStreams:            512,
+		InitialStreamReceiveWindow:     1 << 20,
+		MaxStreamReceiveWindow:         8 << 20,
+		InitialConnectionReceiveWindow: 4 << 20,
+		MaxConnectionReceiveWindow:     32 << 20,
+		Allow0RTT:                      false,
 	})
 	if err != nil {
 		return fmt.Errorf("listen for ALX/1: %w", err)
