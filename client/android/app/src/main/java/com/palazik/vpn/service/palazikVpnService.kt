@@ -237,7 +237,12 @@ class palazikVpnService : VpnService() {
                     val nativeConfig = JSONObject().apply {
                         put("listen", "${LocalProxyEndpoint.ipv4Loopback.hostAddress}:$socksPort")
                         put("server", "${profile.address}:${profile.port}")
-						put("fallbackServer", "${profile.address}:${profile.fallbackPort}")
+                        put("fallbackServer", "${profile.address}:${profile.fallbackPort}")
+                        // Real-device A/B tests showed that some mobile ISP paths reorder or
+                        // drop enough UDP to cut QUIC throughput by ~3x while TLS/TCP remains
+                        // stable. Prefer the faster path, but retain QUIC as an automatic
+                        // fallback when TCP is filtered.
+                        put("transportMode", "tcp-first")
                         put("token", profile.uuid)
                         put("certificatePin", profile.publicKey)
                         put("serverName", profile.sni.ifBlank { "www.yahoo.com" })

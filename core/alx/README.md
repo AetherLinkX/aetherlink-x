@@ -7,8 +7,8 @@ Current data path:
 
 ```text
 Android TUN -> hev-socks5-tunnel -> ALX local SOCKS5
-  -> QUIC/TLS 1.3 (preferred)
-  -> pinned TLS 1.3 over TCP (automatic fallback)
+  -> pinned TLS 1.3 over TCP (preferred on Android)
+  -> QUIC/TLS 1.3 (automatic fallback)
   -> alx-server
 ```
 
@@ -22,6 +22,8 @@ Properties of Preview 1:
 - 0-RTT is disabled until request replay rules are formally specified;
 - blocked UDP is detected during a short probe and transparently falls back to
   TLS/TCP without changing the profile;
+- Android uses `tcp-first`: the measured faster TLS/TCP path is selected first,
+  while QUIC remains available automatically when the TCP endpoint is blocked;
 - QUIC flow-control windows grow adaptively up to 8 MiB per stream and 32 MiB
   per connection; TLS fallback reuses session tickets across connections;
 - long-lived SOCKS UDP associations reconnect in place after a transient QUIC
@@ -66,6 +68,7 @@ contains exactly one Go runtime.
   "listen": "127.0.0.1:10808",
   "server": "SERVER_IP:443",
   "fallbackServer": "SERVER_IP:443",
+  "transportMode": "tcp-first",
   "token": "BASE64URL_32_BYTE_TOKEN",
   "certificatePin": "BASE64URL_SHA256_SPKI",
   "serverName": "COVER_NAME",

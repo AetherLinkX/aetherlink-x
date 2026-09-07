@@ -28,6 +28,7 @@ type Config struct {
 	Listen             string `json:"listen"`
 	Server             string `json:"server"`
 	FallbackServer     string `json:"fallbackServer"`
+	TransportMode      string `json:"transportMode"`
 	Token              string `json:"token"`
 	CertificatePin     string `json:"certificatePin"`
 	ServerName         string `json:"serverName"`
@@ -53,6 +54,18 @@ func ParseConfig(raw string) (Config, error) {
 		if _, _, err := net.SplitHostPort(config.FallbackServer); err != nil {
 			return config, fmt.Errorf("invalid ALX fallback server: %w", err)
 		}
+	}
+	config.TransportMode = strings.ToLower(strings.TrimSpace(config.TransportMode))
+	if config.TransportMode == "" {
+		config.TransportMode = "auto"
+	}
+	switch config.TransportMode {
+	case "auto", "quic", "tcp-first", "tls-tcp":
+	default:
+		return config, fmt.Errorf("invalid ALX transport mode %q", config.TransportMode)
+	}
+	if config.TransportMode == "tls-tcp" && config.FallbackServer == "" {
+		return config, errors.New("ALX TLS/TCP transport requires a fallback server")
 	}
 	if _, err := alx.DecodeToken(config.Token); err != nil {
 		return config, err
@@ -305,6 +318,18 @@ func newConnectionManager(runtime *Runtime) *connectionManager {
 }
 
 func (m *connectionManager) probe(ctx context.Context) error {
+	if m.runtime.config.TransportMode == "tls-tcp" || m.runtime.config.TransportMode == "tcp-first" {
+		connection, err := m.dialFallback(ctx)
+		if err == nil {
+			m.fallback.Store(true)
+			return connection.Close()
+		}
+		if m.runtime.config.TransportMode == "tls-tcp" {
+			return fmt.Errorf("ALX TLS/TCP transport unavailable: %w", err)
+		}
+		// TCP-first is adaptive: QUIC remains a working fallback on networks
+		// where the TCP endpoint is filtered or unavailable.
+	}
 	quicCtx, cancel := context.WithTimeout(ctx, time.Duration(m.runtime.config.QUICProbeTimeoutMS)*time.Millisecond)
 	defer cancel()
 	if _, err := m.connection(quicCtx); err == nil {

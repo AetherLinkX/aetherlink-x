@@ -27,7 +27,7 @@ jobs:
       HEV_REPOSITORY: https://github.com/heiher/hev-socks5-tunnel.git
       HEV_COMMIT: 64cc609
       CLIENT_RELEASE_TAG: client-v0.7.2-reality-compat-signed
-      CLIENT_NATIVE_PREVIEW_TAG: client-v0.8.0-alx-native-preview.6
+      CLIENT_NATIVE_PREVIEW_TAG: client-v0.8.0-alx-native-preview.7
 
     steps:
       - uses: actions/checkout@v7
@@ -198,18 +198,18 @@ jobs:
           set -euo pipefail
           APK=$(find client/android/app/build/outputs/apk/debug -type f -name '*universal*.apk' | head -1)
           test -n "$APK"
-          cp "$APK" aetherlink-x-client-android-v0.8.0-alx-native-preview.6.apk
-          sha256sum aetherlink-x-client-android-v0.8.0-alx-native-preview.6.apk > aetherlink-x-client-android-v0.8.0-alx-native-preview.6-SHA256SUMS.txt
+          cp "$APK" aetherlink-x-client-android-v0.8.0-alx-native-preview.7.apk
+          sha256sum aetherlink-x-client-android-v0.8.0-alx-native-preview.7.apk > aetherlink-x-client-android-v0.8.0-alx-native-preview.7-SHA256SUMS.txt
           git tag --force "$CLIENT_NATIVE_PREVIEW_TAG" "$GITHUB_SHA"
           git push origin "refs/tags/$CLIENT_NATIVE_PREVIEW_TAG" --force
           if ! gh release view "$CLIENT_NATIVE_PREVIEW_TAG" >/dev/null 2>&1; then
             gh release create "$CLIENT_NATIVE_PREVIEW_TAG" --prerelease --verify-tag \
-              --title "AetherLink X Client 0.8.0 — Native preview 6" \
-              --notes "Sixth independent ALX/1 client preview. Adds authenticated application heartbeats and bounded stream handshakes so dead QUIC sessions are replaced within seconds after a server or network interruption. It retains automatic UDP/DNS association restoration, adaptive QUIC receive windows, TLS session resumption, and the verified Android startup/import/profile-switch fixes. The stable VLESS/REALITY release remains available as the rollback build."
+              --title "AetherLink X Client 0.8.0 — Native preview 7" \
+              --notes "Seventh independent ALX/1 client preview. Real-device A/B testing isolated a roughly threefold QUIC throughput penalty on the tested mobile ISP path. ALX now prefers its authenticated TLS/TCP transport and automatically falls back to QUIC when TCP is unavailable. The server, encryption, TUN path, profile format, UI, UDP/DNS support, and stable rollback release remain unchanged."
           fi
           gh release upload "$CLIENT_NATIVE_PREVIEW_TAG" \
-            aetherlink-x-client-android-v0.8.0-alx-native-preview.6.apk \
-            aetherlink-x-client-android-v0.8.0-alx-native-preview.6-SHA256SUMS.txt --clobber
+            aetherlink-x-client-android-v0.8.0-alx-native-preview.7.apk \
+            aetherlink-x-client-android-v0.8.0-alx-native-preview.7-SHA256SUMS.txt --clobber
 
       - name: Publish versioned Android release
         if: github.ref == 'refs/heads/main'
