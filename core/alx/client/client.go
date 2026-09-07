@@ -215,6 +215,8 @@ func (r *Runtime) handleTCP(local net.Conn, buffered *bufio.Reader, destination 
 		return err
 	}
 	defer stream.Close()
+	clearDeadline := setStreamDeadline(stream, ctx)
+	defer clearDeadline()
 	if err := alx.WriteOpen(stream, alx.OpenRequest{Command: alx.CommandTCP, Address: destination}); err != nil {
 		if connection != nil {
 			r.manager.invalidate(connection)
@@ -233,6 +235,7 @@ func (r *Runtime) handleTCP(local net.Conn, buffered *bufio.Reader, destination 
 	if err := writeSOCKSReply(local, 0x00, local.LocalAddr()); err != nil {
 		return err
 	}
+	clearDeadline()
 	r.connections.Add(1)
 	return proxyTCP(local, buffered, stream, &r.bytesUp, &r.bytesDown)
 }
@@ -353,8 +356,8 @@ func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) 
 	}
 	quicConfig := &quic.Config{
 		HandshakeIdleTimeout:           time.Duration(m.runtime.config.HandshakeTimeoutMS) * time.Millisecond,
-		MaxIdleTimeout:                 75 * time.Second,
-		KeepAlivePeriod:                15 * time.Second,
+		MaxIdleTimeout:                 30 * time.Second,
+		KeepAlivePeriod:                10 * time.Second,
 		EnableDatagrams:                true,
 		MaxIncomingStreams:             256,
 		InitialStreamReceiveWindow:     1 << 20,
@@ -371,6 +374,8 @@ func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) 
 		_ = connection.CloseWithError(1, "auth stream failed")
 		return nil, err
 	}
+	clearDeadline := setStreamDeadline(authStream, ctx)
+	defer clearDeadline()
 	if err := alx.WriteAuth(authStream, m.runtime.token, time.Now()); err != nil {
 		_ = connection.CloseWithError(1, "auth write failed")
 		return nil, err
@@ -386,7 +391,44 @@ func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) 
 	_ = authStream.Close()
 	m.conn = connection
 	go m.receiveDatagrams(connection)
+	go m.monitorConnection(connection)
 	return connection, nil
+}
+
+func (m *connectionManager) monitorConnection(connection *quic.Conn) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-m.runtime.ctx.Done():
+			return
+		case <-connection.Context().Done():
+			m.invalidate(connection)
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(m.runtime.ctx, 4*time.Second)
+			stream, err := connection.OpenStreamSync(ctx)
+			if err == nil {
+				clearDeadline := setStreamDeadline(stream, ctx)
+				err = alx.WriteOpen(stream, alx.OpenRequest{Command: alx.CommandPing})
+				status := []byte{0xff}
+				if err == nil {
+					_, err = io.ReadFull(stream, status)
+				}
+				if err == nil && status[0] != alx.StatusOK {
+					err = fmt.Errorf("ALX heartbeat rejected with status %d", status[0])
+				}
+				clearDeadline()
+				_ = stream.Close()
+			}
+			cancel()
+			if err != nil {
+				m.runtime.setError(fmt.Errorf("ALX heartbeat failed: %w", err))
+				m.invalidate(connection)
+				return
+			}
+		}
+	}
 }
 
 func (m *connectionManager) dialFallback(ctx context.Context) (*tls.Conn, error) {
@@ -488,19 +530,42 @@ func (m *connectionManager) openUDPTransport(ctx context.Context, id uint32) (io
 	if err != nil {
 		return nil, nil, err
 	}
+	clearDeadline := setStreamDeadline(stream, ctx)
+	defer clearDeadline()
 	if err := alx.WriteOpen(stream, alx.OpenRequest{Command: alx.CommandUDP, AssociationID: id}); err != nil {
 		_ = stream.Close()
+		if connection != nil {
+			m.invalidate(connection)
+		}
 		return nil, nil, err
 	}
 	status := []byte{0xff}
 	if _, err := io.ReadFull(stream, status); err != nil || status[0] != alx.StatusOK {
 		_ = stream.Close()
+		if connection != nil {
+			m.invalidate(connection)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
 		return nil, nil, errors.New("ALX UDP association rejected")
 	}
+	clearDeadline()
 	return stream, connection, nil
+}
+
+type deadlineStream interface {
+	SetDeadline(time.Time) error
+}
+
+func setStreamDeadline(stream io.ReadWriteCloser, ctx context.Context) func() {
+	deadline, hasDeadline := ctx.Deadline()
+	deadlineWriter, supported := stream.(deadlineStream)
+	if !hasDeadline || !supported {
+		return func() {}
+	}
+	_ = deadlineWriter.SetDeadline(deadline)
+	return func() { _ = deadlineWriter.SetDeadline(time.Time{}) }
 }
 
 func (m *connectionManager) unregisterUDP(id uint32) {

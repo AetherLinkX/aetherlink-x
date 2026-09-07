@@ -82,8 +82,8 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) runQUIC(ctx context.Context, tlsConfig *tls.Config) error {
 	listener, err := quic.ListenAddr(s.config.Listen, tlsConfig, &quic.Config{
 		HandshakeIdleTimeout:          8 * time.Second,
-		MaxIdleTimeout:                75 * time.Second,
-		KeepAlivePeriod:               15 * time.Second,
+		MaxIdleTimeout:                30 * time.Second,
+		KeepAlivePeriod:               10 * time.Second,
 		EnableDatagrams:               true,
 		MaxIncomingStreams:            512,
 		InitialStreamReceiveWindow:     1 << 20,
@@ -185,6 +185,8 @@ func (s *Server) handleTCPFallback(connection net.Conn) {
 		s.handleFallbackTCP(connection, request.Address)
 	case alx.CommandUDP:
 		s.handleFallbackUDP(connection, request.AssociationID)
+	case alx.CommandPing:
+		_, _ = connection.Write([]byte{alx.StatusOK})
 	default:
 		_, _ = connection.Write([]byte{alx.StatusBadRequest})
 	}
@@ -302,6 +304,9 @@ func (s *connectionState) handleStream(stream *quic.Stream) {
 		s.handleTCP(stream, request.Address)
 	case alx.CommandUDP:
 		s.handleUDP(stream, request.AssociationID)
+	case alx.CommandPing:
+		_, _ = stream.Write([]byte{alx.StatusOK})
+		_ = stream.Close()
 	default:
 		_, _ = stream.Write([]byte{alx.StatusBadRequest})
 		_ = stream.Close()

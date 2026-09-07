@@ -24,6 +24,7 @@ const (
 	CommandAuth byte = iota
 	CommandTCP
 	CommandUDP
+	CommandPing
 
 	StatusOK          byte = 0
 	StatusDenied      byte = 1
@@ -120,7 +121,7 @@ type OpenRequest struct {
 }
 
 func WriteOpen(w io.Writer, request OpenRequest) error {
-	if request.Command != CommandTCP && request.Command != CommandUDP {
+	if request.Command != CommandTCP && request.Command != CommandUDP && request.Command != CommandPing {
 		return errors.New("unsupported ALX command")
 	}
 	if len(request.Address) > MaxAddressLength {
@@ -148,12 +149,12 @@ func ReadOpen(r io.Reader) (OpenRequest, error) {
 		return request, errors.New("invalid ALX stream preface")
 	}
 	request.Command = header[5]
-	if request.Command != CommandTCP && request.Command != CommandUDP {
+	if request.Command != CommandTCP && request.Command != CommandUDP && request.Command != CommandPing {
 		return request, errors.New("unsupported ALX stream command")
 	}
 	request.AssociationID = binary.BigEndian.Uint32(header[6:10])
 	length := int(binary.BigEndian.Uint16(header[10:12]))
-	if length > MaxAddressLength || (request.Command == CommandTCP && length == 0) {
+	if length > MaxAddressLength || (request.Command == CommandTCP && length == 0) || (request.Command == CommandPing && length != 0) {
 		return request, errors.New("invalid ALX destination length")
 	}
 	address := make([]byte, length)

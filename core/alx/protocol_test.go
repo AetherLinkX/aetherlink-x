@@ -53,3 +53,17 @@ func TestUDPFrameRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected frame: %q %v", address, payload)
 	}
 }
+
+func TestPingOpenRoundTrip(t *testing.T) {
+	var wire bytes.Buffer
+	if err := WriteOpen(&wire, OpenRequest{Command: CommandPing}); err != nil {
+		t.Fatal(err)
+	}
+	request, err := ReadOpen(&wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Command != CommandPing || request.Address != "" || request.AssociationID != 0 {
+		t.Fatalf("unexpected ping request: %#v", request)
+	}
+}
