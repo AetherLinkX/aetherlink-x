@@ -5,6 +5,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -22,7 +23,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -130,25 +130,16 @@ fun HomeScreen(
         targetValue = when {
             isConnected  -> MaterialTheme.colorScheme.primary
             isTransition -> MaterialTheme.colorScheme.tertiary
-            else         -> MaterialTheme.colorScheme.surfaceVariant
+            else         -> MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
         },
         animationSpec = tween(400),
         label = "btn_color",
     )
 
-    val lightTheme = MaterialTheme.colorScheme.background.luminance() > 0.5f
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.primary.copy(alpha = if (lightTheme) 0.08f else 0.13f),
-                        if (lightTheme) MaterialTheme.colorScheme.surfaceVariant else Color(0xFF080311),
-                    )
-                )
-            )
+            .aetherScreenBackground()
             .statusBarsPadding(),
         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -171,7 +162,12 @@ fun HomeScreen(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    text  = "AetherLink X",
+                    text = "Aether",
+                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "Link X",
                     style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -200,7 +196,7 @@ fun HomeScreen(
             )
             Box(
                 Modifier
-                    .size(300.dp)
+                    .size(230.dp)
                     .graphicsLayer { alpha = outerGlowAlpha }
                     .background(
                         Brush.radialGradient(listOf(statusColor.copy(alpha = 0.8f), Color.Transparent)),
@@ -216,7 +212,7 @@ fun HomeScreen(
             )
             Box(
                 Modifier
-                    .size(200.dp)
+                    .size(162.dp)
                     .graphicsLayer {
                         alpha          = ringAlpha
                         rotationZ      = haloRotation
@@ -239,7 +235,7 @@ fun HomeScreen(
             )
             Box(
                 Modifier
-                    .size(195.dp)
+                    .size(158.dp)
                     .graphicsLayer { alpha = innerAlpha }
                     .background(
                         Brush.radialGradient(
@@ -256,10 +252,14 @@ fun HomeScreen(
             Button(
                 onClick  = { vm.toggleVpn(permLauncher) },
                 modifier = Modifier
-                    .size(164.dp)
+                    .size(136.dp)
                     .scale(buttonScale),
                 shape  = CircleShape,
                 colors = ButtonDefaults.buttonColors(containerColor = buttonContainerColor),
+                border = BorderStroke(
+                    if (isConnected) 0.dp else 1.5.dp,
+                    statusColor.copy(alpha = if (isConnected) 0f else 0.70f),
+                ),
                 elevation = ButtonDefaults.buttonElevation(
                     defaultElevation = if (isConnected) 20.dp else 4.dp,
                 ),
@@ -442,7 +442,7 @@ private fun HomeServerHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Серверы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Сервера", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
                     if (switching) "Переключение профиля…" else "VPN перезапустится на выбранной локации",
                     style = MaterialTheme.typography.bodySmall,
@@ -665,7 +665,12 @@ private fun PingIndicator(latency: Long, mode: PingDisplayMode) {
 private fun HomeProfilePill(profileName: String?, endpoint: String?) {
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+        modifier = Modifier.border(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.46f),
+            MaterialTheme.shapes.extraLarge,
+        ),
     ) {
         Row(
             Modifier.padding(horizontal = 12.dp, vertical = 8.dp),

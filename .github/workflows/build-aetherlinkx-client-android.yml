@@ -27,7 +27,7 @@ jobs:
       HEV_REPOSITORY: https://github.com/heiher/hev-socks5-tunnel.git
       HEV_COMMIT: 64cc609
       CLIENT_RELEASE_TAG: client-v0.7.2-reality-compat-signed
-      CLIENT_NATIVE_PREVIEW_TAG: client-v0.8.1-ui-preview.1
+      CLIENT_NATIVE_PREVIEW_TAG: client-v0.8.1-ui-preview.2
 
     steps:
       - uses: actions/checkout@v7
@@ -198,18 +198,18 @@ jobs:
           set -euo pipefail
           APK=$(find client/android/app/build/outputs/apk/debug -type f -name '*universal*.apk' | head -1)
           test -n "$APK"
-          cp "$APK" aetherlink-x-client-android-v0.8.1-ui-preview.1.apk
-          sha256sum aetherlink-x-client-android-v0.8.1-ui-preview.1.apk > aetherlink-x-client-android-v0.8.1-ui-preview.1-SHA256SUMS.txt
+          cp "$APK" aetherlink-x-client-android-v0.8.1-ui-preview.2.apk
+          sha256sum aetherlink-x-client-android-v0.8.1-ui-preview.2.apk > aetherlink-x-client-android-v0.8.1-ui-preview.2-SHA256SUMS.txt
           git tag --force "$CLIENT_NATIVE_PREVIEW_TAG" "$GITHUB_SHA"
           git push origin "refs/tags/$CLIENT_NATIVE_PREVIEW_TAG" --force
           if ! gh release view "$CLIENT_NATIVE_PREVIEW_TAG" >/dev/null 2>&1; then
             gh release create "$CLIENT_NATIVE_PREVIEW_TAG" --prerelease --verify-tag \
-              --title "AetherLink X Client 0.8.1 — UI preview 1" \
-              --notes "Application-only UI preview; ALX/1 remains unchanged from Native preview 7. Settings detail pages now stay inside the retained Settings tab instead of disposing and rebuilding all three main tabs. Every settings entry and detail card has a clear outline, and the diagnostics journal uses lazy rendering for smooth navigation with long logs."
+              --title "AetherLink X Client 0.8.1 — UI preview 2" \
+              --notes "Application-only design preview; ALX/1 remains unchanged from Native preview 7. Adds the unified purple glass UI from the approved draft across Home, Servers and Settings, including theme-aware light mode, stronger card outlines and the requested Russian label «Сервера»."
           fi
           gh release upload "$CLIENT_NATIVE_PREVIEW_TAG" \
-            aetherlink-x-client-android-v0.8.1-ui-preview.1.apk \
-            aetherlink-x-client-android-v0.8.1-ui-preview.1-SHA256SUMS.txt --clobber
+            aetherlink-x-client-android-v0.8.1-ui-preview.2.apk \
+            aetherlink-x-client-android-v0.8.1-ui-preview.2-SHA256SUMS.txt --clobber
 
       - name: Publish versioned Android release
         if: github.ref == 'refs/heads/main'

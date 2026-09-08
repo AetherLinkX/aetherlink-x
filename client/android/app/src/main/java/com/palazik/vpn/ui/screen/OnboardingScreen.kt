@@ -24,7 +24,7 @@ private data class OnboardPage(val icon: ImageVector, val title: String, val bod
 
 private val pages = listOf(
     OnboardPage(Icons.Rounded.Bolt, "Добро пожаловать в AetherLink X",
-        "Быстрый VPN-клиент без учётных записей и отслеживания. Только ваши серверы."),
+        "Быстрый VPN-клиент без учётных записей и отслеживания. Только ваши сервера."),
     OnboardPage(Icons.Rounded.QrCode2, "Добавьте конфигурацию",
         "Вставьте ссылку, отсканируйте QR-код или добавьте адрес подписки."),
     OnboardPage(Icons.Rounded.Shield, "Защищённое подключение",

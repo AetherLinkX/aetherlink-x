@@ -7,6 +7,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -156,50 +157,59 @@ fun ProfilesScreen(
     Column(
         Modifier
             .fillMaxSize()
+            .aetherScreenBackground()
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
 
         // ── Top bar ──────────────────────────────────────────────────────────
-        Column(
+        Row(
             Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Серверы", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            AnimatedVisibility(visible = ui.profiles.isNotEmpty() || ui.subscriptions.isNotEmpty()) {
-                Text(
-                    "Локаций: ${ui.profiles.size} · подписок: ${ui.subscriptions.size}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            Surface(
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.17f),
+                shape = RoundedCornerShape(15.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.Dns,
+                    null,
+                    Modifier.padding(7.dp).size(22.dp),
+                    tint = MaterialTheme.colorScheme.primary,
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                IconButton(onClick = onOpenSubscriptions) {
-                    Icon(Icons.Rounded.Subscriptions, "Подписки")
+            Column(Modifier.weight(1f)) {
+                Text("Сервера", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                AnimatedVisibility(visible = ui.profiles.isNotEmpty() || ui.subscriptions.isNotEmpty()) {
+                    Text(
+                        "Локаций: ${ui.profiles.size} · подписок: ${ui.subscriptions.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
                 }
-                AnimatedVisibility(visible = ui.profiles.isNotEmpty()) {
-                    IconButton(onClick = { vm.pingAll() }) {
-                        Icon(Icons.Rounded.NetworkCheck, "Проверить все")
-                    }
+            }
+            ProfileTopAction(Icons.Rounded.Subscriptions, "Подписки", onOpenSubscriptions)
+            if (ui.profiles.isNotEmpty()) {
+                ProfileTopAction(Icons.Rounded.NetworkCheck, "Проверить все") { vm.pingAll() }
+            }
+            if (ui.activeProfile != null) {
+                ProfileTopAction(Icons.Rounded.Share, "Поделиться активным") {
+                    vm.generateShareLink()
+                    showShareLink = true
                 }
-                AnimatedVisibility(visible = ui.activeProfile != null) {
-                    IconButton(onClick = { vm.generateShareLink(); showShareLink = true }) {
-                        Icon(Icons.Rounded.Share, "Поделиться активным")
-                    }
+            }
+            Box {
+                Button(
+                    onClick = { importMenuExpanded = true },
+                    modifier = Modifier.height(40.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                ) {
+                    Icon(Icons.Rounded.Add, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("Добавить", maxLines = 1, style = MaterialTheme.typography.labelMedium)
                 }
-                Box {
-                    FilledTonalButton(
-                        onClick = { importMenuExpanded = true },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        Icon(Icons.Rounded.Add, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Добавить", color = MaterialTheme.colorScheme.onSecondaryContainer)
-                    }
                     ImportMenu(
                         expanded = importMenuExpanded,
                         onDismiss = { importMenuExpanded = false },
@@ -228,7 +238,6 @@ fun ProfilesScreen(
                             vm.generateWarpProfile()
                         },
                     )
-                }
             }
         }
 
@@ -594,6 +603,31 @@ private fun PreviewRow(label: String, value: String) {
 // Grouped profiles list (collapsible per subscription + manual group)
 // ─────────────────────────────────────────────────────────────────────────────
 
+@Composable
+private fun ProfileTopAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        contentColor = MaterialTheme.colorScheme.primary,
+        shape = CircleShape,
+        modifier = Modifier
+            .size(36.dp)
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.48f),
+                CircleShape,
+            ),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, description, Modifier.size(19.dp))
+        }
+    }
+}
+
 // Sealed list item types for the flat LazyColumn
 private sealed class ProfileListItem {
     data class Header(val key: String, val title: String, val count: Int, val subId: String?) : ProfileListItem()
@@ -912,26 +946,59 @@ private fun ProfileCard(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            Text(
-                profile.name,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                "${profile.address}:${profile.port}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (profile.lastTested > 0L) {
-                Text(
-                    "Проверен ${relativeTime(profile.lastTested)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        profile.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "${profile.address}:${profile.port}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (profile.lastTested > 0L) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .size(7.dp)
+                                    .background(MaterialTheme.colorScheme.tertiary, CircleShape),
+                            )
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                "Проверен ${relativeTime(profile.lastTested)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    shape = CircleShape,
+                ) {
+                    Icon(
+                        when {
+                            isActive -> Icons.Rounded.Check
+                            profile.protocol in listOf(Protocol.AETHERLINK_X, Protocol.AETHERLINK_NATIVE) -> Icons.Rounded.Dns
+                            else -> Icons.Rounded.Public
+                        },
+                        null,
+                        Modifier.padding(12.dp).size(25.dp),
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -952,17 +1019,7 @@ private fun ProfileCard(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), thickness = 0.5.dp)
-            Spacer(Modifier.height(2.dp))
-
-            // ── Action row ─────────────────────────────────────────────────────
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box {
+            Box {
                     DropdownMenu(
                         expanded = actionsExpanded,
                         onDismissRequest = { actionsExpanded = false },
@@ -996,7 +1053,6 @@ private fun ProfileCard(
                             onClick = { actionsExpanded = false; onDelete() },
                         )
                     }
-                }
             }
         }
     }

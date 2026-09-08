@@ -27,7 +27,7 @@
 
     <!-- Bottom navigation -->
     <string name="nav_home">Главная</string>
-    <string name="nav_profiles">Серверы</string>
+    <string name="nav_profiles">Сервера</string>
     <string name="nav_subs">Подписки</string>
     <string name="nav_settings">Настройки</string>
 

@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -108,6 +109,7 @@ private fun MiuixSettingsHub(onNavigate: (String) -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            .aetherScreenBackground()
             .statusBarsPadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState()),
@@ -138,6 +140,7 @@ private fun Md3SettingsHub(onNavigate: (String) -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            .aetherScreenBackground()
             .statusBarsPadding()
             .navigationBarsPadding()
             .miuixSpringScroll()
@@ -145,7 +148,27 @@ private fun Md3SettingsHub(onNavigate: (String) -> Unit) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.17f),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.Settings,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(9.dp).size(26.dp),
+                )
+            }
+            Text(
+                stringResource(R.string.settings_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            )
+        }
         Spacer(Modifier.height(4.dp))
         SettingsGroups.forEach { group ->
             Text(
@@ -163,14 +186,30 @@ private fun Md3SettingsHub(onNavigate: (String) -> Unit) {
                                 width = 1.dp,
                                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
                                 shape = SettingsItemShape,
-                            ),
+                        ),
                         shape = SettingsItemShape,
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+                        ),
                     ) {
                         ListItem(
                             headlineContent   = { Text(stringResource(entry.title)) },
                             supportingContent = { Text(stringResource(entry.summary)) },
-                            leadingContent    = { Icon(entry.icon, null, tint = MaterialTheme.colorScheme.primary) },
+                            leadingContent    = {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(14.dp),
+                                ) {
+                                    Icon(
+                                        entry.icon,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(9.dp).size(22.dp),
+                                    )
+                                }
+                            },
                             trailingContent   = { Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             modifier = Modifier.clickable { onNavigate(entry.route) },
                         )
                     }
@@ -193,6 +232,7 @@ private fun SettingsScaffold(
     Column(
         Modifier
             .fillMaxSize()
+            .aetherScreenBackground()
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
@@ -218,8 +258,11 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
                 shape = SettingsItemShape,
             ),
-        shape = SettingsItemShape,
-    ) {
+            shape = SettingsItemShape,
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+            ),
+        ) {
         Column(Modifier.padding(16.dp), content = content)
     }
 }
@@ -321,7 +364,7 @@ fun DnsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
             OutlinedTextField(
                 value = tunDns, onValueChange = { tunDns = it },
-                label = { Text("DNS-серверы VPN") },
+                label = { Text("DNS-сервера VPN") },
                 supportingText = { Text("Через запятую") },
                 modifier = Modifier.fillMaxWidth(), singleLine = true,
             )
@@ -477,6 +520,7 @@ fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            .aetherScreenBackground()
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding(),
@@ -491,8 +535,11 @@ fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
                     shape = SettingsItemShape,
-                ),
-            shape = SettingsItemShape,
+        ),
+        shape = SettingsItemShape,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+        ),
         ) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 LazyColumn(

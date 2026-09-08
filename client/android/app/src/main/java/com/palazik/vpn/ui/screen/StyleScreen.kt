@@ -44,6 +44,7 @@ private fun MiuixStyleScreen(vm: MainViewModel, onBack: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            .aetherScreenBackground()
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
@@ -155,6 +156,7 @@ private fun Md3StyleScreen(vm: MainViewModel, onBack: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            .aetherScreenBackground()
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
@@ -257,8 +259,11 @@ private fun StyleSection(title: String, content: @Composable ColumnScope.() -> U
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
                 shape = StyleCardShape,
-            ),
+        ),
         shape = StyleCardShape,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+        ),
     ) {
         Column(Modifier.padding(16.dp)) {
             Text(
