@@ -1,6 +1,8 @@
 package com.palazik.vpn.ui.screen
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +27,7 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 private val DarkModeOptions  = DarkModePreference.values().toList()
 private val AppThemeOptions  = AppTheme.values().toList()
 private val DesignSystemOpts = DesignSystem.values().toList()
+private val StyleCardShape = RoundedCornerShape(22.dp)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -247,7 +250,16 @@ private fun Md3StyleScreen(vm: MainViewModel, onBack: () -> Unit) {
 
 @Composable
 private fun StyleSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    ElevatedCard(Modifier.fillMaxWidth()) {
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
+                shape = StyleCardShape,
+            ),
+        shape = StyleCardShape,
+    ) {
         Column(Modifier.padding(16.dp)) {
             Text(
                 title,

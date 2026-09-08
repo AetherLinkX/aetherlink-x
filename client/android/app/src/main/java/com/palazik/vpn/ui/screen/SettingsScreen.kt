@@ -3,10 +3,12 @@ package com.palazik.vpn.ui.screen
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -17,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -42,6 +45,7 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 
 private val PingModeOptions             = PingMode.values().toList()
 private val SubscriptionIntervalOptions = listOf(2L, 6L, 12L, 24L)
+private val SettingsItemShape = RoundedCornerShape(22.dp)
 
 // ── Routes for the settings sub-screens ─────────────────────────────────────
 object SettingsRoutes {
@@ -150,10 +154,18 @@ private fun Md3SettingsHub(onNavigate: (String) -> Unit) {
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(start = 4.dp, top = 4.dp),
             )
-            ElevatedCard(Modifier.fillMaxWidth()) {
-                Column {
-                    group.entries.forEachIndexed { index, entry ->
-                        if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                group.entries.forEach { entry ->
+                    ElevatedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
+                                shape = SettingsItemShape,
+                            ),
+                        shape = SettingsItemShape,
+                    ) {
                         ListItem(
                             headlineContent   = { Text(stringResource(entry.title)) },
                             supportingContent = { Text(stringResource(entry.summary)) },
@@ -187,15 +199,7 @@ private fun SettingsScaffold(
             .miuixSpringScroll()
             .verticalScroll(rememberScrollState()),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Назад")
-            }
-            Text(title, style = MaterialTheme.typography.headlineSmall)
-        }
+        SettingsTopBar(title = title, onBack = onBack)
         Column(
             Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -206,8 +210,30 @@ private fun SettingsScaffold(
 
 @Composable
 private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    ElevatedCard(Modifier.fillMaxWidth()) {
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
+                shape = SettingsItemShape,
+            ),
+        shape = SettingsItemShape,
+    ) {
         Column(Modifier.padding(16.dp), content = content)
+    }
+}
+
+@Composable
+private fun SettingsTopBar(title: String, onBack: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Назад")
+        }
+        Text(title, style = MaterialTheme.typography.headlineSmall)
     }
 }
 
@@ -448,41 +474,78 @@ fun DiagnosticsSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
         }
     }
 
-    SettingsScaffold(stringResource(R.string.settings_diagnostics), onBack) {
-        SettingsCard {
-            if (diagnostics.isEmpty()) {
-                Text("Событий подключения пока нет.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    diagnostics.forEach { line ->
-                        Text(line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding(),
+    ) {
+        SettingsTopBar(stringResource(R.string.settings_diagnostics), onBack)
+        ElevatedCard(
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .fillMaxWidth()
+                .weight(1f)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
+                    shape = SettingsItemShape,
+                ),
+            shape = SettingsItemShape,
+        ) {
+            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (diagnostics.isEmpty()) {
+                        item {
+                            Text(
+                                "Событий подключения пока нет.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else {
+                        itemsIndexed(
+                            items = diagnostics,
+                            key = { index, _ -> index },
+                        ) { _, line ->
+                            Text(
+                                line,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = { saveLauncher.launch("aetherlink-x-logs.txt") },
+                        enabled = diagnostics.isNotEmpty(),
+                    ) {
+                        Icon(Icons.Rounded.SaveAlt, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Сохранить в файл")
+                    }
+                    Button(
+                        onClick = { clipboard.setText(AnnotatedString(diagnostics.joinToString("\n"))) },
+                        enabled = diagnostics.isNotEmpty(),
+                    ) {
+                        Icon(Icons.Rounded.ContentCopy, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Копировать журнал")
                     }
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            FlowRow(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                OutlinedButton(
-                    onClick = { saveLauncher.launch("aetherlink-x-logs.txt") },
-                    enabled = diagnostics.isNotEmpty(),
-                ) {
-                    Icon(Icons.Rounded.SaveAlt, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Сохранить в файл")
-                }
-                Button(
-                    onClick = { clipboard.setText(AnnotatedString(diagnostics.joinToString("\n"))) },
-                    enabled = diagnostics.isNotEmpty(),
-                ) {
-                    Icon(Icons.Rounded.ContentCopy, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Копировать журнал")
-                }
-            }
         }
+        Spacer(Modifier.height(24.dp))
     }
 }
 

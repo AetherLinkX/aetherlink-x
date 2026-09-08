@@ -2,6 +2,7 @@ package com.palazik.vpn.ui.screen
 
 import android.content.Intent
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -14,6 +15,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -45,6 +47,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -72,8 +75,6 @@ sealed class Screen(
     object Subscriptions : Screen("subs",     R.string.nav_subs,     Icons.Rounded.Subscriptions)
     object Settings      : Screen("settings", R.string.nav_settings, Icons.Rounded.Settings)
 
-    // Sub-screen — not a tab, no icon needed for the nav bar
-    object Style : Screen("style", R.string.nav_settings, Icons.Rounded.Settings)
     object JsonConfig : Screen("json/{profileId}", R.string.nav_profiles, Icons.AutoMirrored.Rounded.List)
 }
 
@@ -86,6 +87,7 @@ fun AppNavHost(
     val shell by vm.shellUi.collectAsStateWithLifecycle()
     val tabs = remember { listOf(Screen.Home, Screen.Profiles, Screen.Settings) }
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
+    var settingsDetailRoute by rememberSaveable { mutableStateOf<String?>(null) }
     val pagerState = rememberPagerState(
         initialPage = selectedTabIndex,
         pageCount = { tabs.size },
@@ -113,11 +115,15 @@ fun AppNavHost(
         }
     }
 
-    // Hide the bottom bar when on the Style sub-screen
     val navBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStack?.destination?.route
-    // Hide the bottom bar on settings sub-screens (Style + settings/*)
-    val showBottomBar = currentRoute == null || currentRoute == Screen.Home.route
+    // Settings detail pages are local overlays inside the retained Settings tab.
+    val showBottomBar = (currentRoute == null || currentRoute == Screen.Home.route) &&
+        settingsDetailRoute == null
+
+    BackHandler(enabled = settingsDetailRoute != null) {
+        settingsDetailRoute = null
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -158,6 +164,7 @@ fun AppNavHost(
                                         if (currentRoute != Screen.Home.route) {
                                             navController.popBackStack(Screen.Home.route, inclusive = false)
                                         }
+                                        if (screen != Screen.Settings) settingsDetailRoute = null
                                         selectedTabIndex = index
                                     },
                                 )
@@ -196,16 +203,17 @@ fun AppNavHost(
                             onOpenSubscriptions = { navController.navigate(Screen.Subscriptions.route) },
                             onOpenJson = { profileId -> navController.navigate("json/$profileId") },
                         )
-                        Screen.Settings -> SettingsScreen(
-                            vm,
-                            onNavigate = { navController.navigate(it) },
+                        Screen.Settings -> SettingsTabStack(
+                            vm = vm,
+                            detailRoute = settingsDetailRoute,
+                            onNavigate = { settingsDetailRoute = it },
+                            onBack = { settingsDetailRoute = null },
                         )
                         else -> Unit
                     }
                 }
             }
             composable(Screen.Subscriptions.route) { SubscriptionsScreen(vm) }
-            composable(Screen.Style.route)                  { StyleScreen(vm, onBack = back) }
             composable(Screen.JsonConfig.route) { entry ->
                 JsonConfigScreen(
                     vm = vm,
@@ -213,17 +221,45 @@ fun AppNavHost(
                     onBack = back,
                 )
             }
-            composable(SettingsRoutes.LANGUAGE)             { LanguageSettingsScreen(vm, back) }
-            composable(SettingsRoutes.CONNECTION)           { ConnectionSettingsScreen(vm, back) }
-            composable(SettingsRoutes.DNS)                  { DnsSettingsScreen(vm, back) }
-            composable(SettingsRoutes.ROUTING)              { RoutingSettingsScreen(vm, back) }
-            composable(SettingsRoutes.GEO)                  { GeoFilesSettingsScreen(vm, back) }
-            composable(SettingsRoutes.SUBSCRIPTION)         { SubscriptionSettingsScreen(vm, back) }
-            composable(SettingsRoutes.SPLIT)                { SplitTunnelSettingsScreen(vm, back) }
-            composable(SettingsRoutes.BACKUP)               { BackupSettingsScreen(vm, back) }
-            composable(SettingsRoutes.STARTUP)              { StartupSettingsScreen(vm, back) }
-            composable(SettingsRoutes.DIAGNOSTICS)          { DiagnosticsSettingsScreen(vm, back) }
-            composable(SettingsRoutes.ABOUT)                { AboutSettingsScreen(vm, back) }
+        }
+    }
+}
+
+/**
+ * Keeps the settings hub inside the retained tab pager while a detail page is
+ * open. The previous NavHost destinations disposed the whole Home destination
+ * (including all three tab trees) and rebuilt it on every Back press.
+ */
+@Composable
+private fun SettingsTabStack(
+    vm: MainViewModel,
+    detailRoute: String?,
+    onNavigate: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        SettingsScreen(vm = vm, onNavigate = onNavigate)
+        if (detailRoute != null) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            ) {
+                when (detailRoute) {
+                    SettingsRoutes.STYLE        -> StyleScreen(vm, onBack)
+                    SettingsRoutes.LANGUAGE     -> LanguageSettingsScreen(vm, onBack)
+                    SettingsRoutes.CONNECTION   -> ConnectionSettingsScreen(vm, onBack)
+                    SettingsRoutes.DNS          -> DnsSettingsScreen(vm, onBack)
+                    SettingsRoutes.ROUTING      -> RoutingSettingsScreen(vm, onBack)
+                    SettingsRoutes.GEO          -> GeoFilesSettingsScreen(vm, onBack)
+                    SettingsRoutes.SUBSCRIPTION -> SubscriptionSettingsScreen(vm, onBack)
+                    SettingsRoutes.SPLIT        -> SplitTunnelSettingsScreen(vm, onBack)
+                    SettingsRoutes.BACKUP       -> BackupSettingsScreen(vm, onBack)
+                    SettingsRoutes.STARTUP      -> StartupSettingsScreen(vm, onBack)
+                    SettingsRoutes.DIAGNOSTICS  -> DiagnosticsSettingsScreen(vm, onBack)
+                    SettingsRoutes.ABOUT        -> AboutSettingsScreen(vm, onBack)
+                }
+            }
         }
     }
 }
