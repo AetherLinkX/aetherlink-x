@@ -915,36 +915,6 @@ private fun ProfileCard(
                         )
                     }
                 }
-                // Latency chip — animates in/out
-                AnimatedVisibility(
-                    visible = profile.latencyMs >= 0,
-                    enter   = fadeIn() + scaleIn(),
-                    exit    = fadeOut() + scaleOut(),
-                ) {
-                    val latColor = when {
-                        profile.latencyMs < 150 -> MaterialTheme.colorScheme.primary
-                        profile.latencyMs < 400 -> MaterialTheme.colorScheme.secondary
-                        else                    -> MaterialTheme.colorScheme.error
-                    }
-                    Surface(
-                        color = latColor.copy(alpha = 0.15f),
-                        shape = CircleShape,
-                    ) {
-                        AnimatedContent(
-                            targetState = profile.latencyMs,
-                            transitionSpec = { fadeIn(tween(140)) togetherWith fadeOut(tween(90)) },
-                            label = "latency_${profile.id}",
-                        ) { latency ->
-                            Text(
-                                "${latency}ms",
-                                modifier   = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                style      = MaterialTheme.typography.labelSmall,
-                                color      = latColor,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
-                }
             }
 
             Spacer(Modifier.height(10.dp))
@@ -980,22 +950,27 @@ private fun ProfileCard(
                         }
                     }
                 }
-                Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    shape = CircleShape,
-                ) {
-                    Icon(
-                        when {
-                            isActive -> Icons.Rounded.Check
-                            profile.protocol in listOf(Protocol.AETHERLINK_X, Protocol.AETHERLINK_NATIVE) -> Icons.Rounded.Dns
-                            else -> Icons.Rounded.Public
-                        },
-                        null,
-                        Modifier.padding(12.dp).size(25.dp),
-                    )
+                if (profile.lastTested > 0L) {
+                    val latencyColor = when {
+                        profile.latencyMs < 0L -> MaterialTheme.colorScheme.error
+                        profile.latencyMs < 150L -> MaterialTheme.colorScheme.primary
+                        profile.latencyMs < 400L -> MaterialTheme.colorScheme.secondary
+                        else -> MaterialTheme.colorScheme.error
+                    }
+                    AnimatedContent(
+                        targetState = profile.latencyMs,
+                        transitionSpec = { fadeIn(tween(140)) togetherWith fadeOut(tween(90)) },
+                        label = "latency_${profile.id}",
+                    ) { latency ->
+                        Text(
+                            text = if (latency >= 0L) "$latency мс" else "н/д",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = latencyColor,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
                 }
-                Spacer(Modifier.width(4.dp))
                 Icon(
                     Icons.Rounded.ChevronRight,
                     contentDescription = null,
