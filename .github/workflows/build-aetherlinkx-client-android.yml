@@ -27,7 +27,7 @@ jobs:
       HEV_REPOSITORY: https://github.com/heiher/hev-socks5-tunnel.git
       HEV_COMMIT: 64cc609
       CLIENT_RELEASE_TAG: client-v0.7.2-reality-compat-signed
-      CLIENT_NATIVE_PREVIEW_TAG: client-v0.8.1-ui-preview.4
+      CLIENT_NATIVE_PREVIEW_TAG: client-v0.8.1-ui-preview.5
 
     steps:
       - uses: actions/checkout@v7
@@ -198,18 +198,18 @@ jobs:
           set -euo pipefail
           APK=$(find client/android/app/build/outputs/apk/debug -type f -name '*universal*.apk' | head -1)
           test -n "$APK"
-          cp "$APK" aetherlink-x-client-android-v0.8.1-ui-preview.4.apk
-          sha256sum aetherlink-x-client-android-v0.8.1-ui-preview.4.apk > aetherlink-x-client-android-v0.8.1-ui-preview.4-SHA256SUMS.txt
+          cp "$APK" aetherlink-x-client-android-v0.8.1-ui-preview.5.apk
+          sha256sum aetherlink-x-client-android-v0.8.1-ui-preview.5.apk > aetherlink-x-client-android-v0.8.1-ui-preview.5-SHA256SUMS.txt
           git tag --force "$CLIENT_NATIVE_PREVIEW_TAG" "$GITHUB_SHA"
           git push origin "refs/tags/$CLIENT_NATIVE_PREVIEW_TAG" --force
           if ! gh release view "$CLIENT_NATIVE_PREVIEW_TAG" >/dev/null 2>&1; then
             gh release create "$CLIENT_NATIVE_PREVIEW_TAG" --prerelease --verify-tag \
-              --title "AetherLink X Client 0.8.1 — UI preview 4" \
-              --notes "Application-only design preview; ALX/1 remains unchanged from Native preview 7. Adds the supplied light-theme background, matches the approved dark navy-violet palette, and fixes overlapping circular actions in the Servers header."
+              --title "AetherLink X Client 0.8.1 — UI preview 5" \
+              --notes "Application-only design preview; ALX/1 remains unchanged from Native preview 7. Keeps the supplied light and dark backgrounds and isolates every circular Servers action in its own layout cell so outlines cannot overlap in either theme."
           fi
           gh release upload "$CLIENT_NATIVE_PREVIEW_TAG" \
-            aetherlink-x-client-android-v0.8.1-ui-preview.4.apk \
-            aetherlink-x-client-android-v0.8.1-ui-preview.4-SHA256SUMS.txt --clobber
+            aetherlink-x-client-android-v0.8.1-ui-preview.5.apk \
+            aetherlink-x-client-android-v0.8.1-ui-preview.5-SHA256SUMS.txt --clobber
 
       - name: Publish versioned Android release
         if: github.ref == 'refs/heads/main'

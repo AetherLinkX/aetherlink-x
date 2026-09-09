@@ -167,7 +167,7 @@ fun ProfilesScreen(
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.17f),
@@ -610,21 +610,26 @@ private fun ProfileTopAction(
     description: String,
     onClick: () -> Unit,
 ) {
-    Surface(
-        onClick = onClick,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-        contentColor = MaterialTheme.colorScheme.primary,
-        shape = CircleShape,
-        modifier = Modifier
-            .size(36.dp)
-            .border(
-                1.dp,
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.48f),
-                CircleShape,
-            ),
+    Box(
+        modifier = Modifier.size(42.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(icon, description, Modifier.size(19.dp))
+        Surface(
+            onClick = onClick,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+            contentColor = MaterialTheme.colorScheme.primary,
+            shape = CircleShape,
+            modifier = Modifier
+                .size(34.dp)
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.48f),
+                    CircleShape,
+                ),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(icon, description, Modifier.size(18.dp))
+            }
         }
     }
 }
