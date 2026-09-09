@@ -52,6 +52,7 @@ fun JsonConfigScreen(
     Scaffold(
         modifier = Modifier.aetherScreenBackground(),
         containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onBackground,
         topBar = {
             TopAppBar(
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(

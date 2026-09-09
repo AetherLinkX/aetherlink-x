@@ -128,6 +128,7 @@ fun AppNavHost(
     Scaffold(
         modifier = Modifier.aetherScreenBackground(),
         containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onBackground,
         snackbarHost = { SnackbarHost(snackState) },
         bottomBar = {
             if (showBottomBar) {
