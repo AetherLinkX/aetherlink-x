@@ -167,7 +167,7 @@ fun ProfilesScreen(
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.17f),

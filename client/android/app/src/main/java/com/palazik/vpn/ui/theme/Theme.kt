@@ -28,14 +28,14 @@ private fun cyberDarkScheme() = darkColorScheme(
     primaryContainer   = CyberPrimaryContainer,
     onPrimaryContainer = CyberOnPrimaryContainer,
     secondary          = CyberSecondary,
-    tertiary           = Color(0xFF00C99A),
+    tertiary           = Color(0xFF00C996),
     background         = CyberBackground,
     surface            = CyberSurface,
     surfaceVariant     = CyberSurfaceVariant,
     onSurface          = CyberOnSurface,
-    onSurfaceVariant   = Color(0xFFB9AFD1),
+    onSurfaceVariant   = Color(0xFF938BAF),
     outline            = CyberOutline,
-    outlineVariant     = Color(0xFF332748),
+    outlineVariant     = Color(0xFF241D3A),
 )
 
 private fun cyberLightScheme() = lightColorScheme(
