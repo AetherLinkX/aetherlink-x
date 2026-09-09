@@ -9,6 +9,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +27,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -611,25 +613,35 @@ private fun ProfileTopAction(
     onClick: () -> Unit,
 ) {
     Box(
-        modifier = Modifier.size(42.dp),
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            onClick = onClick,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-            contentColor = MaterialTheme.colorScheme.primary,
-            shape = CircleShape,
+        // Surface(onClick) enforces Material's 48 dp minimum interactive size and
+        // consequently made adjacent circular outlines overlap. Keep the generous
+        // touch target on the outer Box while drawing an explicitly smaller circle.
+        Box(
             modifier = Modifier
-                .size(34.dp)
+                .size(30.dp)
+                .background(
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                    CircleShape,
+                )
                 .border(
                     1.dp,
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.48f),
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.62f),
                     CircleShape,
                 ),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(icon, description, Modifier.size(18.dp))
-            }
+            Icon(
+                icon,
+                description,
+                modifier = Modifier.size(17.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }

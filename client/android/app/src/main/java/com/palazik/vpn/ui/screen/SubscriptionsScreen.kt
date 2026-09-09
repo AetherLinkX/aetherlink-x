@@ -47,6 +47,7 @@ fun SubscriptionsScreen(vm: MainViewModel) {
     Column(
         Modifier
             .fillMaxSize()
+            .aetherScreenBackground()
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {

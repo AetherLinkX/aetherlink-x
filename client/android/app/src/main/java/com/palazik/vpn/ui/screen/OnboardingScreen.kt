@@ -41,6 +41,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            .aetherScreenBackground()
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(24.dp),
