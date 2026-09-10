@@ -592,18 +592,39 @@ func (m *connectionManager) dialTurboTCP(ctx context.Context) (net.Conn, error) 
 		_ = connection.Close()
 		return nil, fmt.Errorf("build Turbo ClientHello: %w", err)
 	}
-	// Chrome still sends the empty RFC 5746 extension. TLS 1.3 itself cannot
-	// renegotiate, so keep the bytes on the wire while disabling uTLS' legacy
-	// renegotiation state. This makes the standard TLS exporter available for
-	// binding ALX authentication to this exact session.
+	// Chrome 133 advertises a hybrid ML-KEM key share that makes ClientHello
+	// roughly 1.8 KiB. Some Android vendor TCP paths only release the first
+	// 1024 bytes of that first write and then wait for ServerHello, deadlocking
+	// the recovery connection. Keep the modern shuffled Chrome shape but use
+	// its conventional X25519 share on TCP. The primary QUIC path retains its
+	// native TLS key exchange and is unaffected.
 	for _, extension := range connection.Extensions {
-		if renegotiation, ok := extension.(*utls.RenegotiationInfoExtension); ok {
-			renegotiation.Renegotiation = utls.RenegotiateNever
+		switch typed := extension.(type) {
+		case *utls.RenegotiationInfoExtension:
+			// TLS 1.3 cannot renegotiate. Keep the RFC 5746 bytes on the wire
+			// while allowing the exporter used to bind ALX authentication.
+			typed.Renegotiation = utls.RenegotiateNever
+		case *utls.SupportedCurvesExtension:
+			curves := typed.Curves[:0]
+			for _, curve := range typed.Curves {
+				if curve != utls.X25519MLKEM768 {
+					curves = append(curves, curve)
+				}
+			}
+			typed.Curves = curves
+		case *utls.KeyShareExtension:
+			shares := typed.KeyShares[:0]
+			for _, share := range typed.KeyShares {
+				if share.Group != utls.X25519MLKEM768 {
+					shares = append(shares, share)
+				}
+			}
+			typed.KeyShares = shares
 		}
 	}
-	if err := connection.BuildHandshakeState(); err != nil {
+	if err := connection.MarshalClientHello(); err != nil {
 		_ = connection.Close()
-		return nil, fmt.Errorf("finalize Turbo ClientHello: %w", err)
+		return nil, fmt.Errorf("marshal Turbo ClientHello: %w", err)
 	}
 	if err := connection.HandshakeContext(ctx); err != nil {
 		_ = connection.Close()
