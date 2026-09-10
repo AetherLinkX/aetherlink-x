@@ -448,6 +448,7 @@ func (s *Server) handleConnection(connection *quic.Conn) {
 		associations: make(map[uint32]*udpAssociation),
 	}
 	defer state.close()
+	go s.monitorQUICConnection(connection)
 	go state.receiveDatagrams()
 	for {
 		stream, err := connection.AcceptStream(connection.Context())
@@ -455,6 +456,41 @@ func (s *Server) handleConnection(connection *quic.Conn) {
 			return
 		}
 		go state.handleStream(stream)
+	}
+}
+
+// monitorQUICConnection keeps enough transport telemetry in the server journal
+// to diagnose mobile paths without enabling verbose qlog packet captures. It is
+// intentionally low frequency and only reports while application bytes move or
+// packet loss changes, so an idle tunnel doesn't spam production logs.
+func (s *Server) monitorQUICConnection(connection *quic.Conn) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	var previous quic.ConnectionStats
+	for {
+		select {
+		case <-connection.Context().Done():
+			return
+		case <-ticker.C:
+			stats := connection.ConnectionStats()
+			if stats.BytesSent == previous.BytesSent &&
+				stats.BytesReceived == previous.BytesReceived &&
+				stats.PacketsLost == previous.PacketsLost {
+				continue
+			}
+			s.logger.Printf(
+				"ALX QUIC metrics peer=%s rtt=%s sent=%dB/%dp recv=%dB/%dp lost=%dB/%dp",
+				connection.RemoteAddr(),
+				stats.SmoothedRTT.Round(time.Millisecond),
+				stats.BytesSent,
+				stats.PacketsSent,
+				stats.BytesReceived,
+				stats.PacketsReceived,
+				stats.BytesLost,
+				stats.PacketsLost,
+			)
+			previous = stats
+		}
 	}
 }
 
