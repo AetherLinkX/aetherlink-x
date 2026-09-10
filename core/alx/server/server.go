@@ -21,6 +21,7 @@ import (
 
 	"github.com/AetherLinkX/aetherlink-x/core/alx"
 	quic "github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/qlog"
 )
 
 type Config struct {
@@ -132,6 +133,7 @@ func (s *Server) runQUIC(ctx context.Context, tlsConfig *tls.Config) error {
 		InitialConnectionReceiveWindow: 4 << 20,
 		MaxConnectionReceiveWindow:     32 << 20,
 		Allow0RTT:                      false,
+		Tracer:                         qlog.DefaultConnectionTracer,
 	})
 	if err != nil {
 		return fmt.Errorf("listen for ALX/1: %w", err)
