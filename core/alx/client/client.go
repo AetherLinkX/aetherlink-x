@@ -576,7 +576,13 @@ func (m *connectionManager) dialTurboTCP(ctx context.Context) (net.Conn, error) 
 		MinVersion:         utls.VersionTLS13,
 		ServerName:         m.runtime.config.ServerName,
 		NextProtos:         []string{"h2", "http/1.1"},
-		ClientSessionCache: m.turboCache,
+		// The shared SNI gateway must inspect every complete ClientHello before
+		// routing it to Turbo. Chrome-style TLS 1.3 resumption produced follow-up
+		// handshakes that the gateway accepted but never completed, so SOCKS
+		// requests stalled after the successful startup probe. Full handshakes
+		// keep the TCP recovery path deterministic; the normal QUIC path remains
+		// multiplexed and is unaffected by this compatibility safeguard.
+		ClientSessionCache: nil,
 		InsecureSkipVerify: true, // Replaced by mandatory SPKI verification below.
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			return verifyPinnedCertificate(rawCerts, pin)

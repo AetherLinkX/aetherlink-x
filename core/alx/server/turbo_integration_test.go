@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -35,6 +36,7 @@ func TestTurboTCPStart(t *testing.T) {
 	tcpAddress := unusedAddress(t, "tcp")
 	quicAddress := unusedAddress(t, "udp")
 	deadQUICAddress := unusedAddress(t, "udp")
+	clientAddress := unusedAddress(t, "tcp")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -58,7 +60,7 @@ func TestTurboTCPStart(t *testing.T) {
 	deadline := time.Now().Add(4 * time.Second)
 	for time.Now().Before(deadline) {
 		runtime, err = alxclient.Start(alxclient.Config{
-			Listen:             "127.0.0.1:0",
+			Listen:             clientAddress,
 			Server:             deadQUICAddress,
 			FallbackServer:     tcpAddress,
 			TransportMode:      "turbo",
@@ -85,6 +87,43 @@ func TestTurboTCPStart(t *testing.T) {
 	if got := runtime.Stats().Transport; got != "tls-tcp" {
 		t.Fatalf("selected transport = %q, want tls-tcp", got)
 	}
+
+	// A Turbo startup probe is followed by fresh TCP connections for SOCKS
+	// requests. Exercise more than the initial authenticated handshake because
+	// TLS session resumption used to leave those follow-up handshakes stalled.
+	for attempt := 0; attempt < 3; attempt++ {
+		if reply := rejectedSOCKSConnect(t, clientAddress); reply != 0x05 {
+			t.Fatalf("SOCKS attempt %d reply = %d, want destination rejection 5", attempt+1, reply)
+		}
+	}
+}
+
+func rejectedSOCKSConnect(t *testing.T, address string) byte {
+	t.Helper()
+	connection, err := net.DialTimeout("tcp", address, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	_ = connection.SetDeadline(time.Now().Add(3 * time.Second))
+	if _, err := connection.Write([]byte{0x05, 0x01, 0x00}); err != nil {
+		t.Fatal(err)
+	}
+	reader := bufio.NewReader(connection)
+	method := make([]byte, 2)
+	if _, err := io.ReadFull(reader, method); err != nil {
+		t.Fatal(err)
+	}
+	// CONNECT 127.0.0.1:1 is deliberately rejected by the server's public-only
+	// egress policy, after the complete Turbo handshake and ALX OPEN frame.
+	if _, err := connection.Write([]byte{0x05, 0x01, 0x00, 0x01, 127, 0, 0, 1, 0, 1}); err != nil {
+		t.Fatal(err)
+	}
+	reply := make([]byte, 10)
+	if _, err := io.ReadFull(reader, reply); err != nil {
+		t.Fatal(err)
+	}
+	return reply[1]
 }
 
 func unusedAddress(t *testing.T, network string) string {
