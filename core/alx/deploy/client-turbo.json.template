@@ -1,0 +1,11 @@
+{
+  "listen": "127.0.0.1:18080",
+  "server": "138.124.245.121:443",
+  "fallbackServer": "138.124.245.121:443",
+  "transportMode": "turbo",
+  "token": "TOKEN_VALUE",
+  "certificatePin": "PIN_VALUE",
+  "serverName": "turbo.sinfor.fun",
+  "handshakeTimeoutMs": 8000,
+  "quicProbeTimeoutMs": 1500
+}

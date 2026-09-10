@@ -2,7 +2,10 @@ package client
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -14,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +26,7 @@ import (
 
 	"github.com/AetherLinkX/aetherlink-x/core/alx"
 	quic "github.com/quic-go/quic-go"
+	utls "github.com/refraction-networking/utls"
 )
 
 type Config struct {
@@ -60,11 +65,11 @@ func ParseConfig(raw string) (Config, error) {
 		config.TransportMode = "auto"
 	}
 	switch config.TransportMode {
-	case "auto", "quic", "tcp-first", "tls-tcp":
+	case "auto", "quic", "tcp-first", "tls-tcp", "turbo":
 	default:
 		return config, fmt.Errorf("invalid ALX transport mode %q", config.TransportMode)
 	}
-	if config.TransportMode == "tls-tcp" && config.FallbackServer == "" {
+	if (config.TransportMode == "tls-tcp" || config.TransportMode == "turbo") && config.FallbackServer == "" {
 		return config, errors.New("ALX TLS/TCP transport requires a fallback server")
 	}
 	if _, err := alx.DecodeToken(config.Token); err != nil {
@@ -305,6 +310,7 @@ type connectionManager struct {
 	conn         *quic.Conn
 	fallback     atomic.Bool
 	sessionCache tls.ClientSessionCache
+	turboCache   utls.ClientSessionCache
 	udpMu        sync.RWMutex
 	udp          map[uint32]*udpAssociation
 }
@@ -313,11 +319,15 @@ func newConnectionManager(runtime *Runtime) *connectionManager {
 	return &connectionManager{
 		runtime:      runtime,
 		sessionCache: tls.NewLRUClientSessionCache(64),
+		turboCache:   utls.NewLRUClientSessionCache(64),
 		udp:          make(map[uint32]*udpAssociation),
 	}
 }
 
 func (m *connectionManager) probe(ctx context.Context) error {
+	if m.runtime.config.TransportMode == "turbo" {
+		return m.probeTurbo(ctx)
+	}
 	if m.runtime.config.TransportMode == "tls-tcp" || m.runtime.config.TransportMode == "tcp-first" {
 		connection, err := m.dialFallback(ctx)
 		if err == nil {
@@ -343,6 +353,45 @@ func (m *connectionManager) probe(ctx context.Context) error {
 	}
 	m.fallback.Store(true)
 	return connection.Close()
+}
+
+type transportProbe struct {
+	tcp bool
+	err error
+}
+
+// probeTurbo races both usable paths and keeps the first authenticated one.
+// On mobile networks this avoids assuming that UDP/QUIC is always faster.
+func (m *connectionManager) probeTurbo(ctx context.Context) error {
+	tracingCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make(chan transportProbe, 2)
+	go func() {
+		connection, err := m.dialFallback(tracingCtx)
+		if err == nil {
+			err = connection.Close()
+		}
+		results <- transportProbe{tcp: true, err: err}
+	}()
+	go func() {
+		_, err := m.connection(tracingCtx)
+		results <- transportProbe{tcp: false, err: err}
+	}()
+	var failures []string
+	for range 2 {
+		result := <-results
+		if result.err == nil {
+			m.fallback.Store(result.tcp)
+			cancel()
+			return nil
+		}
+		path := "QUIC"
+		if result.tcp {
+			path = "TCP"
+		}
+		failures = append(failures, path+": "+result.err.Error())
+	}
+	return errors.New("ALX Turbo paths unavailable: " + strings.Join(failures, "; "))
 }
 
 func (m *connectionManager) openStream(ctx context.Context) (io.ReadWriteCloser, *quic.Conn, error) {
@@ -401,9 +450,21 @@ func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) 
 	}
 	clearDeadline := setStreamDeadline(authStream, ctx)
 	defer clearDeadline()
-	if err := alx.WriteAuth(authStream, m.runtime.token, time.Now()); err != nil {
+	var authErr error
+	if m.runtime.config.TransportMode == "turbo" {
+		state := connection.ConnectionState().TLS
+		binding, err := state.ExportKeyingMaterial("EXPORTER-AetherLink-Turbo-v1", nil, 32)
+		if err != nil {
+			authErr = err
+		} else {
+			authErr = alx.WriteTurboAuth(authStream, m.runtime.token, binding, time.Now())
+		}
+	} else {
+		authErr = alx.WriteAuth(authStream, m.runtime.token, time.Now())
+	}
+	if authErr != nil {
 		_ = connection.CloseWithError(1, "auth write failed")
-		return nil, err
+		return nil, authErr
 	}
 	status := []byte{0xff}
 	if _, err := io.ReadFull(authStream, status); err != nil || status[0] != alx.StatusOK {
@@ -456,7 +517,10 @@ func (m *connectionManager) monitorConnection(connection *quic.Conn) {
 	}
 }
 
-func (m *connectionManager) dialFallback(ctx context.Context) (*tls.Conn, error) {
+func (m *connectionManager) dialFallback(ctx context.Context) (net.Conn, error) {
+	if m.runtime.config.TransportMode == "turbo" {
+		return m.dialTurboTCP(ctx)
+	}
 	tlsConfig, err := m.tlsConfig([]string{"alx/1"})
 	if err != nil {
 		return nil, err
@@ -465,6 +529,11 @@ func (m *connectionManager) dialFallback(ctx context.Context) (*tls.Conn, error)
 	raw, err := dialer.DialContext(ctx, "tcp", m.runtime.config.FallbackServer)
 	if err != nil {
 		return nil, err
+	}
+	if tcp, ok := raw.(*net.TCPConn); ok {
+		_ = tcp.SetNoDelay(true)
+		_ = tcp.SetReadBuffer(1 << 20)
+		_ = tcp.SetWriteBuffer(1 << 20)
 	}
 	connection := raw.(*tls.Conn)
 	if err := alx.WriteAuth(connection, m.runtime.token, time.Now()); err != nil {
@@ -482,6 +551,122 @@ func (m *connectionManager) dialFallback(ctx context.Context) (*tls.Conn, error)
 	return connection, nil
 }
 
+func (m *connectionManager) dialTurboTCP(ctx context.Context) (net.Conn, error) {
+	pin, err := normalizePin(m.runtime.config.CertificatePin)
+	if err != nil {
+		return nil, err
+	}
+	dialer := &net.Dialer{
+		Timeout:   time.Duration(m.runtime.config.HandshakeTimeoutMS) * time.Millisecond,
+		KeepAlive: 30 * time.Second,
+	}
+	raw, err := dialer.DialContext(ctx, "tcp", m.runtime.config.FallbackServer)
+	if err != nil {
+		return nil, err
+	}
+	if tcp, ok := raw.(*net.TCPConn); ok {
+		_ = tcp.SetNoDelay(true)
+		_ = tcp.SetReadBuffer(1 << 20)
+		_ = tcp.SetWriteBuffer(1 << 20)
+	}
+	// Turbo deliberately uses the current Chrome ClientHello layout. The
+	// tunnel itself still relies on standard TLS 1.3; uTLS only controls the
+	// observable handshake fingerprint so it resembles ordinary web traffic.
+	connection := utls.UClient(raw, &utls.Config{
+		MinVersion:         utls.VersionTLS13,
+		ServerName:         m.runtime.config.ServerName,
+		NextProtos:         []string{"h2", "http/1.1"},
+		ClientSessionCache: m.turboCache,
+		InsecureSkipVerify: true, // Replaced by mandatory SPKI verification below.
+		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			return verifyPinnedCertificate(rawCerts, pin)
+		},
+	}, utls.HelloChrome_Auto)
+	if err := connection.BuildHandshakeState(); err != nil {
+		_ = connection.Close()
+		return nil, fmt.Errorf("build Turbo ClientHello: %w", err)
+	}
+	// Chrome still sends the empty RFC 5746 extension. TLS 1.3 itself cannot
+	// renegotiate, so keep the bytes on the wire while disabling uTLS' legacy
+	// renegotiation state. This makes the standard TLS exporter available for
+	// binding ALX authentication to this exact session.
+	for _, extension := range connection.Extensions {
+		if renegotiation, ok := extension.(*utls.RenegotiationInfoExtension); ok {
+			renegotiation.Renegotiation = utls.RenegotiateNever
+		}
+	}
+	if err := connection.BuildHandshakeState(); err != nil {
+		_ = connection.Close()
+		return nil, fmt.Errorf("finalize Turbo ClientHello: %w", err)
+	}
+	if err := connection.HandshakeContext(ctx); err != nil {
+		_ = connection.Close()
+		return nil, err
+	}
+	state := connection.ConnectionState()
+	if state.NegotiatedProtocol != "http/1.1" {
+		_ = connection.Close()
+		return nil, fmt.Errorf("ALX Turbo expected HTTP/1.1, server selected %q", state.NegotiatedProtocol)
+	}
+	binding, err := state.ExportKeyingMaterial("EXPORTER-AetherLink-Turbo-v1", nil, 32)
+	if err != nil {
+		_ = connection.Close()
+		return nil, fmt.Errorf("derive Turbo TLS binding: %w", err)
+	}
+	var auth bytes.Buffer
+	if err := alx.WriteTurboAuth(&auth, m.runtime.token, binding, time.Now()); err != nil {
+		_ = connection.Close()
+		return nil, err
+	}
+	webSocketNonce := make([]byte, 16)
+	if _, err := rand.Read(webSocketNonce); err != nil {
+		_ = connection.Close()
+		return nil, err
+	}
+	webSocketKey := base64.StdEncoding.EncodeToString(webSocketNonce)
+	sessionCookie := base64.RawURLEncoding.EncodeToString(auth.Bytes())
+	request := "GET /gateway HTTP/1.1\r\n" +
+		"Host: " + m.runtime.config.ServerName + "\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Pragma: no-cache\r\n" +
+		"Cache-Control: no-cache\r\n" +
+		"User-Agent: Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/128.0 Mobile Safari/537.36\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Sec-WebSocket-Version: 13\r\n" +
+		"Sec-WebSocket-Key: " + webSocketKey + "\r\n" +
+		"Cookie: session=" + sessionCookie + "\r\n\r\n"
+	if _, err := io.WriteString(connection, request); err != nil {
+		_ = connection.Close()
+		return nil, err
+	}
+	reader := bufio.NewReader(connection)
+	response, err := http.ReadResponse(reader, &http.Request{Method: http.MethodGet})
+	if err != nil {
+		_ = connection.Close()
+		return nil, fmt.Errorf("read Turbo upgrade: %w", err)
+	}
+	wantAccept := webSocketAccept(webSocketKey)
+	if response.StatusCode != http.StatusSwitchingProtocols || response.Header.Get("Sec-WebSocket-Accept") != wantAccept {
+		_ = connection.Close()
+		return nil, fmt.Errorf("ALX Turbo upgrade rejected with HTTP %d", response.StatusCode)
+	}
+	return &bufferedNetConn{Conn: connection, reader: reader}, nil
+}
+
+func webSocketAccept(key string) string {
+	digest := sha1.Sum([]byte(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+	return base64.StdEncoding.EncodeToString(digest[:])
+}
+
+type bufferedNetConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c *bufferedNetConn) Read(buffer []byte) (int, error) {
+	return c.reader.Read(buffer)
+}
+
 func (m *connectionManager) tlsConfig(nextProtocols []string) (*tls.Config, error) {
 	pin, err := normalizePin(m.runtime.config.CertificatePin)
 	if err != nil {
@@ -494,20 +679,24 @@ func (m *connectionManager) tlsConfig(nextProtocols []string) (*tls.Config, erro
 		ClientSessionCache: m.sessionCache,
 		InsecureSkipVerify: true, // Replaced by mandatory SPKI verification below.
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-			if len(rawCerts) == 0 {
-				return errors.New("ALX server sent no certificate")
-			}
-			certificate, err := x509.ParseCertificate(rawCerts[0])
-			if err != nil {
-				return err
-			}
-			actual := sha256.Sum256(certificate.RawSubjectPublicKeyInfo)
-			if !constantEqual(actual[:], pin) {
-				return errors.New("ALX server certificate pin mismatch")
-			}
-			return nil
+			return verifyPinnedCertificate(rawCerts, pin)
 		},
 	}, nil
+}
+
+func verifyPinnedCertificate(rawCerts [][]byte, pin []byte) error {
+	if len(rawCerts) == 0 {
+		return errors.New("ALX server sent no certificate")
+	}
+	certificate, err := x509.ParseCertificate(rawCerts[0])
+	if err != nil {
+		return err
+	}
+	actual := sha256.Sum256(certificate.RawSubjectPublicKeyInfo)
+	if !constantEqual(actual[:], pin) {
+		return errors.New("ALX server certificate pin mismatch")
+	}
+	return nil
 }
 
 func (m *connectionManager) invalidate(connection *quic.Conn) {
@@ -961,12 +1150,16 @@ func (w countingWriter) Write(data []byte) (int, error) {
 func proxyTCP(local net.Conn, buffered *bufio.Reader, remote io.ReadWriteCloser, up, down *atomic.Uint64) error {
 	errorsChannel := make(chan error, 2)
 	go func() {
-		_, err := io.Copy(countingWriter{writer: remote, count: up}, buffered)
+		buffer := tunnelBufferPool.Get().([]byte)
+		_, err := io.CopyBuffer(countingWriter{writer: remote, count: up}, buffered, buffer)
+		tunnelBufferPool.Put(buffer)
 		_ = remote.Close()
 		errorsChannel <- err
 	}()
 	go func() {
-		_, err := io.Copy(countingWriter{writer: local, count: down}, remote)
+		buffer := tunnelBufferPool.Get().([]byte)
+		_, err := io.CopyBuffer(countingWriter{writer: local, count: down}, remote, buffer)
+		tunnelBufferPool.Put(buffer)
 		errorsChannel <- err
 	}()
 	first := <-errorsChannel
@@ -975,6 +1168,8 @@ func proxyTCP(local net.Conn, buffered *bufio.Reader, remote io.ReadWriteCloser,
 	}
 	return nil
 }
+
+var tunnelBufferPool = sync.Pool{New: func() any { return make([]byte, 128<<10) }}
 
 func normalizePin(value string) ([]byte, error) {
 	value = strings.TrimSpace(strings.TrimPrefix(value, "sha256/"))

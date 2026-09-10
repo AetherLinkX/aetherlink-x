@@ -17,6 +17,9 @@ func main() {
 	tcpDefaultBackend := flag.String("tcp-default-backend", os.Getenv("ALX_TCP_DEFAULT_BACKEND"), "non-ALX TLS passthrough backend")
 	cert := flag.String("cert", envOr("ALX_CERT_FILE", "/etc/aetherlink-x/server.crt"), "TLS certificate")
 	key := flag.String("key", envOr("ALX_KEY_FILE", "/etc/aetherlink-x/server.key"), "TLS private key")
+	turboCert := flag.String("turbo-cert", os.Getenv("ALX_TURBO_CERT_FILE"), "Turbo TLS certificate")
+	turboKey := flag.String("turbo-key", os.Getenv("ALX_TURBO_KEY_FILE"), "Turbo TLS private key")
+	turboServerName := flag.String("turbo-server-name", os.Getenv("ALX_TURBO_SERVER_NAME"), "SNI routed to ALX Turbo")
 	token := flag.String("token", os.Getenv("ALX_TOKEN"), "pre-shared client token")
 	flag.Parse()
 
@@ -26,6 +29,9 @@ func main() {
 		TCPDefaultBackend: *tcpDefaultBackend,
 		CertFile:          *cert,
 		KeyFile:           *key,
+		TurboCertFile:     *turboCert,
+		TurboKeyFile:      *turboKey,
+		TurboServerName:   *turboServerName,
 		Token:             *token,
 	})
 	if err != nil {

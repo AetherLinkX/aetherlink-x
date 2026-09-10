@@ -242,7 +242,7 @@ class palazikVpnService : VpnService() {
                         // drop enough UDP to cut QUIC throughput by ~3x while TLS/TCP remains
                         // stable. Prefer the faster path, but retain QUIC as an automatic
                         // fallback when TCP is filtered.
-                        put("transportMode", "tcp-first")
+                        put("transportMode", profile.transportMode.ifBlank { "tcp-first" })
                         put("token", profile.uuid)
                         put("certificatePin", profile.publicKey)
                         put("serverName", profile.sni.ifBlank { "www.yahoo.com" })

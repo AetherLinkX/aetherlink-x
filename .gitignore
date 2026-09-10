@@ -13,3 +13,4 @@ dist/linux-*/xray-aetherlinkx
 test-server/*.private.*
 test-server/android-update-key.private.p12
 test-server/android-signing-secrets.private.json
+core/alx/dist/

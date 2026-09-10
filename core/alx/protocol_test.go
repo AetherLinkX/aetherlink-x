@@ -25,6 +25,27 @@ func TestAuthRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTurboAuthIsBoundToTLSSession(t *testing.T) {
+	token := bytes.Repeat([]byte{0x24}, 32)
+	binding := bytes.Repeat([]byte{0x71}, 32)
+	now := time.Unix(1_800_000_000, 0)
+	var wire bytes.Buffer
+	if err := WriteTurboAuth(&wire, token, binding, now); err != nil {
+		t.Fatal(err)
+	}
+	auth, err := ReadTurboAuth(&wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !auth.Verify(token, binding, now.Add(5*time.Second), time.Minute) {
+		t.Fatal("fresh Turbo auth was rejected")
+	}
+	otherBinding := bytes.Repeat([]byte{0x72}, 32)
+	if auth.Verify(token, otherBinding, now.Add(5*time.Second), time.Minute) {
+		t.Fatal("Turbo auth was accepted on a different TLS session")
+	}
+}
+
 func TestDatagramRoundTrip(t *testing.T) {
 	want := Datagram{AssociationID: 7, Address: "1.1.1.1:53", Payload: []byte("dns")}
 	raw, err := EncodeDatagram(want)

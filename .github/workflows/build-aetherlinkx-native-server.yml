@@ -48,15 +48,15 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          SERVER_PREVIEW_TAG: server-v0.1.0-alx-native-preview.3
+          SERVER_PREVIEW_TAG: server-v0.2.0-alx-preview.8
         run: |
           set -euo pipefail
           git tag --force "$SERVER_PREVIEW_TAG" "$GITHUB_SHA"
           git push origin "refs/tags/$SERVER_PREVIEW_TAG" --force
           if ! gh release view "$SERVER_PREVIEW_TAG" >/dev/null 2>&1; then
             gh release create "$SERVER_PREVIEW_TAG" --prerelease --verify-tag \
-              --title "AetherLink Native Server 0.1.0 — preview 3" \
-              --notes "Independent ALX/1 server preview with authenticated application heartbeats, adaptive high-bandwidth QUIC receive windows, QUIC/UDP, pinned TLS/TCP fallback, replay-resistant authentication, UDP relay, and ALPN-based coexistence with an existing Xray listener."
+              --title "AetherLink Native Server 0.2.0 — Preview 8 Turbo" \
+              --notes "Turbo server with session-bound hidden authentication, authenticated HTTP Upgrade cover transport, Chrome-like client compatibility, automatic TCP/QUIC paths, and preserved Preview 7 gateway support."
           fi
           gh release upload "$SERVER_PREVIEW_TAG" \
             aetherlink-native-server-linux-amd64 \

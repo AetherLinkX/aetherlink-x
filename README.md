@@ -1,28 +1,37 @@
 # AetherLink X
 
-AetherLink X сейчас находится на нулевом тестовом этапе. Название сохранено,
-но отдельного wire-протокола пока нет: профиль AetherLink X использует
-неизменённый VLESS из официального Xray-core.
+AetherLink X combines a production VLESS/REALITY compatibility path with the
+experimental independent ALX transport. The Android application keeps its
+existing design and subscription support; native ALX profiles are additional
+profiles and do not replace ordinary Xray locations.
 
-Это намеренная контрольная точка:
+## Preview 8: Turbo
 
-- клиентский outbound всегда имеет `protocol: "vless"`;
-- сервер использует обычный VLESS inbound;
-- транспорты, TLS и REALITY предоставляет штатный Xray;
-- собственные handshake, шифрование, Turbo, Stealth и PQ отсутствуют;
-- патчи Xray, Remnawave Backend и Remnawave Node не нужны.
+Turbo is the only new mode in Preview 8. It is designed for maximum practical
+speed without artificial padding, random delays, CDN routing, or custom
+cryptography:
 
-## Состав репозитория
+- standard TLS 1.3 encryption;
+- a current Chrome-like ClientHello on TCP;
+- an authenticated HTTP Upgrade that resembles a normal web connection;
+- session-bound HMAC authentication with replay protection;
+- parallel TCP/QUIC probing and automatic selection of the first working path;
+- large adaptive buffers and connection reuse for high-throughput links;
+- an ordinary cover page for unauthenticated requests;
+- full compatibility with Preview 7 ALX profiles and existing VLESS profiles.
 
-- `client/android` — Android-приложение;
-- `.github/workflows/build-aetherlinkx-client-android.yml` — воспроизводимая
-  сборка приложения с официальным Xray-core;
-- `test-server` — минимальная конфигурация чистого VLESS-сервера для отдельного VPS.
+`ALX` means the authentication, framing, UDP relay, path selection and routing
+implemented in this repository. It does not claim to invent a new cipher:
+security-critical encryption remains the responsibility of standard TLS 1.3.
 
-## Правило тестирования
+## Repository layout
 
-Сначала подтверждается стабильность неизменённого VLESS: несколько запусков,
-переподключений, TCP, UDP/DNS и смена локаций. Любое будущее изменение
-протокола добавляется отдельно и только после повторения базовых тестов.
+- `client/android` — Android application;
+- `core/alx` — ALX client, server, tests and diagnostic benchmark;
+- `.github/workflows` — reproducible Android and Linux release builds;
+- `test-server` — preserved VLESS baseline configuration.
 
-Подробная инструкция: [client/README.md](client/README.md).
+Build and configuration details: [core/alx/README.md](core/alx/README.md).
+Android installation details: [client/README.md](client/README.md).
+
+Never commit tokens, private keys or complete share links.
