@@ -222,7 +222,6 @@ func (s *Server) handleTurboTCP(connection *tls.Conn) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := connection.HandshakeContext(ctx); err != nil {
-		s.logger.Printf("ALX Turbo TLS handshake failed: %v", err)
 		return
 	}
 	_ = connection.SetReadDeadline(time.Now().Add(10 * time.Second))

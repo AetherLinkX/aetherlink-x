@@ -630,7 +630,7 @@ func (m *connectionManager) dialTurboTCP(ctx context.Context) (net.Conn, error) 
 		"Connection: Upgrade\r\n" +
 		"Pragma: no-cache\r\n" +
 		"Cache-Control: no-cache\r\n" +
-		"User-Agent: Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/128.0 Mobile Safari/537.36\r\n" +
+		"User-Agent: Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/133.0 Mobile Safari/537.36\r\n" +
 		"Upgrade: websocket\r\n" +
 		"Sec-WebSocket-Version: 13\r\n" +
 		"Sec-WebSocket-Key: " + webSocketKey + "\r\n" +
