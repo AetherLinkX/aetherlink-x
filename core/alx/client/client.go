@@ -193,6 +193,11 @@ func (r *Runtime) acceptLoop() {
 			r.setError(err)
 			return
 		}
+		if tcp, ok := connection.(*net.TCPConn); ok {
+			_ = tcp.SetNoDelay(true)
+			_ = tcp.SetReadBuffer(1 << 20)
+			_ = tcp.SetWriteBuffer(1 << 20)
+		}
 		r.wait.Add(1)
 		go func() {
 			defer r.wait.Done()
@@ -355,43 +360,27 @@ func (m *connectionManager) probe(ctx context.Context) error {
 	return connection.Close()
 }
 
-type transportProbe struct {
-	tcp bool
-	err error
-}
-
-// probeTurbo races both usable paths and keeps the first authenticated one.
-// On mobile networks this avoids assuming that UDP/QUIC is always faster.
+// probeTurbo prefers the high-throughput QUIC path and falls back to the
+// covered TCP transport when UDP is unavailable.
 func (m *connectionManager) probeTurbo(ctx context.Context) error {
-	tracingCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	results := make(chan transportProbe, 2)
-	go func() {
-		connection, err := m.dialFallback(tracingCtx)
-		if err == nil {
-			err = connection.Close()
-		}
-		results <- transportProbe{tcp: true, err: err}
-	}()
-	go func() {
-		_, err := m.connection(tracingCtx)
-		results <- transportProbe{tcp: false, err: err}
-	}()
-	var failures []string
-	for range 2 {
-		result := <-results
-		if result.err == nil {
-			m.fallback.Store(result.tcp)
-			cancel()
-			return nil
-		}
-		path := "QUIC"
-		if result.tcp {
-			path = "TCP"
-		}
-		failures = append(failures, path+": "+result.err.Error())
+	// A handshake race is not a throughput test: TCP routinely authenticates a
+	// few milliseconds before QUIC on Android, while real-device transfers are
+	// several times faster over QUIC. Give the primary Turbo path a short,
+	// bounded chance first and keep the covered TCP path as the reliable backup.
+	quicCtx, cancelQUIC := context.WithTimeout(ctx, time.Duration(m.runtime.config.QUICProbeTimeoutMS)*time.Millisecond)
+	_, quicErr := m.connection(quicCtx)
+	cancelQUIC()
+	if quicErr == nil {
+		m.fallback.Store(false)
+		return nil
 	}
-	return errors.New("ALX Turbo paths unavailable: " + strings.Join(failures, "; "))
+	connection, tcpErr := m.dialFallback(ctx)
+	if tcpErr == nil {
+		_ = connection.Close()
+		m.fallback.Store(true)
+		return nil
+	}
+	return fmt.Errorf("ALX Turbo paths unavailable: QUIC: %v; TCP: %v", quicErr, tcpErr)
 }
 
 func (m *connectionManager) openStream(ctx context.Context) (io.ReadWriteCloser, *quic.Conn, error) {
@@ -1168,29 +1157,20 @@ func (r *bytesReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-type countingWriter struct {
-	writer io.Writer
-	count  *atomic.Uint64
-}
-
-func (w countingWriter) Write(data []byte) (int, error) {
-	n, err := w.writer.Write(data)
-	w.count.Add(uint64(n))
-	return n, err
-}
-
 func proxyTCP(local net.Conn, buffered *bufio.Reader, remote io.ReadWriteCloser, up, down *atomic.Uint64) error {
 	errorsChannel := make(chan error, 2)
 	go func() {
 		buffer := tunnelBufferPool.Get().([]byte)
-		_, err := io.CopyBuffer(countingWriter{writer: remote, count: up}, buffered, buffer)
+		n, err := io.CopyBuffer(remote, buffered, buffer)
+		up.Add(uint64(n))
 		tunnelBufferPool.Put(buffer)
 		closeWrite(remote)
 		errorsChannel <- err
 	}()
 	go func() {
 		buffer := tunnelBufferPool.Get().([]byte)
-		_, err := io.CopyBuffer(countingWriter{writer: local, count: down}, remote, buffer)
+		n, err := io.CopyBuffer(local, remote, buffer)
+		down.Add(uint64(n))
 		tunnelBufferPool.Put(buffer)
 		closeWrite(local)
 		errorsChannel <- err

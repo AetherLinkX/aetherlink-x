@@ -161,7 +161,7 @@ class TProxyService(
         // The previous small stack/buffer pair was below the upstream production
         // defaults used for many concurrent browser and game sessions.
         appendLine("  task-stack-size: 86016")
-        appendLine("  tcp-buffer-size: 65536")
+        appendLine("  tcp-buffer-size: 262144")
         appendLine("  udp-recv-buffer-size: 524288")
         appendLine("  udp-copy-buffer-nums: 10")
     }
