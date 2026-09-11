@@ -434,10 +434,15 @@ func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) 
 		KeepAlivePeriod:                10 * time.Second,
 		EnableDatagrams:                true,
 		MaxIncomingStreams:             256,
-		InitialStreamReceiveWindow:     1 << 20,
-		MaxStreamReceiveWindow:         8 << 20,
-		InitialConnectionReceiveWindow: 4 << 20,
-		MaxConnectionReceiveWindow:     32 << 20,
+		// Mobile speed tests frequently start with a single long-lived stream.
+		// A 1 MiB initial window takes several RTTs to auto-tune and needlessly
+		// caps the server-to-client path on 80-150 ms links. These are limits,
+		// not eager allocations, so the larger ceiling stays inexpensive while
+		// allowing a Turbo stream to fill a broadband BDP immediately.
+		InitialStreamReceiveWindow:     8 << 20,
+		MaxStreamReceiveWindow:         64 << 20,
+		InitialConnectionReceiveWindow: 16 << 20,
+		MaxConnectionReceiveWindow:     128 << 20,
 	}
 	connection, err := quic.DialAddr(ctx, m.runtime.config.Server, tlsConfig, quicConfig)
 	if err != nil {
@@ -1180,20 +1185,33 @@ func proxyTCP(local net.Conn, buffered *bufio.Reader, remote io.ReadWriteCloser,
 		buffer := tunnelBufferPool.Get().([]byte)
 		_, err := io.CopyBuffer(countingWriter{writer: remote, count: up}, buffered, buffer)
 		tunnelBufferPool.Put(buffer)
-		_ = remote.Close()
+		closeWrite(remote)
 		errorsChannel <- err
 	}()
 	go func() {
 		buffer := tunnelBufferPool.Get().([]byte)
 		_, err := io.CopyBuffer(countingWriter{writer: local, count: down}, remote, buffer)
 		tunnelBufferPool.Put(buffer)
+		closeWrite(local)
 		errorsChannel <- err
 	}()
-	first := <-errorsChannel
-	if first != nil && !errors.Is(first, net.ErrClosed) {
-		return first
+	var firstError error
+	for range 2 {
+		if err := <-errorsChannel; err != nil && !errors.Is(err, net.ErrClosed) && firstError == nil {
+			firstError = err
+		}
 	}
-	return nil
+	return firstError
+}
+
+func closeWrite(connection io.WriteCloser) {
+	if halfCloser, ok := connection.(interface{ CloseWrite() error }); ok {
+		_ = halfCloser.CloseWrite()
+		return
+	}
+	// quic.Stream.Close closes only the sending direction. For wrappers that
+	// don't expose CloseWrite this is the closest correct half-close behavior.
+	_ = connection.Close()
 }
 
 var tunnelBufferPool = sync.Pool{New: func() any { return make([]byte, 128<<10) }}

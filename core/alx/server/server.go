@@ -21,7 +21,6 @@ import (
 
 	"github.com/AetherLinkX/aetherlink-x/core/alx"
 	quic "github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/qlog"
 )
 
 type Config struct {
@@ -128,12 +127,11 @@ func (s *Server) runQUIC(ctx context.Context, tlsConfig *tls.Config) error {
 		KeepAlivePeriod:                10 * time.Second,
 		EnableDatagrams:                true,
 		MaxIncomingStreams:             512,
-		InitialStreamReceiveWindow:     1 << 20,
-		MaxStreamReceiveWindow:         8 << 20,
-		InitialConnectionReceiveWindow: 4 << 20,
-		MaxConnectionReceiveWindow:     32 << 20,
+		InitialStreamReceiveWindow:     8 << 20,
+		MaxStreamReceiveWindow:         64 << 20,
+		InitialConnectionReceiveWindow: 16 << 20,
+		MaxConnectionReceiveWindow:     128 << 20,
 		Allow0RTT:                      false,
-		Tracer:                         qlog.DefaultConnectionTracer,
 	})
 	if err != nil {
 		return fmt.Errorf("listen for ALX/1: %w", err)
@@ -725,26 +723,31 @@ func isPublic(address net.IP) bool {
 }
 
 func proxyBidirectional(left, right io.ReadWriteCloser) {
-	done := make(chan struct{}, 2)
+	done := make(chan error, 2)
 	go func() {
 		buffer := tunnelBufferPool.Get().([]byte)
-		_, _ = io.CopyBuffer(left, right, buffer)
+		_, err := io.CopyBuffer(left, right, buffer)
 		tunnelBufferPool.Put(buffer)
-		if closeWriter, ok := left.(interface{ CloseWrite() error }); ok {
-			_ = closeWriter.CloseWrite()
-		}
-		done <- struct{}{}
+		closeWrite(left)
+		done <- err
 	}()
 	go func() {
 		buffer := tunnelBufferPool.Get().([]byte)
-		_, _ = io.CopyBuffer(right, left, buffer)
+		_, err := io.CopyBuffer(right, left, buffer)
 		tunnelBufferPool.Put(buffer)
-		if closeWriter, ok := right.(interface{ CloseWrite() error }); ok {
-			_ = closeWriter.CloseWrite()
-		}
-		done <- struct{}{}
+		closeWrite(right)
+		done <- err
 	}()
 	<-done
+	<-done
+}
+
+func closeWrite(connection io.WriteCloser) {
+	if halfCloser, ok := connection.(interface{ CloseWrite() error }); ok {
+		_ = halfCloser.CloseWrite()
+		return
+	}
+	_ = connection.Close()
 }
 
 var tunnelBufferPool = sync.Pool{New: func() any { return make([]byte, 128<<10) }}
