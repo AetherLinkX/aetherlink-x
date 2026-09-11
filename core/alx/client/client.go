@@ -1195,13 +1195,11 @@ func proxyTCP(local net.Conn, buffered *bufio.Reader, remote io.ReadWriteCloser,
 		closeWrite(local)
 		errorsChannel <- err
 	}()
-	var firstError error
-	for range 2 {
-		if err := <-errorsChannel; err != nil && !errors.Is(err, net.ErrClosed) && firstError == nil {
-			firstError = err
-		}
+	first := <-errorsChannel
+	if first != nil && !errors.Is(first, net.ErrClosed) {
+		return first
 	}
-	return firstError
+	return nil
 }
 
 func closeWrite(connection io.WriteCloser) {

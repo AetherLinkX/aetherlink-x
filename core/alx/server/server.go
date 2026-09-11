@@ -739,7 +739,6 @@ func proxyBidirectional(left, right io.ReadWriteCloser) {
 		done <- err
 	}()
 	<-done
-	<-done
 }
 
 func closeWrite(connection io.WriteCloser) {
