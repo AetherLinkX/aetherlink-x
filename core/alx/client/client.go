@@ -313,6 +313,8 @@ type connectionManager struct {
 	runtime      *Runtime
 	mutex        sync.Mutex
 	conn         *quic.Conn
+	streamConns  []*quic.Conn
+	streamCursor atomic.Uint64
 	fallback     atomic.Bool
 	sessionCache tls.ClientSessionCache
 	turboCache   utls.ClientSessionCache
@@ -372,6 +374,12 @@ func (m *connectionManager) probeTurbo(ctx context.Context) error {
 	cancelQUIC()
 	if quicErr == nil {
 		m.fallback.Store(false)
+		// A browser speed test opens several independent TCP flows. Sending all
+		// of them through one QUIC connection makes them share a single
+		// congestion controller and severely underutilizes high-RTT mobile
+		// links. Warm a small pool so Turbo can use the same parallelism as the
+		// underlying browser without changing the SOCKS contract.
+		go m.warmTurboPool()
 		return nil
 	}
 	connection, tcpErr := m.dialFallback(ctx)
@@ -388,7 +396,7 @@ func (m *connectionManager) openStream(ctx context.Context) (io.ReadWriteCloser,
 		connection, err := m.dialFallback(ctx)
 		return connection, nil, err
 	}
-	connection, err := m.connection(ctx)
+	connection, err := m.streamConnection(ctx)
 	if err != nil {
 		if m.runtime.config.FallbackServer == "" {
 			return nil, nil, err
@@ -407,12 +415,87 @@ func (m *connectionManager) openStream(ctx context.Context) (io.ReadWriteCloser,
 	return stream, connection, err
 }
 
+const turboQUICPoolSize = 4
+
+func (m *connectionManager) streamConnection(ctx context.Context) (*quic.Conn, error) {
+	if m.runtime.config.TransportMode != "turbo" {
+		return m.connection(ctx)
+	}
+	m.mutex.Lock()
+	connections := make([]*quic.Conn, 0, 1+len(m.streamConns))
+	if m.conn != nil && m.conn.Context().Err() == nil {
+		connections = append(connections, m.conn)
+	}
+	alive := m.streamConns[:0]
+	for _, connection := range m.streamConns {
+		if connection != nil && connection.Context().Err() == nil {
+			alive = append(alive, connection)
+			connections = append(connections, connection)
+		}
+	}
+	m.streamConns = alive
+	m.mutex.Unlock()
+	if len(connections) == 0 {
+		return m.connection(ctx)
+	}
+	index := (m.streamCursor.Add(1) - 1) % uint64(len(connections))
+	return connections[index], nil
+}
+
+func (m *connectionManager) warmTurboPool() {
+	for {
+		select {
+		case <-m.runtime.ctx.Done():
+			return
+		default:
+		}
+		m.mutex.Lock()
+		count := 0
+		if m.conn != nil && m.conn.Context().Err() == nil {
+			count++
+		}
+		alive := m.streamConns[:0]
+		for _, connection := range m.streamConns {
+			if connection != nil && connection.Context().Err() == nil {
+				alive = append(alive, connection)
+				count++
+			}
+		}
+		m.streamConns = alive
+		m.mutex.Unlock()
+		if count >= turboQUICPoolSize {
+			return
+		}
+		ctx, cancel := context.WithTimeout(m.runtime.ctx, time.Duration(m.runtime.config.HandshakeTimeoutMS)*time.Millisecond)
+		connection, err := m.dialQUIC(ctx)
+		cancel()
+		if err != nil {
+			m.runtime.setError(fmt.Errorf("ALX Turbo pool warm-up failed: %w", err))
+			return
+		}
+		m.mutex.Lock()
+		m.streamConns = append(m.streamConns, connection)
+		m.mutex.Unlock()
+	}
+}
+
 func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	if m.conn != nil && m.conn.Context().Err() == nil {
 		return m.conn, nil
 	}
+	connection, err := m.dialQUIC(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m.conn = connection
+	go m.receiveDatagrams(connection)
+	go m.monitorConnection(connection)
+	return connection, nil
+}
+
+func (m *connectionManager) dialQUIC(ctx context.Context) (*quic.Conn, error) {
 	tlsConfig, err := m.tlsConfig([]string{"h3"})
 	if err != nil {
 		return nil, err
@@ -469,9 +552,6 @@ func (m *connectionManager) connection(ctx context.Context) (*quic.Conn, error) 
 		return nil, errors.New("ALX authentication rejected")
 	}
 	_ = authStream.Close()
-	m.conn = connection
-	go m.receiveDatagrams(connection)
-	go m.monitorConnection(connection)
 	return connection, nil
 }
 
@@ -726,6 +806,14 @@ func (m *connectionManager) invalidate(connection *quic.Conn) {
 	if m.conn == connection {
 		_ = m.conn.CloseWithError(3, "reconnecting")
 		m.conn = nil
+		return
+	}
+	for index, candidate := range m.streamConns {
+		if candidate == connection {
+			_ = candidate.CloseWithError(3, "reconnecting")
+			m.streamConns = append(m.streamConns[:index], m.streamConns[index+1:]...)
+			return
+		}
 	}
 }
 
@@ -735,6 +823,12 @@ func (m *connectionManager) close() {
 		_ = m.conn.CloseWithError(0, "client stopped")
 		m.conn = nil
 	}
+	for _, connection := range m.streamConns {
+		if connection != nil {
+			_ = connection.CloseWithError(0, "client stopped")
+		}
+	}
+	m.streamConns = nil
 	m.mutex.Unlock()
 	m.udpMu.Lock()
 	for _, association := range m.udp {
