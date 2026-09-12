@@ -20,7 +20,8 @@ import (
 	"time"
 
 	"github.com/AetherLinkX/aetherlink-x/core/alx"
-	quic "github.com/quic-go/quic-go"
+	quic "github.com/apernet/quic-go"
+	"github.com/xtls/xray-core/transport/internet/hysteria/congestion/bbr"
 )
 
 type Config struct {
@@ -418,6 +419,7 @@ func (s *Server) handleConnection(connection *quic.Conn) {
 		return
 	}
 	validAuth := false
+	turboAuth := false
 	var nonce [16]byte
 	if s.config.TurboServerName != "" && strings.EqualFold(strings.TrimSuffix(connection.ConnectionState().TLS.ServerName, "."), strings.TrimSuffix(s.config.TurboServerName, ".")) {
 		state := connection.ConnectionState().TLS
@@ -426,6 +428,7 @@ func (s *Server) handleConnection(connection *quic.Conn) {
 		if bindingErr == nil && authErr == nil && auth.Verify(s.token, binding, time.Now(), 60*time.Second) {
 			nonce = auth.Nonce
 			validAuth = true
+			turboAuth = true
 		}
 	} else {
 		auth, authErr := alx.ReadAuth(authStream)
@@ -441,6 +444,13 @@ func (s *Server) handleConnection(connection *quic.Conn) {
 	}
 	_, _ = authStream.Write([]byte{alx.StatusOK})
 	_ = authStream.Close()
+	if turboAuth {
+		connection.SetCongestionControl(bbr.NewBbrSender(
+			bbr.DefaultClock{},
+			bbr.GetInitialPacketSize(connection.RemoteAddr()),
+			bbr.ProfileAggressive,
+		))
+	}
 
 	state := &connectionState{
 		server:       s,
@@ -448,7 +458,6 @@ func (s *Server) handleConnection(connection *quic.Conn) {
 		associations: make(map[uint32]*udpAssociation),
 	}
 	defer state.close()
-	go s.monitorQUICConnection(connection)
 	go state.receiveDatagrams()
 	for {
 		stream, err := connection.AcceptStream(connection.Context())
@@ -456,41 +465,6 @@ func (s *Server) handleConnection(connection *quic.Conn) {
 			return
 		}
 		go state.handleStream(stream)
-	}
-}
-
-// monitorQUICConnection keeps enough transport telemetry in the server journal
-// to diagnose mobile paths without enabling verbose qlog packet captures. It is
-// intentionally low frequency and only reports while application bytes move or
-// packet loss changes, so an idle tunnel doesn't spam production logs.
-func (s *Server) monitorQUICConnection(connection *quic.Conn) {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	var previous quic.ConnectionStats
-	for {
-		select {
-		case <-connection.Context().Done():
-			return
-		case <-ticker.C:
-			stats := connection.ConnectionStats()
-			if stats.BytesSent == previous.BytesSent &&
-				stats.BytesReceived == previous.BytesReceived &&
-				stats.PacketsLost == previous.PacketsLost {
-				continue
-			}
-			s.logger.Printf(
-				"ALX QUIC metrics peer=%s rtt=%s sent=%dB/%dp recv=%dB/%dp lost=%dB/%dp",
-				connection.RemoteAddr(),
-				stats.SmoothedRTT.Round(time.Millisecond),
-				stats.BytesSent,
-				stats.PacketsSent,
-				stats.BytesReceived,
-				stats.PacketsReceived,
-				stats.BytesLost,
-				stats.PacketsLost,
-			)
-			previous = stats
-		}
 	}
 }
 

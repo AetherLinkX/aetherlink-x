@@ -25,8 +25,9 @@ import (
 	"time"
 
 	"github.com/AetherLinkX/aetherlink-x/core/alx"
-	quic "github.com/quic-go/quic-go"
+	quic "github.com/apernet/quic-go"
 	utls "github.com/refraction-networking/utls"
+	"github.com/xtls/xray-core/transport/internet/hysteria/congestion/bbr"
 )
 
 type Config struct {
@@ -443,11 +444,11 @@ func (m *connectionManager) openPrimaryStream(ctx context.Context) (io.ReadWrite
 	return stream, connection, err
 }
 
-// Chrome opened up to fifteen simultaneous transfer sockets in the real-device
-// speed test. A sixteen-channel pool preserves that parallelism instead of
-// collapsing every flow into four shared congestion windows. Receive-window
-// limits are lazy, so idle channels don't reserve their configured maxima.
-const turboQUICPoolSize = 16
+// Turbo uses one BBR-controlled QUIC connection. Keeping all streams on the
+// same measured path lets BBR reuse its bandwidth estimate, while warming many
+// independent congestion controllers wastes radio and CPU without helping a
+// single large browser transfer.
+const turboQUICPoolSize = 1
 
 func (m *connectionManager) streamConnection(ctx context.Context) (*quic.Conn, error) {
 	if m.runtime.config.TransportMode != "turbo" {
@@ -584,6 +585,13 @@ func (m *connectionManager) dialQUIC(ctx context.Context) (*quic.Conn, error) {
 		return nil, errors.New("ALX authentication rejected")
 	}
 	_ = authStream.Close()
+	if m.runtime.config.TransportMode == "turbo" {
+		connection.SetCongestionControl(bbr.NewBbrSender(
+			bbr.DefaultClock{},
+			bbr.GetInitialPacketSize(connection.RemoteAddr()),
+			bbr.ProfileAggressive,
+		))
+	}
 	return connection, nil
 }
 
