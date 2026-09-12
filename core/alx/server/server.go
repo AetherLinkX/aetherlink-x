@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	cryptorand "crypto/rand"
 	"crypto/sha1"
 	"crypto/tls"
 	"encoding/base64"
@@ -42,6 +43,7 @@ type Server struct {
 	token  []byte
 	logger *log.Logger
 	replay *replayCache
+	failures *authFailureLimiter
 }
 
 func New(config Config) (*Server, error) {
@@ -62,7 +64,13 @@ func New(config Config) (*Server, error) {
 	if logger == nil {
 		logger = log.Default()
 	}
-	return &Server{config: config, token: token, logger: logger, replay: newReplayCache()}, nil
+	return &Server{
+		config:   config,
+		token:    token,
+		logger:   logger,
+		replay:   newReplayCache(),
+		failures: newAuthFailureLimiter(),
+	}, nil
 }
 
 func (s *Server) Run(ctx context.Context) error {
@@ -238,24 +246,29 @@ func (s *Server) handleTurboTCP(connection *tls.Conn) {
 	}
 	cookie, err := request.Cookie("session")
 	if err != nil {
+		s.delayAuthenticationFailure(connection.RemoteAddr())
 		writeCoverResponse(connection, request.URL.Path)
 		return
 	}
 	rawAuth, err := base64.RawURLEncoding.DecodeString(cookie.Value)
 	if err != nil || len(rawAuth) != alx.TurboAuthSize {
+		s.delayAuthenticationFailure(connection.RemoteAddr())
 		writeCoverResponse(connection, request.URL.Path)
 		return
 	}
 	state := connection.ConnectionState()
 	binding, err := state.ExportKeyingMaterial("EXPORTER-AetherLink-Turbo-v1", nil, 32)
 	if err != nil {
+		s.delayAuthenticationFailure(connection.RemoteAddr())
 		return
 	}
 	auth, err := alx.ReadTurboAuth(bytes.NewReader(rawAuth))
 	if err != nil || !auth.Verify(s.token, binding, time.Now(), 60*time.Second) || !s.replay.accept(auth.Nonce, time.Now()) {
+		s.delayAuthenticationFailure(connection.RemoteAddr())
 		writeCoverResponse(connection, request.URL.Path)
 		return
 	}
+	s.failures.reset(connection.RemoteAddr())
 	webSocketKey := request.Header.Get("Sec-WebSocket-Key")
 	if webSocketKey == "" {
 		writeCoverResponse(connection, request.URL.Path)
@@ -326,9 +339,11 @@ func (s *Server) handleTCPFallback(connection net.Conn) {
 	_ = connection.SetDeadline(time.Now().Add(10 * time.Second))
 	auth, err := alx.ReadAuth(connection)
 	if err != nil || !auth.Verify(s.token, time.Now(), 60*time.Second) || !s.replay.accept(auth.Nonce, time.Now()) {
+		s.delayAuthenticationFailure(connection.RemoteAddr())
 		_, _ = connection.Write([]byte{alx.StatusDenied})
 		return
 	}
+	s.failures.reset(connection.RemoteAddr())
 	if _, err := connection.Write([]byte{alx.StatusOK}); err != nil {
 		return
 	}
@@ -438,10 +453,12 @@ func (s *Server) handleConnection(connection *quic.Conn) {
 		}
 	}
 	if !validAuth || !s.replay.accept(nonce, time.Now()) {
+		s.delayAuthenticationFailure(connection.RemoteAddr())
 		_, _ = authStream.Write([]byte{alx.StatusDenied})
 		_ = authStream.Close()
 		return
 	}
+	s.failures.reset(connection.RemoteAddr())
 	_, _ = authStream.Write([]byte{alx.StatusOK})
 	_ = authStream.Close()
 	if turboAuth {
@@ -887,4 +904,66 @@ func (r *replayCache) accept(nonce [16]byte, now time.Time) bool {
 	}
 	r.seen[nonce] = now.Add(2 * time.Minute)
 	return true
+}
+
+// authFailureLimiter makes online guessing and high-speed active probing
+// progressively more expensive without delaying a valid client. Entries are
+// bounded so a distributed scanner cannot turn the defence into a memory DoS.
+type authFailureLimiter struct {
+	mutex   sync.Mutex
+	entries map[string]authFailureEntry
+}
+
+type authFailureEntry struct {
+	attempts int
+	last     time.Time
+}
+
+func newAuthFailureLimiter() *authFailureLimiter {
+	return &authFailureLimiter{entries: make(map[string]authFailureEntry)}
+}
+
+func (s *Server) delayAuthenticationFailure(remote net.Addr) {
+	time.Sleep(s.failures.delay(remote, time.Now()))
+}
+
+func (l *authFailureLimiter) delay(remote net.Addr, now time.Time) time.Duration {
+	key := remote.String()
+	if host, _, err := net.SplitHostPort(key); err == nil {
+		key = host
+	}
+
+	var randomByte [1]byte
+	_, _ = cryptorand.Read(randomByte[:])
+	jitter := time.Duration(randomByte[0]) * 125 * time.Millisecond / 255
+
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	entry, exists := l.entries[key]
+	if exists && now.Sub(entry.last) > 2*time.Minute {
+		delete(l.entries, key)
+		exists = false
+		entry = authFailureEntry{}
+	}
+	if !exists && len(l.entries) >= 4096 {
+		return 1200*time.Millisecond + jitter
+	}
+	entry.attempts++
+	entry.last = now
+	l.entries[key] = entry
+	shift := entry.attempts - 1
+	if shift > 4 {
+		shift = 4
+	}
+	return 75*time.Millisecond*time.Duration(1<<shift) + jitter
+}
+
+func (l *authFailureLimiter) reset(remote net.Addr) {
+	key := remote.String()
+	if host, _, err := net.SplitHostPort(key); err == nil {
+		key = host
+	}
+	l.mutex.Lock()
+	delete(l.entries, key)
+	l.mutex.Unlock()
 }

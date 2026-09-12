@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net"
 	"testing"
+	"time"
 )
 
 func TestClientHelloALPNRouting(t *testing.T) {
@@ -64,5 +65,24 @@ func TestWebSocketAcceptRFCExample(t *testing.T) {
 	const want = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 	if got := webSocketAccept(key); got != want {
 		t.Fatalf("webSocketAccept()=%q, want %q", got, want)
+	}
+}
+
+func TestAuthFailureLimiterEscalatesAndResets(t *testing.T) {
+	limiter := newAuthFailureLimiter()
+	remote := &net.TCPAddr{IP: net.ParseIP("192.0.2.10"), Port: 44321}
+	now := time.Unix(1_800_000_000, 0)
+	first := limiter.delay(remote, now)
+	second := limiter.delay(remote, now.Add(time.Second))
+	if first < 75*time.Millisecond || first > 200*time.Millisecond {
+		t.Fatalf("first delay=%s", first)
+	}
+	if second < 150*time.Millisecond || second > 275*time.Millisecond {
+		t.Fatalf("second delay=%s", second)
+	}
+	limiter.reset(remote)
+	afterReset := limiter.delay(remote, now.Add(2*time.Second))
+	if afterReset < 75*time.Millisecond || afterReset > 200*time.Millisecond {
+		t.Fatalf("delay after reset=%s", afterReset)
 	}
 }
