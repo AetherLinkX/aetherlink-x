@@ -443,7 +443,11 @@ func (m *connectionManager) openPrimaryStream(ctx context.Context) (io.ReadWrite
 	return stream, connection, err
 }
 
-const turboQUICPoolSize = 4
+// Chrome opened up to fifteen simultaneous transfer sockets in the real-device
+// speed test. A sixteen-channel pool preserves that parallelism instead of
+// collapsing every flow into four shared congestion windows. Receive-window
+// limits are lazy, so idle channels don't reserve their configured maxima.
+const turboQUICPoolSize = 16
 
 func (m *connectionManager) streamConnection(ctx context.Context) (*quic.Conn, error) {
 	if m.runtime.config.TransportMode != "turbo" {
