@@ -56,6 +56,8 @@ ALX_TCP_DEFAULT_BACKEND=127.0.0.1:8444
 ALX_CERT_FILE=/etc/aetherlink-x/server.crt
 ALX_KEY_FILE=/etc/aetherlink-x/server.key
 ALX_TOKEN=<at least 32 random Base64URL bytes>
+# Optional during a key rollout; remove after all clients use ALX_TOKEN:
+ALX_PREVIOUS_TOKENS=<old token 1>,<old token 2>
 
 # Preview 8 public web identity:
 ALX_TURBO_SERVER_NAME=turbo.example.com
@@ -67,6 +69,17 @@ The default TCP backend is optional. When present, ordinary non-ALX TLS traffic
 is forwarded unchanged to the existing Xray listener. Requests for the Turbo
 SNI are terminated by ALX, while the legacy `alx/1` ALPN continues to use the
 Preview 7 path.
+
+### Zero-downtime token rotation
+
+1. Put the new secret in `ALX_TOKEN` and the currently deployed secret in
+   `ALX_PREVIOUS_TOKENS`, then restart the server.
+2. Roll out client links containing the new token. Both generations work while
+   the rollout is in progress, and verification does not reveal which key won.
+3. Clear `ALX_PREVIOUS_TOKENS` after the migration window and restart again.
+
+At most two previous tokens are accepted. This keeps emergency rollback
+possible without allowing obsolete credentials to accumulate indefinitely.
 
 ## Client configuration
 

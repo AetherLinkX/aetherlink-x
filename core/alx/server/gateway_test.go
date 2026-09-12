@@ -2,10 +2,14 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/AetherLinkX/aetherlink-x/core/alx"
 )
 
 func TestClientHelloALPNRouting(t *testing.T) {
@@ -84,5 +88,36 @@ func TestAuthFailureLimiterEscalatesAndResets(t *testing.T) {
 	afterReset := limiter.delay(remote, now.Add(2*time.Second))
 	if afterReset < 75*time.Millisecond || afterReset > 200*time.Millisecond {
 		t.Fatalf("delay after reset=%s", afterReset)
+	}
+}
+
+func TestServerAcceptsPreviousTokenDuringRotation(t *testing.T) {
+	current := bytes.Repeat([]byte{0x31}, 32)
+	previous := bytes.Repeat([]byte{0x32}, 32)
+	server, err := New(Config{
+		CertFile:       "unused-cert.pem",
+		KeyFile:        "unused-key.pem",
+		Token:          base64.RawURLEncoding.EncodeToString(current),
+		PreviousTokens: base64.RawURLEncoding.EncodeToString(previous),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := bytes.Repeat([]byte{0x71}, 32)
+	now := time.Unix(1_800_000_000, 0)
+	var wire bytes.Buffer
+	if err := alx.WriteTurboAuth(&wire, previous, binding, now); err != nil {
+		t.Fatal(err)
+	}
+	auth, err := alx.ReadTurboAuth(&wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !server.verifyTurboAuth(auth, binding, now) {
+		t.Fatal("previous rotation token was rejected")
+	}
+	wrongBinding := bytes.Repeat([]byte{0x72}, 32)
+	if server.verifyTurboAuth(auth, wrongBinding, now) {
+		t.Fatal("previous token bypassed TLS session binding")
 	}
 }

@@ -35,14 +35,15 @@ type Config struct {
 	TurboKeyFile      string
 	TurboServerName   string
 	Token             string
+	PreviousTokens    string
 	Logger            *log.Logger
 }
 
 type Server struct {
-	config Config
-	token  []byte
-	logger *log.Logger
-	replay *replayCache
+	config   Config
+	tokens   [][]byte
+	logger   *log.Logger
+	replay   *replayCache
 	failures *authFailureLimiter
 }
 
@@ -60,17 +61,66 @@ func New(config Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	tokens := [][]byte{token}
+	for index, value := range splitTokenList(config.PreviousTokens) {
+		decoded, decodeErr := alx.DecodeToken(value)
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode previous ALX token %d: %w", index+1, decodeErr)
+		}
+		duplicate := false
+		for _, existing := range tokens {
+			if bytes.Equal(existing, decoded) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			tokens = append(tokens, decoded)
+		}
+	}
+	if len(tokens) > 3 {
+		return nil, errors.New("at most two previous ALX tokens may be configured")
+	}
 	logger := config.Logger
 	if logger == nil {
 		logger = log.Default()
 	}
 	return &Server{
 		config:   config,
-		token:    token,
+		tokens:   tokens,
 		logger:   logger,
 		replay:   newReplayCache(),
 		failures: newAuthFailureLimiter(),
 	}, nil
+}
+
+func splitTokenList(value string) []string {
+	return strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r'
+	})
+}
+
+// Verify every configured key even after a match. During a planned rotation
+// this avoids exposing through timing whether the current or previous token
+// authenticated the connection.
+func (s *Server) verifyTurboAuth(auth alx.TurboAuth, binding []byte, now time.Time) bool {
+	valid := false
+	for _, token := range s.tokens {
+		if auth.Verify(token, binding, now, 60*time.Second) {
+			valid = true
+		}
+	}
+	return valid
+}
+
+func (s *Server) verifyAuth(auth alx.Auth, now time.Time) bool {
+	valid := false
+	for _, token := range s.tokens {
+		if auth.Verify(token, now, 60*time.Second) {
+			valid = true
+		}
+	}
+	return valid
 }
 
 func (s *Server) Run(ctx context.Context) error {
@@ -263,7 +313,7 @@ func (s *Server) handleTurboTCP(connection *tls.Conn) {
 		return
 	}
 	auth, err := alx.ReadTurboAuth(bytes.NewReader(rawAuth))
-	if err != nil || !auth.Verify(s.token, binding, time.Now(), 60*time.Second) || !s.replay.accept(auth.Nonce, time.Now()) {
+	if err != nil || !s.verifyTurboAuth(auth, binding, time.Now()) || !s.replay.accept(auth.Nonce, time.Now()) {
 		s.delayAuthenticationFailure(connection.RemoteAddr())
 		writeCoverResponse(connection, request.URL.Path)
 		return
@@ -338,7 +388,7 @@ func (s *Server) handleTCPFallback(connection net.Conn) {
 	defer connection.Close()
 	_ = connection.SetDeadline(time.Now().Add(10 * time.Second))
 	auth, err := alx.ReadAuth(connection)
-	if err != nil || !auth.Verify(s.token, time.Now(), 60*time.Second) || !s.replay.accept(auth.Nonce, time.Now()) {
+	if err != nil || !s.verifyAuth(auth, time.Now()) || !s.replay.accept(auth.Nonce, time.Now()) {
 		s.delayAuthenticationFailure(connection.RemoteAddr())
 		_, _ = connection.Write([]byte{alx.StatusDenied})
 		return
@@ -440,14 +490,14 @@ func (s *Server) handleConnection(connection *quic.Conn) {
 		state := connection.ConnectionState().TLS
 		binding, bindingErr := state.ExportKeyingMaterial("EXPORTER-AetherLink-Turbo-v1", nil, 32)
 		auth, authErr := alx.ReadTurboAuth(authStream)
-		if bindingErr == nil && authErr == nil && auth.Verify(s.token, binding, time.Now(), 60*time.Second) {
+		if bindingErr == nil && authErr == nil && s.verifyTurboAuth(auth, binding, time.Now()) {
 			nonce = auth.Nonce
 			validAuth = true
 			turboAuth = true
 		}
 	} else {
 		auth, authErr := alx.ReadAuth(authStream)
-		if authErr == nil && auth.Verify(s.token, time.Now(), 60*time.Second) {
+		if authErr == nil && s.verifyAuth(auth, time.Now()) {
 			nonce = auth.Nonce
 			validAuth = true
 		}
