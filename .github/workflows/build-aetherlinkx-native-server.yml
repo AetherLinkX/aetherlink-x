@@ -23,7 +23,9 @@ jobs:
           cache-dependency-path: core/alx/go.sum
       - name: Test protocol
         working-directory: core/alx
-        run: go test -race ./...
+        run: |
+          go mod tidy
+          go test -race ./...
       - name: Build server
         working-directory: core/alx
         env:

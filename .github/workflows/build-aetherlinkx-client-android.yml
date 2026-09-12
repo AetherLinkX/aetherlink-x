@@ -65,7 +65,9 @@ jobs:
 
       - name: Test AetherLink Native core
         working-directory: core/alx
-        run: go test ./...
+        run: |
+          go mod tidy
+          go test ./...
 
       - name: Install Android NDK
         shell: bash
