@@ -415,6 +415,34 @@ func (m *connectionManager) openStream(ctx context.Context) (io.ReadWriteCloser,
 	return stream, connection, err
 }
 
+// UDP fast replies are QUIC datagrams and must stay on the primary connection,
+// whose datagram receive loop owns the association map. TCP proxy streams may
+// use the Turbo pool, but distributing UDP associations across those auxiliary
+// connections would leave their datagram replies unread.
+func (m *connectionManager) openPrimaryStream(ctx context.Context) (io.ReadWriteCloser, *quic.Conn, error) {
+	if m.fallback.Load() {
+		connection, err := m.dialFallback(ctx)
+		return connection, nil, err
+	}
+	connection, err := m.connection(ctx)
+	if err != nil {
+		if m.runtime.config.FallbackServer == "" {
+			return nil, nil, err
+		}
+		fallback, fallbackErr := m.dialFallback(ctx)
+		if fallbackErr != nil {
+			return nil, nil, fmt.Errorf("QUIC unavailable and TCP fallback failed: %w", fallbackErr)
+		}
+		m.fallback.Store(true)
+		return fallback, nil, nil
+	}
+	stream, err := connection.OpenStreamSync(ctx)
+	if err != nil {
+		m.invalidate(connection)
+	}
+	return stream, connection, err
+}
+
 const turboQUICPoolSize = 4
 
 func (m *connectionManager) streamConnection(ctx context.Context) (*quic.Conn, error) {
@@ -855,7 +883,7 @@ func (m *connectionManager) registerUDP(association *udpAssociation) error {
 }
 
 func (m *connectionManager) openUDPTransport(ctx context.Context, id uint32) (io.ReadWriteCloser, *quic.Conn, error) {
-	stream, connection, err := m.openStream(ctx)
+	stream, connection, err := m.openPrimaryStream(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
