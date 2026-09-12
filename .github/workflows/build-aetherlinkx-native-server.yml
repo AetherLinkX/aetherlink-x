@@ -24,7 +24,8 @@ jobs:
       - name: Test protocol
         working-directory: core/alx
         run: |
-          go mod tidy
+          go mod download
+          go mod verify
           go test -race ./...
       - name: Build server
         working-directory: core/alx
