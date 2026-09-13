@@ -5,7 +5,7 @@
 **Независимый авторизованный туннель для AetherLink X.**
 
 [Главная](../../README.ru.md) · [Архитектура](../../docs/ARCHITECTURE.md) ·
-[Релиз сервера](https://github.com/AetherLinkX/aetherlink-x/releases/tag/server-v0.2.0-alx-preview.8) ·
+[Релиз сервера](https://github.com/AetherLinkX/aetherlink-x/releases/tag/server-v0.2.1-alx-preview.8-rw.1) ·
 [English](README.md)
 
 </div>
@@ -65,6 +65,11 @@ go build -trimpath -ldflags='-s -w' -o alx-check ./cmd/alx-check
 протоколы нужно проверять на одном телефоне, сервере, маршруте и в одно время.
 
 ## Настройка и эксплуатация
+
+Для установки на VPS вместе с Remnawave используйте
+[автоустановщик sidecar-ноды](deploy/remnawave/README.md). Официальная Node и
+ALX работают отдельно, поэтому обновления Remnawave/Xray не перезаписывают
+наш транспорт.
 
 Готовые шаблоны находятся в папке [deploy](deploy). Токен должен содержать
 минимум 32 случайных байта в Base64URL. Не храните боевые токены в репозитории.

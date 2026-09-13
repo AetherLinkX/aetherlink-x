@@ -5,7 +5,7 @@
 **An independent, authenticated tunnel for AetherLink X.**
 
 [Overview](../../README.md) · [Architecture](../../docs/ARCHITECTURE.md) ·
-[Server release](https://github.com/AetherLinkX/aetherlink-x/releases/tag/server-v0.2.0-alx-preview.8) ·
+[Server release](https://github.com/AetherLinkX/aetherlink-x/releases/tag/server-v0.2.1-alx-preview.8-rw.1) ·
 [Русский](README.ru.md)
 
 </div>
@@ -57,6 +57,11 @@ go build -trimpath -ldflags='-s -w' -o alx-check ./cmd/alx-check
 ~~~
 
 ## Server configuration
+
+For a complete Remnawave-compatible VPS deployment, use the
+[one-command sidecar installer](deploy/remnawave/README.md). It installs the
+official Node and ALX separately, so Remnawave/Xray upgrades cannot overwrite
+the ALX transport.
 
 ~~~text
 ALX_LISTEN=:443

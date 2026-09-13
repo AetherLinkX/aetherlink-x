@@ -3,7 +3,7 @@
 
   **Красивый Android-клиент и независимый транспорт ALX Preview 8 Turbo.**
 
-  [Скачать](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.2-alx-preview.8) ·
+  [Скачать](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.3-alx-preview.8-rw.1) ·
   [Документация ALX](core/alx/README.ru.md) ·
   [Архитектура](docs/ARCHITECTURE.md) ·
   [English](README.md)
@@ -47,11 +47,20 @@
 
 ## Скачать
 
-- [Android-клиент 0.8.2](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.2-alx-preview.8)
-- [ALX-сервер для Linux amd64](https://github.com/AetherLinkX/aetherlink-x/releases/tag/server-v0.2.0-alx-preview.8)
+- [Android-клиент 0.8.3 для Remnawave](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.3-alx-preview.8-rw.1)
+- [ALX-сервер для Linux amd64/arm64](https://github.com/AetherLinkX/aetherlink-x/releases/tag/server-v0.2.1-alx-preview.8-rw.1)
+- [Ранее проверенная сборка клиента 0.8.2](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.2-alx-preview.8)
 
 Перед установкой рекомендуется сверить SHA-256 файла с контрольной суммой в
 релизе.
+
+## Установка вместе с Remnawave
+
+[Автоустановщик Remnawave](core/alx/deploy/remnawave/README.md) одной командой
+ставит официальную Remnawave Node и ALX Turbo на Debian/Ubuntu, выпускает и
+обновляет TLS-сертификат, создаёт systemd-сервис и правила UFW. Он понимает как
+старые переменные `APP_PORT`/`SSL_CERT`, так и современные
+`NODE_PORT`/`SECRET_KEY`, поэтому ALX не требует патчить панель.
 
 ## Безопасность
 

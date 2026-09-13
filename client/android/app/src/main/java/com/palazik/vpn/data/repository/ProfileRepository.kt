@@ -218,6 +218,16 @@ class ProfileRepository @Inject constructor(
                     }
                 }
 
+                // Remnawave v2 and v3 use different API fields for custom headers, but
+                // both emit the same HTTP header. This keeps native ALX independent of
+                // the panel's internal API and lets it coexist with ordinary Xray hosts.
+                val nativeProfiles = (primaryFetch.nativeProfileLinks + fetched.nativeProfileLinks)
+                    .distinct()
+                    .mapNotNull(ProfileCodec::decode)
+                    .filter { it.protocol == com.palazik.vpn.data.model.Protocol.AETHERLINK_NATIVE }
+                    .let { usableProfiles(it, sub.id) }
+                freshProfiles = freshProfiles + nativeProfiles
+
                 val providerExplicitlyEmpty = decodedProfiles.any(ProfileValidator::isProviderPlaceholder) &&
                     freshProfiles.isEmpty()
                 if (freshProfiles.isEmpty() && !providerExplicitlyEmpty) {
@@ -819,6 +829,7 @@ class ProfileRepository @Inject constructor(
         val announcement: String,
         val preferredUpdateHours: Long?,
         val refillEpochSec: Long?,
+        val nativeProfileLinks: List<String>,
     )
 
     private fun subscriptionFetch(body: String, headers: Map<String, List<String>>): SubscriptionFetch {
@@ -834,6 +845,7 @@ class ProfileRepository @Inject constructor(
                 ?.takeIf { it in 1..8_760 },
             refillEpochSec = normalized["subscription-refill-date"]?.trim()?.toLongOrNull()
                 ?.takeIf { it > 0 },
+            nativeProfileLinks = RemnawaveCompatibility.nativeProfileLinks(headers),
         )
     }
 

@@ -1,6 +1,6 @@
 {
   "name": "AetherLink X",
-  "version": "0.8.2-alx-preview.8",
+  "version": "0.8.3-alx-preview.8-rw.1",
   "status": "preview",
   "platform": "android",
   "minAndroidSdk": 26,
@@ -12,7 +12,8 @@
     "version": "preview.8",
     "mode": "turbo",
     "encryption": "TLS 1.3 / QUIC",
-    "customCryptography": false
+    "customCryptography": false,
+    "remnawaveIntegration": "response-header-v1"
   },
   "xrayCore": {
     "source": "XTLS/Xray-core",

@@ -12,7 +12,7 @@
 
 **A polished Android VPN client and the independent ALX Preview 8 Turbo transport.**
 
-[Download](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.2-alx-preview.8) ·
+[Download](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.3-alx-preview.8-rw.1) ·
 [Explore ALX](core/alx/README.md) ·
 [Architecture](docs/ARCHITECTURE.md) ·
 [Русский](README.ru.md)
@@ -70,8 +70,9 @@ with the scripts in [`tools`](tools/README.md).
 
 ## Get the builds
 
-- [Android client 0.8.2 — ALX Preview 8](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.2-alx-preview.8)
-- [Linux amd64 ALX server — Preview 8](https://github.com/AetherLinkX/aetherlink-x/releases/tag/server-v0.2.0-alx-preview.8)
+- [Android client 0.8.3 — Remnawave Preview](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.3-alx-preview.8-rw.1)
+- [Linux amd64/arm64 ALX server — Remnawave Preview](https://github.com/AetherLinkX/aetherlink-x/releases/tag/server-v0.2.1-alx-preview.8-rw.1)
+- [Previously verified Android client 0.8.2](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.2-alx-preview.8)
 
 Release assets are built by GitHub Actions. Compare downloaded files with the
 published SHA-256 checksum before installation.
@@ -91,12 +92,21 @@ Android requires JDK 21, the Android SDK and the native dependencies described
 in the [client build guide](client/README.md). The release workflow pins the
 upstream revisions used for reproducible builds.
 
+## Remnawave deployment
+
+The [Remnawave installer](core/alx/deploy/remnawave/README.md) deploys the
+official Remnawave Node and ALX Turbo side by side on Debian or Ubuntu, obtains
+and renews the TLS certificate, configures systemd and UFW, and emits the
+private `X-AetherLink-Profile` subscription header. Its compatibility adapter
+supports both legacy `APP_PORT`/`SSL_CERT` and current
+`NODE_PORT`/`SECRET_KEY` Node environments without modifying the panel.
+
 ## Project map
 
 ```text
 client/android/       Android client and UI
 core/alx/             ALX protocol, client, server and tests
-core/alx/deploy/      Deployment templates
+core/alx/deploy/      Deployment templates and Remnawave installer
 test-server/          Preserved VLESS/REALITY comparison baseline
 tools/                Physical-device diagnostics
 .github/workflows/    Reproducible release pipelines
