@@ -4,7 +4,35 @@ This installer deploys the official Remnawave Node and AetherLink X Turbo on
 the same Debian/Ubuntu VPS. They are separate processes: Remnawave continues
 to manage Xray while ALX listens on its own TCP+UDP port.
 
-## One-command installation
+## Fully automatic installation
+
+Create a Remnawave API token with permission to read the system/configuration
+and manage nodes and External Squads. Point the ALX domain to the VPS, then run:
+
+```bash
+export REMNAWAVE_PANEL_URL='https://panel.example.com'
+export REMNAWAVE_API_TOKEN='panel API token'
+curl -fsSL https://raw.githubusercontent.com/AetherLinkX/aetherlink-x/main/core/alx/deploy/remnawave/install.sh \
+  | sudo -E bash -s -- \
+      --domain alx.example.com \
+      --email admin@example.com \
+      --panel-ip 198.51.100.10 \
+      --panel-profile 'Default-Profile' \
+      --panel-node-name 'AetherLink X' \
+      --panel-squad-name 'AetherLink X'
+```
+
+The API token is consumed from the environment and is not saved by the
+installer. In this mode the installer obtains the Node key, registers the Node,
+creates or reuses the named External Squad, and adds the private
+`X-AetherLink-Profile` subscription header. If the panel contains exactly one
+config profile, `--panel-profile` can be omitted.
+
+Finally, assign the users who should receive ALX to the created External Squad.
+Their existing Internal Squads, VLESS locations, hosts and config profiles are
+not changed.
+
+## Manual installation
 
 Create a Node in the panel first and copy its secret. Point the ALX domain to
 the VPS, then run:
@@ -24,7 +52,9 @@ allows the Node API only from `--panel-ip`.
 
 After installation, read `/root/aetherlink-remnawave-summary.txt`. It contains
 the node address, certificate pin, private ALX profile and the exact
-`X-AetherLink-Profile` response header to add in Remnawave.
+`X-AetherLink-Profile` response header to add in Remnawave. Automatic mode also
+writes non-secret panel object identifiers to
+`/root/aetherlink-remnawave-panel.json`.
 
 ## Panel generations
 
@@ -43,6 +73,11 @@ Remnawave v2 stores custom headers in `responseHeaders`; v3 calls the field
 depending on either API representation, so the subscription format stays
 stable across those releases. Existing Xray locations remain in the same
 subscription.
+
+The automatically registered Node intentionally has no active Xray inbound.
+ALX is its own protocol and owns its TCP/UDP listener; assigning an Xray inbound
+to the same port would create a collision. The official Node remains online for
+panel compatibility while the External Squad distributes the ALX profile.
 
 ## Idempotence and recovery
 

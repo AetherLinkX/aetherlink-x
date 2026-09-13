@@ -99,7 +99,9 @@ official Remnawave Node and ALX Turbo side by side on Debian or Ubuntu, obtains
 and renews the TLS certificate, configures systemd and UFW, and emits the
 private `X-AetherLink-Profile` subscription header. Its compatibility adapter
 supports both legacy `APP_PORT`/`SSL_CERT` and current
-`NODE_PORT`/`SECRET_KEY` Node environments without modifying the panel.
+`NODE_PORT`/`SECRET_KEY` Node environments without modifying the panel. With a
+panel URL and scoped API token it also registers the Node and configures the ALX
+External Squad automatically.
 
 ## Project map
 

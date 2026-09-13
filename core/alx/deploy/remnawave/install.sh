@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly INSTALLER_VERSION="1.0.0"
+readonly INSTALLER_VERSION="1.1.0"
 readonly DEFAULT_RELEASE_TAG="server-v0.2.1-alx-preview.8-rw.1"
 readonly DEFAULT_REPOSITORY="AetherLinkX/aetherlink-x"
 
@@ -15,6 +15,8 @@ COMPAT_MODE="auto"
 RELEASE_TAG="$DEFAULT_RELEASE_TAG"
 REPOSITORY="$DEFAULT_REPOSITORY"
 REMNAWAVE_SECRET_KEY="${REMNAWAVE_SECRET_KEY:-}"
+REMNAWAVE_PANEL_URL="${REMNAWAVE_PANEL_URL:-}"
+REMNAWAVE_API_TOKEN="${REMNAWAVE_API_TOKEN:-}"
 ALX_TOKEN="${ALX_TOKEN:-}"
 GH_TOKEN="${GH_TOKEN:-}"
 EXISTING_CERT=""
@@ -23,6 +25,10 @@ DRY_RUN="false"
 DRY_ROOT=""
 SKIP_DNS_CHECK="false"
 ROTATE_ALX_TOKEN="false"
+PANEL_PROFILE=""
+PANEL_NODE_NAME="AetherLink X"
+PANEL_SQUAD_NAME="AetherLink X"
+PANEL_COUNTRY_CODE="FI"
 
 log() { printf '[AetherLink X] %s\n' "$*"; }
 die() { printf '[AetherLink X] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -35,7 +41,9 @@ Usage:
   sudo bash install.sh --domain alx.example.com --email admin@example.com \
     --panel-ip 198.51.100.10 [options]
 
-The Remnawave secret is read from REMNAWAVE_SECRET_KEY or requested securely.
+The installer can obtain the Remnawave Node secret and register the node and
+an ALX External Squad automatically when REMNAWAVE_PANEL_URL and
+REMNAWAVE_API_TOKEN are set. Otherwise REMNAWAVE_SECRET_KEY is requested.
 
 Required:
   --domain NAME              DNS name whose A/AAAA record points to this VPS
@@ -47,6 +55,10 @@ Options:
   --alx-port PORT            ALX TCP+UDP port (default: 8443)
   --remnawave-image IMAGE    Node image/tag (default: remnawave/node:latest)
   --compat MODE              auto, modern, or legacy (default: auto)
+  --panel-profile VALUE      Config profile UUID or exact name for node registration
+  --panel-node-name NAME     Node name in Remnawave (default: AetherLink X)
+  --panel-squad-name NAME    External Squad receiving ALX (default: AetherLink X)
+  --panel-country CODE       Two-letter node country code (default: FI)
   --release-tag TAG          ALX server release tag
   --repository OWNER/REPO    GitHub repository used for the server binary
   --existing-cert FILE       Use an existing PEM full chain
@@ -72,6 +84,10 @@ while (($#)); do
     --alx-port) ALX_PORT="${2:-}"; shift 2 ;;
     --remnawave-image) REMNAWAVE_IMAGE="${2:-}"; shift 2 ;;
     --compat) COMPAT_MODE="${2:-}"; shift 2 ;;
+    --panel-profile) PANEL_PROFILE="${2:-}"; shift 2 ;;
+    --panel-node-name) PANEL_NODE_NAME="${2:-}"; shift 2 ;;
+    --panel-squad-name) PANEL_SQUAD_NAME="${2:-}"; shift 2 ;;
+    --panel-country) PANEL_COUNTRY_CODE="${2:-}"; shift 2 ;;
     --release-tag) RELEASE_TAG="${2:-}"; shift 2 ;;
     --repository) REPOSITORY="${2:-}"; shift 2 ;;
     --existing-cert) EXISTING_CERT="${2:-}"; shift 2 ;;
@@ -91,20 +107,16 @@ done
 [[ "$ALX_PORT" =~ ^[0-9]+$ ]] && ((ALX_PORT >= 1 && ALX_PORT <= 65535)) || die "Invalid --alx-port"
 [[ "$NODE_PORT" != "$ALX_PORT" ]] || die "Node API and ALX ports must differ"
 [[ "$COMPAT_MODE" =~ ^(auto|modern|legacy)$ ]] || die "--compat must be auto, modern, or legacy"
+[[ "$PANEL_COUNTRY_CODE" =~ ^[A-Za-z]{2}$ ]] || die "--panel-country must contain two letters"
+PANEL_COUNTRY_CODE="${PANEL_COUNTRY_CODE^^}"
 [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "Invalid --repository"
 if [[ -n "$EXISTING_CERT" || -n "$EXISTING_KEY" ]]; then
   [[ -n "$EXISTING_CERT" && -n "$EXISTING_KEY" ]] || die "Both --existing-cert and --existing-key are required"
 fi
-
-if [[ -z "$REMNAWAVE_SECRET_KEY" ]]; then
-  if [[ -t 0 && "$DRY_RUN" == "false" ]]; then
-    read -r -s -p 'Paste the SECRET_KEY/SSL_CERT copied from Remnawave Panel: ' REMNAWAVE_SECRET_KEY
-    printf '\n'
-  else
-    die "Set REMNAWAVE_SECRET_KEY before running the installer"
-  fi
+if [[ -n "$REMNAWAVE_PANEL_URL" || -n "$REMNAWAVE_API_TOKEN" ]]; then
+  [[ -n "$REMNAWAVE_PANEL_URL" && -n "$REMNAWAVE_API_TOKEN" ]] || \
+    die "Set both REMNAWAVE_PANEL_URL and REMNAWAVE_API_TOKEN"
 fi
-[[ -n "$REMNAWAVE_SECRET_KEY" ]] || die "Remnawave secret cannot be empty"
 
 root_path() {
   if [[ "$DRY_RUN" == "true" ]]; then printf '%s%s' "$DRY_ROOT" "$1"; else printf '%s' "$1"; fi
@@ -116,6 +128,7 @@ readonly ALX_BIN="$(root_path /usr/local/bin/alx-server)"
 readonly SERVICE_FILE="$(root_path /etc/systemd/system/aetherlink-native.service)"
 readonly RENEW_HOOK="$(root_path /etc/letsencrypt/renewal-hooks/deploy/aetherlink-native)"
 readonly SUMMARY_FILE="$(root_path /root/aetherlink-remnawave-summary.txt)"
+readonly PANEL_RESULT_FILE="$(root_path /root/aetherlink-remnawave-panel.json)"
 readonly LIVE_CERT_DIR="/etc/letsencrypt/live/$DOMAIN"
 readonly INSTALLED_CERT="/etc/aetherlink-x/fullchain.pem"
 readonly INSTALLED_KEY="/etc/aetherlink-x/privkey.pem"
@@ -127,6 +140,123 @@ dotenv_quote() {
   value=${value//$'\n'/\\n}
   value=${value//\"/\\\"}
   printf '"%s"' "$value"
+}
+
+# Version-adaptive Remnawave REST helper. Secrets are accepted only through
+# environment variables and are never placed in argv, logs, or result JSON.
+panel_tool() {
+  python3 - "$@" <<'PY'
+import json
+import os
+import ssl
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+base = os.environ.get("REMNAWAVE_PANEL_URL", "").rstrip("/")
+token = os.environ.get("REMNAWAVE_API_TOKEN", "")
+if not base or not token:
+    raise SystemExit("REMNAWAVE_PANEL_URL and REMNAWAVE_API_TOKEN are required")
+if not base.startswith(("https://", "http://")):
+    raise SystemExit("REMNAWAVE_PANEL_URL must start with https:// or http://")
+
+def request(method, path, payload=None):
+    data = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
+    req = urllib.request.Request(
+        base + "/api/" + path.lstrip("/"),
+        data=data,
+        method=method,
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=25, context=ssl.create_default_context()) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        raise SystemExit(f"Remnawave API {method} {path} failed with HTTP {exc.code}")
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"Remnawave API is unreachable: {exc.reason}")
+
+command = sys.argv[1]
+if command == "keygen":
+    print(request("GET", "keygen/")["response"]["pubKey"])
+    raise SystemExit(0)
+if command != "configure":
+    raise SystemExit("unknown panel helper command")
+
+domain, node_port, profile_selector, node_name, squad_name, country = sys.argv[2:8]
+profile_link = os.environ.get("ALX_PROFILE", "")
+if not profile_link.startswith("aetherlink://"):
+    raise SystemExit("ALX_PROFILE is missing or invalid")
+
+metadata = request("GET", "system/metadata").get("response", {})
+version = str(metadata.get("version", "2.0.0")).lstrip("v")
+try:
+    major = int(version.split(".", 1)[0])
+except ValueError:
+    major = 2
+
+profiles = request("GET", "config-profiles/").get("response", {}).get("configProfiles", [])
+selected = None
+if profile_selector:
+    selected = next((item for item in profiles if item.get("uuid") == profile_selector or item.get("name") == profile_selector), None)
+elif len(profiles) == 1:
+    selected = profiles[0]
+if selected is None:
+    names = ", ".join(str(item.get("name", "unnamed")) for item in profiles)
+    raise SystemExit("Select a profile with --panel-profile. Available: " + (names or "none"))
+
+nodes_response = request("GET", "nodes/").get("response", [])
+nodes = nodes_response if isinstance(nodes_response, list) else nodes_response.get("nodes", [])
+node = next((item for item in nodes if item.get("name") == node_name), None)
+if node is not None and (node.get("address") != domain or int(node.get("port") or 0) != int(node_port)):
+    raise SystemExit(
+        f'Remnawave node "{node_name}" already exists with another address or port; '
+        "choose another --panel-node-name"
+    )
+if node is None:
+    node = next(
+        (item for item in nodes if item.get("address") == domain and int(item.get("port") or 0) == int(node_port)),
+        None,
+    )
+if node is None:
+    node_payload = {
+        "name": node_name,
+        "address": domain,
+        "port": int(node_port),
+        "countryCode": country,
+        "isTrafficTrackingActive": True,
+        "configProfile": {
+            "activeConfigProfileUuid": selected["uuid"],
+            # ALX owns its TCP/UDP listener. Empty Xray inbounds prevent a port
+            # collision while keeping the official Remnawave Node online.
+            "activeInbounds": [],
+        },
+        "tags": ["AETHERLINK_X"],
+    }
+    node = request("POST", "nodes/", node_payload)["response"]
+
+squads_response = request("GET", "external-squads/").get("response", {})
+squads = squads_response.get("externalSquads", []) if isinstance(squads_response, dict) else squads_response
+squad = next((item for item in squads if item.get("name") == squad_name), None)
+if squad is None:
+    squad = request("POST", "external-squads/", {"name": squad_name})["response"]
+
+header_field = "responseHeadersAdd" if major >= 3 else "responseHeaders"
+headers = dict(squad.get(header_field) or squad.get("responseHeaders") or {})
+headers["X-AetherLink-Profile"] = "base64:" + __import__("base64").b64encode(profile_link.encode()).decode()
+request("PATCH", "external-squads/", {"uuid": squad["uuid"], header_field: headers})
+
+print(json.dumps({
+    "panelVersion": version,
+    "nodeUuid": node.get("uuid"),
+    "nodeName": node.get("name", node_name),
+    "configProfileUuid": selected.get("uuid"),
+    "configProfileName": selected.get("name"),
+    "externalSquadUuid": squad.get("uuid"),
+    "externalSquadName": squad.get("name", squad_name),
+}, separators=(",", ":")))
+PY
 }
 
 write_remnawave_env() {
@@ -347,6 +477,25 @@ EOF
   chmod 0600 "$SUMMARY_FILE"
 }
 
+append_panel_summary() {
+  local panel_result="$1" node_name squad_name node_uuid squad_uuid profile_name
+  node_name="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("nodeName", ""))' <<<"$panel_result")"
+  squad_name="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("externalSquadName", ""))' <<<"$panel_result")"
+  node_uuid="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("nodeUuid", ""))' <<<"$panel_result")"
+  squad_uuid="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("externalSquadUuid", ""))' <<<"$panel_result")"
+  profile_name="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("configProfileName", ""))' <<<"$panel_result")"
+  cat >>"$SUMMARY_FILE" <<EOF
+
+Automatic panel integration completed:
+Node: ${node_name} (${node_uuid})
+Compatibility config profile: ${profile_name}
+External Squad: ${squad_name} (${squad_uuid})
+
+Assign users who should receive ALX to the External Squad "${squad_name}".
+Their existing Internal Squads, Xray profiles and hosts remain unchanged.
+EOF
+}
+
 render_dry_run() {
   mkdir -p "$REMNA_DIR" "$ALX_DIR" "$(dirname "$SERVICE_FILE")" "$(dirname "$SUMMARY_FILE")"
   [[ -n "$ALX_TOKEN" ]] || ALX_TOKEN="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -368,6 +517,20 @@ grep -qiE '^(ID|ID_LIKE)=.*(debian|ubuntu)' /etc/os-release || die "Supported op
 
 log "Installing required packages"
 install_packages
+
+if [[ -z "$REMNAWAVE_SECRET_KEY" && -n "$REMNAWAVE_PANEL_URL" ]]; then
+  log "Obtaining Remnawave Node key from the panel"
+  REMNAWAVE_SECRET_KEY="$(panel_tool keygen)"
+fi
+if [[ -z "$REMNAWAVE_SECRET_KEY" ]]; then
+  if [[ -t 0 ]]; then
+    read -r -s -p 'Paste the SECRET_KEY/SSL_CERT copied from Remnawave Panel: ' REMNAWAVE_SECRET_KEY
+    printf '\n'
+  else
+    die "Set REMNAWAVE_SECRET_KEY, or set REMNAWAVE_PANEL_URL and REMNAWAVE_API_TOKEN"
+  fi
+fi
+[[ -n "$REMNAWAVE_SECRET_KEY" ]] || die "Remnawave secret cannot be empty"
 
 mkdir -p "$REMNA_DIR" "$ALX_DIR" /var/log/remnanode /var/backups/aetherlink-remnawave
 if [[ -d /opt/remnanode || -d /etc/aetherlink-x || -f /etc/systemd/system/aetherlink-native.service ]]; then
@@ -415,7 +578,22 @@ pin="$(calculate_pin)"
 profile="$(make_profile "$pin")"
 write_summary "$pin" "$profile"
 
+if [[ -n "$REMNAWAVE_PANEL_URL" ]]; then
+  log "Registering the node and ALX External Squad in Remnawave"
+  panel_result="$(ALX_PROFILE="$profile" panel_tool configure \
+    "$DOMAIN" "$NODE_PORT" "$PANEL_PROFILE" "$PANEL_NODE_NAME" \
+    "$PANEL_SQUAD_NAME" "$PANEL_COUNTRY_CODE")"
+  printf '%s\n' "$panel_result" >"$PANEL_RESULT_FILE"
+  chmod 0600 "$PANEL_RESULT_FILE"
+  append_panel_summary "$panel_result"
+fi
+
 log "Installation completed"
 log "Private setup details: $SUMMARY_FILE"
-printf '\nAdd the node in Remnawave as %s:%s, then configure X-AetherLink-Profile from:\n  %s\n' \
-  "$DOMAIN" "$NODE_PORT" "$SUMMARY_FILE"
+if [[ -n "$REMNAWAVE_PANEL_URL" ]]; then
+  printf '\nThe Remnawave node and External Squad are configured automatically.\nAssign the intended users to External Squad "%s".\nDetails: %s\n' \
+    "$PANEL_SQUAD_NAME" "$SUMMARY_FILE"
+else
+  printf '\nAdd the node in Remnawave as %s:%s, then configure X-AetherLink-Profile from:\n  %s\n' \
+    "$DOMAIN" "$NODE_PORT" "$SUMMARY_FILE"
+fi
