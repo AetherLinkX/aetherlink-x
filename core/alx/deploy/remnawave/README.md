@@ -1,123 +1,91 @@
-# Remnawave Node + ALX installer
+# Native Remnawave integration
 
-This installer deploys the official Remnawave Node and AetherLink X Turbo on
-the same Debian/Ubuntu VPS. They are separate processes: Remnawave continues
-to manage Xray while ALX listens on its own TCP+UDP port.
+This integration makes AetherLink X a first-class Remnawave protocol. It does
+not create a VLESS control inbound and it does not distribute ALX through a
+custom response header.
 
-## Fully automatic installation
+The patched panel stores an inbound with `"protocol": "aetherlink"`, creates a
+normal Host linked to that inbound, and emits a native `aetherlink://` entry in
+the user's subscription. The patched Node removes the private `aetherlink`
+runtime block before Xray starts and atomically applies it to the independent
+ALX core. Xray never parses or serves ALX traffic.
 
-Create a Remnawave API token with permission to read the system/configuration
-and manage nodes and External Squads. Point the ALX domain to the VPS, then run:
+## Native profile format
+
+```json
+{
+  "inbounds": [
+    {
+      "tag": "AETHERLINK_NATIVE",
+      "port": 443,
+      "protocol": "aetherlink",
+      "settings": {
+        "token": "generated-secret",
+        "previousTokens": [],
+        "pin": "64-character-certificate-SPKI-SHA256",
+        "sni": "alx.example.com",
+        "mode": "turbo",
+        "fallback": "auto"
+      }
+    }
+  ],
+  "outbounds": [
+    { "tag": "DIRECT", "protocol": "freedom" },
+    { "tag": "BLOCK", "protocol": "blackhole" }
+  ]
+}
+```
+
+Only one native ALX inbound may be active on a node. The protocol has its own
+TCP and QUIC listener, certificate pin, authentication token and runtime. The
+ALX token can be rotated with up to two previous tokens for a graceful client
+migration.
+
+## Panel installation
+
+On the server that already runs Remnawave Panel:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AetherLinkX/aetherlink-x/alx/native-preview/core/alx/deploy/remnawave/install-panel.sh \
+  | sudo bash
+```
+
+The panel installer changes only the `remnawave` backend image, backs up the
+existing Compose file and restores it automatically if the replacement is not
+healthy. PostgreSQL, Valkey, volumes, environment variables and existing Xray
+profiles are not changed.
+
+## One-command node installation
+
+After deploying the patched panel backend, create a panel API token and run on
+the node VPS:
 
 ```bash
 export REMNAWAVE_PANEL_URL='https://panel.example.com'
 export REMNAWAVE_API_TOKEN='panel API token'
-curl -fsSL https://raw.githubusercontent.com/AetherLinkX/aetherlink-x/main/core/alx/deploy/remnawave/install.sh \
-  | sudo -E bash -s -- \
-      --domain alx.example.com \
-      --email admin@example.com \
-      --panel-ip 198.51.100.10 \
-      --panel-profile 'Default-Profile' \
-      --panel-node-name 'AetherLink X' \
-      --panel-squad-name 'AetherLink X'
-```
-
-The API token is consumed from the environment and is not saved by the
-installer. In this mode the installer obtains the Node key, registers the Node,
-creates or reuses the named External Squad, and adds the private
-`X-AetherLink-Profile` subscription header. If the panel contains exactly one
-config profile, `--panel-profile` can be omitted.
-
-Finally, assign the users who should receive ALX to the created External Squad.
-Their existing Internal Squads, VLESS locations, hosts and config profiles are
-not changed.
-
-### Attach a working ALX server without reinstalling it
-
-If ALX is already tested on the VPS, keep its binary, service, certificate,
-token and ports intact. Store its private `aetherlink://` link in a root-only
-file and add:
-
-```bash
---existing-alx-profile-file /root/alx-profile.private.txt
-```
-
-In this mode only the official Remnawave Node and panel objects are installed.
-This is the safest mode for an existing production ALX location.
-
-## Manual installation
-
-Create a Node in the panel first and copy its secret. Point the ALX domain to
-the VPS, then run:
-
-```bash
-export REMNAWAVE_SECRET_KEY='value copied from the panel'
-curl -fsSL https://raw.githubusercontent.com/AetherLinkX/aetherlink-x/main/core/alx/deploy/remnawave/install.sh \
+curl -fsSL https://raw.githubusercontent.com/AetherLinkX/aetherlink-x/alx/native-preview/core/alx/deploy/remnawave/install.sh \
   | sudo -E bash -s -- \
       --domain alx.example.com \
       --email admin@example.com \
       --panel-ip 198.51.100.10
 ```
 
-The default ports are `2222/tcp` for the panel-to-node API and `8443/tcp+udp`
-for ALX. Port 80 is used for ACME renewal. If UFW is active, the installer
-allows the Node API only from `--panel-ip`.
+The installer:
 
-After installation, read `/root/aetherlink-remnawave-summary.txt`. It contains
-the node address, certificate pin, private ALX profile and the exact
-`X-AetherLink-Profile` response header to add in Remnawave. Automatic mode also
-writes non-secret panel object identifiers to
-`/root/aetherlink-remnawave-panel.json`.
+- backs up the existing node and ALX configuration;
+- installs the ALX core and certificate;
+- starts the compatible Remnawave Node;
+- creates or updates the native `AetherLink X` Config Profile;
+- creates the native Host and `AetherLink X` Internal Squad;
+- assigns the node to the native inbound without changing existing profiles.
 
-## Panel generations
+Assign users to the generated Internal Squad to include ALX in their normal
+subscription. Private tokens and profile links are written only to root-owned
+files on the node.
 
-| Mode | Environment passed to Remnawave Node |
-|---|---|
-| `auto` | Both `NODE_PORT`/`SECRET_KEY` and `APP_PORT`/`SSL_CERT` |
-| `modern` | Remnawave Node 2.2.2+ and 3.x names only |
-| `legacy` | Older `APP_PORT`/`SSL_CERT` names only |
+## Compatibility
 
-`auto` is the default. The Node image can be pinned independently with
-`--remnawave-image remnawave/node:<version>`, so panel upgrades do not require
-changing ALX.
-
-Remnawave v2 stores custom headers in `responseHeaders`; v3 calls the field
-`responseHeadersAdd`. AetherLink X reads the emitted HTTP header instead of
-depending on either API representation, so the subscription format stays
-stable across those releases. Existing Xray locations remain in the same
-subscription.
-
-The automatically registered Node intentionally has no active Xray inbound.
-ALX is its own protocol and owns its TCP/UDP listener; assigning an Xray inbound
-to the same port would create a collision. The official Node remains online for
-panel compatibility while the External Squad distributes the ALX profile.
-
-## Idempotence and recovery
-
-Re-running the command updates both services, renews configuration and keeps
-the current ALX token. Use `--rotate-alx-token` only for an intentional token
-rollout. Before modifying an existing installation, the script archives the
-three managed locations under `/var/backups/aetherlink-remnawave/`.
-
-For a private GitHub repository, export a read-only `GH_TOKEN` so the installer
-can download the release asset. The installer itself can be fetched through
-GitHub's authenticated contents API:
-
-```bash
-curl -fsSL \
-  -H "Authorization: Bearer $GH_TOKEN" \
-  -H 'Accept: application/vnd.github.raw+json' \
-  'https://api.github.com/repos/AetherLinkX/aetherlink-x/contents/core/alx/deploy/remnawave/install.sh?ref=main' \
-  | sudo -E bash -s -- --domain alx.example.com --email admin@example.com \
-      --panel-ip 198.51.100.10
-```
-
-Public releases need no token.
-
-## Limits
-
-ALX is not an Xray inbound, so the panel cannot push ALX wire configuration
-through Xray's API. The installer deliberately uses a sidecar and a subscription
-response header instead of patching Remnawave or pretending ALX is VLESS. User
-accounting for native ALX is shared-token based in Preview 8; per-user panel
-accounting requires a future ALX authentication adapter.
+The integration is version-pinned because Remnawave's backend and node APIs
+change between major releases. The current tested baseline is Panel 2.7.3 with
+Node 2.8.0. New releases use dedicated overlays and build tests instead of
+silently falling back to VLESS.

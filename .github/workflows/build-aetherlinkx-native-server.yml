@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 env:
-  SERVER_PREVIEW_TAG: server-v0.2.1-alx-preview.8-rw.1
+  SERVER_PREVIEW_TAG: server-v0.2.2-alx-preview.8-rw.2
 
 jobs:
   test:
@@ -33,6 +33,7 @@ jobs:
       - name: Test Remnawave installer
         run: |
           bash -n core/alx/deploy/remnawave/install.sh
+          bash -n core/alx/deploy/remnawave/install-panel.sh
           bash -n core/alx/deploy/remnawave/test-install.sh
           bash core/alx/deploy/remnawave/test-install.sh
 
@@ -53,12 +54,12 @@ jobs:
           git push origin "refs/tags/$SERVER_PREVIEW_TAG" --force
           if ! gh release view "$SERVER_PREVIEW_TAG" >/dev/null 2>&1; then
             gh release create "$SERVER_PREVIEW_TAG" --prerelease --verify-tag \
-              --title "AetherLink Native Server 0.2.1 — Remnawave Preview" \
-              --notes "Turbo server with Remnawave sidecar deployment, session-bound authentication, authenticated HTTP Upgrade cover transport, automatic TCP/QUIC paths, and amd64/arm64 support."
+              --title "AetherLink Native Server 0.2.2 — Native Remnawave Control" \
+              --notes "Native ALX/1 Turbo server with atomic Remnawave runtime configuration, token rotation, session-bound authentication, authenticated HTTP Upgrade cover transport, automatic TCP/QUIC paths, and amd64/arm64 support."
           else
             gh release edit "$SERVER_PREVIEW_TAG" --prerelease \
-              --title "AetherLink Native Server 0.2.1 — Remnawave Preview" \
-              --notes "Turbo server with Remnawave sidecar deployment, session-bound authentication, authenticated HTTP Upgrade cover transport, automatic TCP/QUIC paths, and amd64/arm64 support."
+              --title "AetherLink Native Server 0.2.2 — Native Remnawave Control" \
+              --notes "Native ALX/1 Turbo server with atomic Remnawave runtime configuration, token rotation, session-bound authentication, authenticated HTTP Upgrade cover transport, automatic TCP/QUIC paths, and amd64/arm64 support."
           fi
 
   build:

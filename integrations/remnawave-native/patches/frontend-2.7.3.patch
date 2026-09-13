@@ -1,0 +1,44 @@
+diff --git a/src/features/dashboard/config-profiles/monaco-setup/monaco-setup.feature.tsx b/src/features/dashboard/config-profiles/monaco-setup/monaco-setup.feature.tsx
+index d878234..5c6bd15 100644
+--- a/src/features/dashboard/config-profiles/monaco-setup/monaco-setup.feature.tsx
++++ b/src/features/dashboard/config-profiles/monaco-setup/monaco-setup.feature.tsx
+@@ -33,6 +33,39 @@ export const MonacoSetupFeature = {
+             const response = await axios.get(jsonSchemaUrl)
+             const schema = await response.data
+ 
++            // Remnawave's upstream editor schema describes Xray only. ALX is a
++            // native sidecar protocol, so extend editor diagnostics locally;
++            // the backend still performs the authoritative validation.
++            const inbound = schema.definitions?.InboundObject
++            const protocols = inbound?.properties?.protocol?.anyOf
++            if (Array.isArray(protocols) && !protocols.some((item) => item.const === 'aetherlink')) {
++                protocols.unshift({
++                    const: 'aetherlink',
++                    markdownDescription: 'AetherLink X Native (ALX/1 Turbo)'
++                })
++            }
++            const inboundSettings = schema.definitions?.InboundConfigurationObject?.anyOf
++            if (Array.isArray(inboundSettings)) {
++                inboundSettings.unshift({
++                    title: 'AetherLink Native Settings',
++                    type: 'object',
++                    required: ['token', 'pin', 'sni', 'mode'],
++                    properties: {
++                        token: { type: 'string', minLength: 32 },
++                        previousTokens: {
++                            type: 'array',
++                            maxItems: 2,
++                            items: { type: 'string', minLength: 32 }
++                        },
++                        pin: { type: 'string', pattern: '^[0-9A-Fa-f]{64}$' },
++                        sni: { type: 'string', minLength: 1 },
++                        mode: { const: 'turbo' },
++                        fallback: { enum: ['auto', 'quic', 'tcp'] }
++                    },
++                    additionalProperties: false
++                })
++            }
++
+             const snippetDescriptions = snippets.map((snippet) => {
+                 const snippetJson = JSON.stringify(snippet.snippet, null, 1)
+ 

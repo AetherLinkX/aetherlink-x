@@ -1,0 +1,380 @@
+diff --git a/libs/contract/models/resolved-proxy-config.schema.ts b/libs/contract/models/resolved-proxy-config.schema.ts
+index d30fed7..7bc5020 100644
+--- a/libs/contract/models/resolved-proxy-config.schema.ts
++++ b/libs/contract/models/resolved-proxy-config.schema.ts
+@@ -85,6 +85,14 @@ export const HysteriaProtocolOptionsSchema = z.object({
+     version: z.number().int(),
+ });
+ 
++export const AetherLinkProtocolOptionsSchema = z.object({
++    token: z.string().min(32),
++    pin: z.string().regex(/^[0-9a-f]{64}$/i),
++    sni: z.string().min(1),
++    mode: z.literal('turbo'),
++    fallback: z.enum(['auto', 'quic', 'tcp']),
++});
++
+ export const HysteriaTransportOptionsSchema = z.object({
+     version: z.number().int(),
+     auth: z.string(),
+@@ -129,7 +137,13 @@ const HysteriaProtocolSchema = z.object({
+     protocolOptions: HysteriaProtocolOptionsSchema,
+ });
+ 
++const AetherLinkProtocolSchema = z.object({
++    protocol: z.literal('aetherlink'),
++    protocolOptions: AetherLinkProtocolOptionsSchema,
++});
++
+ export const ProtocolVariantSchema = z.discriminatedUnion('protocol', [
++    AetherLinkProtocolSchema,
+     VlessProtocolSchema,
+     TrojanProtocolSchema,
+     ShadowsocksProtocolSchema,
+@@ -221,8 +235,9 @@ export const ResolvedProxyConfigSchema = z.object({
+     address: z.string(),
+     port: z.number().int().positive(),
+ 
+-    protocol: z.enum(['vless', 'trojan', 'shadowsocks', 'hysteria']),
++    protocol: z.enum(['aetherlink', 'vless', 'trojan', 'shadowsocks', 'hysteria']),
+     protocolOptions: z.union([
++        AetherLinkProtocolOptionsSchema,
+         VlessProtocolOptionsSchema,
+         TrojanProtocolOptionsSchema,
+         ShadowsocksProtocolOptionsSchema,
+diff --git a/src/common/helpers/xray-config/xray-config.validator.ts b/src/common/helpers/xray-config/xray-config.validator.ts
+index fd4b82d..e924536 100644
+--- a/src/common/helpers/xray-config/xray-config.validator.ts
++++ b/src/common/helpers/xray-config/xray-config.validator.ts
+@@ -24,6 +24,7 @@ const MANAGED_CLIENT_PROTOCOLS = new Set(['hysteria', 'shadowsocks', 'trojan', '
+ type ManagedInboundSettings = VLessInboundConfig | TrojanInboundConfig | ShadowsocksInboundConfig;
+ 
+ const ALLOWED_PROTOCOLS = new Set([
++    'aetherlink',
+     'dokodemo-door',
+     'http',
+     'hysteria',
+@@ -55,6 +56,19 @@ interface InboundsWithTagsAndType {
+     rawInbound: object | null;
+ }
+ 
++export interface IAetherLinkRuntimeConfig {
++    version: 1;
++    enabled: true;
++    inboundTag: string;
++    listen: string;
++    tcpListen: string;
++    token: string;
++    previousTokens: string[];
++    sni: string;
++    mode: 'turbo';
++    fallback: 'auto' | 'quic' | 'tcp';
++}
++
+ type TCtrXRayConfig = object | Record<string, unknown> | string;
+ 
+ export class XRayConfig {
+@@ -87,7 +101,11 @@ export class XRayConfig {
+ 
+     public getAllInbounds(): InboundsWithTagsAndType[] {
+         return this.inbounds
+-            .filter((inbound) => this.hasManagedClients(inbound))
++            .filter(
++                (inbound) =>
++                    this.hasManagedClients(inbound) ||
++                    (inbound.protocol as string) === 'aetherlink',
++            )
+             .map((inbound) => ({
+                 tag: inbound.tag!,
+                 rawInbound: inbound as unknown as object,
+@@ -109,6 +127,52 @@ export class XRayConfig {
+         );
+     }
+ 
++    /**
++     * AetherLink is handled by the native ALX service, not Xray. Keep it in
++     * Remnawave's profile/inbound model, but never forward it to Xray-core.
++     */
++    public excludeAetherLinkInbounds(): void {
++        this.config.inbounds = this.config.inbounds!.filter(
++            (inbound) => (inbound.protocol as string) !== 'aetherlink',
++        );
++    }
++
++    public getAetherLinkRuntimeConfig(
++        activeTags: Set<string>,
++    ): IAetherLinkRuntimeConfig | null {
++        const active = this.inbounds.filter(
++            (inbound) =>
++                (inbound.protocol as string) === 'aetherlink' &&
++                activeTags.has(inbound.tag!),
++        );
++        if (active.length === 0) return null;
++        if (active.length > 1) {
++            throw new Error('A node can run only one active AetherLink inbound.');
++        }
++
++        const inbound = active[0];
++        const settings = (inbound.settings ?? {}) as Record<string, unknown>;
++        const fallback = settings.fallback;
++        const previousTokens = Array.isArray(settings.previousTokens)
++            ? settings.previousTokens.filter((value): value is string => typeof value === 'string')
++            : [];
++        const port = this.parsePort(inbound.port);
++        if (!port) throw new Error(`AetherLink inbound "${inbound.tag}" requires a port.`);
++
++        return {
++            version: 1,
++            enabled: true,
++            inboundTag: inbound.tag!,
++            listen: `:${port}`,
++            tcpListen: `:${port}`,
++            token: String(settings.token),
++            previousTokens,
++            sni: String(settings.sni),
++            mode: 'turbo',
++            fallback: fallback === 'quic' || fallback === 'tcp' ? fallback : 'auto',
++        };
++    }
++
+     public processCertificates(): XrayConfig {
+         if (!this.config.inbounds) return this.config;
+ 
+@@ -382,6 +446,7 @@ export class XRayConfig {
+             this.validateProtocol(inbound);
+             this.validateTag(inbound, seenTags);
+             this.validateShadowsocks(inbound);
++            this.validateAetherLink(inbound);
+         }
+     }
+ 
+@@ -454,6 +519,39 @@ export class XRayConfig {
+         }
+     }
+ 
++    private validateAetherLink(inbound: InboundConfig): void {
++        if ((inbound.protocol as string) !== 'aetherlink') return;
++
++        const settings = (inbound.settings ?? {}) as Record<string, unknown>;
++        const token = settings.token;
++        const pin = settings.pin;
++        const sni = settings.sni;
++        const mode = settings.mode ?? 'turbo';
++        const previousTokens = settings.previousTokens ?? [];
++
++        if (typeof token !== 'string' || token.length < 32) {
++            throw new Error(`AetherLink token is missing or too short in inbound "${inbound.tag}".`);
++        }
++        if (typeof pin !== 'string' || !/^[0-9a-f]{64}$/i.test(pin)) {
++            throw new Error(`AetherLink certificate pin must contain 64 hex characters in inbound "${inbound.tag}".`);
++        }
++        if (typeof sni !== 'string' || sni.length === 0) {
++            throw new Error(`AetherLink SNI is required in inbound "${inbound.tag}".`);
++        }
++        if (mode !== 'turbo') {
++            throw new Error(`AetherLink mode must be "turbo" in inbound "${inbound.tag}".`);
++        }
++        if (
++            !Array.isArray(previousTokens) ||
++            previousTokens.length > 2 ||
++            previousTokens.some((value) => typeof value !== 'string' || value.length < 32)
++        ) {
++            throw new Error(
++                `AetherLink previousTokens must contain at most two valid tokens in inbound "${inbound.tag}".`,
++            );
++        }
++    }
++
+     private indexInbounds(): void {
+         for (const inbound of this.config.inbounds!) {
+             this.inbounds.push(inbound);
+diff --git a/src/modules/subscription-template/generators/xray-json.generator.service.ts b/src/modules/subscription-template/generators/xray-json.generator.service.ts
+index 7b60ed0..df7ee33 100644
+--- a/src/modules/subscription-template/generators/xray-json.generator.service.ts
++++ b/src/modules/subscription-template/generators/xray-json.generator.service.ts
+@@ -196,6 +196,10 @@ export class XrayJsonGeneratorService {
+             const configs: XrayJsonConfig[] = [];
+ 
+             for (const host of hosts) {
++                // Native ALX profiles belong in the raw/base64 subscription as
++                // aetherlink:// links. Xray JSON must never receive a fake
++                // outbound for a protocol that Xray does not implement.
++                if (host.protocol === 'aetherlink') continue;
+                 if (host.metadata.isHidden) continue;
+                 if (host.metadata.excludeFromSubscriptionTypes.includes('XRAY_JSON')) continue;
+ 
+@@ -306,6 +310,8 @@ export class XrayJsonGeneratorService {
+                 return PROTOCOL_BUILDERS.shadowsocks(host);
+             case 'hysteria':
+                 return PROTOCOL_BUILDERS.hysteria(host);
++            case 'aetherlink':
++                throw new Error('AetherLink Native cannot be rendered as an Xray outbound.');
+         }
+     }
+ 
+@@ -389,6 +395,8 @@ export class XrayJsonGeneratorService {
+                 break;
+         }
+ 
++        candidates = candidates.filter((host) => host.protocol !== 'aetherlink');
++
+         switch (selector.type) {
+             case 'uuids':
+                 return selector.values
+diff --git a/src/modules/subscription-template/generators/xray.generator.service.ts b/src/modules/subscription-template/generators/xray.generator.service.ts
+index da2e3ca..b430076 100644
+--- a/src/modules/subscription-template/generators/xray.generator.service.ts
++++ b/src/modules/subscription-template/generators/xray.generator.service.ts
+@@ -49,6 +49,8 @@ export class XrayGeneratorService {
+ 
+     private generateLink(host: ResolvedProxyConfig): string | null {
+         switch (host.protocol) {
++            case 'aetherlink':
++                return this.buildAetherLinkLink(host);
+             case 'vless':
+                 return this.buildVlessLink(host);
+             case 'trojan':
+@@ -60,6 +62,22 @@ export class XrayGeneratorService {
+         }
+     }
+ 
++    // Native AetherLink X profile. It is consumed directly by the ALX client
++    // and is intentionally never translated to VLESS or any Xray protocol.
++    private buildAetherLinkLink(
++        host: Extract<ResolvedProxyConfig, { protocol: 'aetherlink' }>,
++    ): string {
++        const params = new URLSearchParams({
++            pin: host.protocolOptions.pin,
++            sni: host.protocolOptions.sni,
++            mode: host.protocolOptions.mode,
++            fallback: host.protocolOptions.fallback,
++        });
++        const token = encodeURIComponent(host.protocolOptions.token);
++        const remark = encodeURIComponent(host.finalRemark);
++        return `aetherlink://${token}@${host.address}:${host.port}?${params.toString()}#${remark}`;
++    }
++
+     // ── VLESS ────────────────────────────────────────
+     // vless://$(uuid)@host:port?params#remark
+ 
+diff --git a/src/modules/subscription-template/resolve-proxy/interfaces/resolved-proxy-config.interface.ts b/src/modules/subscription-template/resolve-proxy/interfaces/resolved-proxy-config.interface.ts
+index 38066f6..7efbc02 100644
+--- a/src/modules/subscription-template/resolve-proxy/interfaces/resolved-proxy-config.interface.ts
++++ b/src/modules/subscription-template/resolve-proxy/interfaces/resolved-proxy-config.interface.ts
+@@ -25,6 +25,14 @@ export interface IHysteriaProtocolOptions {
+     version: number;
+ }
+ 
++export interface IAetherLinkProtocolOptions {
++    token: string;
++    pin: string;
++    sni: string;
++    mode: 'turbo';
++    fallback: 'auto' | 'quic' | 'tcp';
++}
++
+ // ─── Transport Options ───────────────────────────────────
+ 
+ export interface ITcpTransportOptions {
+@@ -111,7 +119,13 @@ export type HysteriaProtocol = {
+     protocolOptions: IHysteriaProtocolOptions;
+ };
+ 
++export type AetherLinkProtocol = {
++    protocol: 'aetherlink';
++    protocolOptions: IAetherLinkProtocolOptions;
++};
++
+ export type ProtocolVariant =
++    | AetherLinkProtocol
+     | VlessProtocol
+     | TrojanProtocol
+     | ShadowsocksProtocol
+diff --git a/src/modules/subscription-template/resolve-proxy/resolve-proxy-config.service.ts b/src/modules/subscription-template/resolve-proxy/resolve-proxy-config.service.ts
+index f1a49a6..10efa45 100644
+--- a/src/modules/subscription-template/resolve-proxy/resolve-proxy-config.service.ts
++++ b/src/modules/subscription-template/resolve-proxy/resolve-proxy-config.service.ts
+@@ -460,6 +460,21 @@ export class ResolveProxyConfigService {
+             return null;
+         }
+ 
++        if ((inbound.protocol as string) === 'aetherlink') {
++            const settings = inbound.settings as unknown as Record<string, unknown>;
++            const fallback = settings.fallback;
++            return {
++                protocol: 'aetherlink',
++                protocolOptions: {
++                    token: String(settings.token ?? ''),
++                    pin: String(settings.pin ?? ''),
++                    sni: String(settings.sni ?? inputHost.sni ?? inputHost.address),
++                    mode: 'turbo',
++                    fallback: fallback === 'quic' || fallback === 'tcp' ? fallback : 'auto',
++                },
++            };
++        }
++
+         switch (inbound.protocol) {
+             case 'vless':
+                 return {
+diff --git a/src/modules/users/queries/get-prepared-config-with-users/get-prepared-config-with-users.handler.ts b/src/modules/users/queries/get-prepared-config-with-users/get-prepared-config-with-users.handler.ts
+index 44486a3..3713b00 100644
+--- a/src/modules/users/queries/get-prepared-config-with-users/get-prepared-config-with-users.handler.ts
++++ b/src/modules/users/queries/get-prepared-config-with-users/get-prepared-config-with-users.handler.ts
+@@ -64,6 +64,12 @@ export class GetPreparedConfigWithUsersHandler implements IQueryHandler<
+ 
+             config.leaveInbounds(activeInboundsTags);
+ 
++            const aetherlinkRuntime = config.getAetherLinkRuntimeConfig(activeInboundsTags);
++
++            // Native ALX profiles remain first-class Remnawave inbounds, but
++            // they are executed by alx-server and must never reach Xray-core.
++            config.excludeAetherLinkInbounds();
++
+             const usersStream = this.usersRepository.getUsersForConfigStream(activeInbounds);
+ 
+             for await (const userBatch of usersStream) {
+@@ -74,8 +80,13 @@ export class GetPreparedConfigWithUsersHandler implements IQueryHandler<
+                 this.logger.debug(`Inbound ${tag}: hash ${set.hash64String} and ${set.size} users`);
+             }
+ 
++            const preparedConfig = config.getConfig() as unknown as Record<string, unknown>;
++            if (aetherlinkRuntime) {
++                preparedConfig.aetherlink = aetherlinkRuntime;
++            }
++
+             return ok({
+-                config: config.getConfig(),
++                config: preparedConfig,
+                 hashesPayload: {
+                     emptyConfig: configHash,
+                     inbounds: Array.from(inboundsUserSets.entries()).map(([tag, set]) => ({
+diff --git a/src/queue/_nodes/processors/start-all-nodes-by-profile.processor.ts b/src/queue/_nodes/processors/start-all-nodes-by-profile.processor.ts
+index 8be63f4..265bb9f 100644
+--- a/src/queue/_nodes/processors/start-all-nodes-by-profile.processor.ts
++++ b/src/queue/_nodes/processors/start-all-nodes-by-profile.processor.ts
+@@ -276,10 +276,24 @@ export class StartAllNodesByProfileQueueProcessor extends WorkerHost {
+                     (inbound) => activeNodeInboundsTags.has(inbound.tag),
+                 );
+ 
++                const preparedConfig = config.response.config as unknown as Record<string, unknown>;
++                const aetherlink = preparedConfig.aetherlink as
++                    | { inboundTag?: unknown }
++                    | undefined;
++                const nodeConfig = { ...preparedConfig };
++
++                if (
++                    aetherlink &&
++                    (typeof aetherlink.inboundTag !== 'string' ||
++                        !activeNodeInboundsTags.has(aetherlink.inboundTag))
++                ) {
++                    delete nodeConfig.aetherlink;
++                }
++
+                 const startXrayResponse = await this.axios.startXray(
+                     {
+                         xrayConfig: {
+-                            ...config.response.config,
++                            ...nodeConfig,
+                             inbounds: config.response.config.inbounds!.filter(
+                                 (inbound) =>
+                                     activeNodeInboundsTags.has(inbound.tag!) ||

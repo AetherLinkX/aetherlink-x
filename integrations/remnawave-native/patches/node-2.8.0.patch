@@ -1,0 +1,190 @@
+diff --git a/src/modules/xray-core/xray.module.ts b/src/modules/xray-core/xray.module.ts
+index 3b213bb..083a56d 100644
+--- a/src/modules/xray-core/xray.module.ts
++++ b/src/modules/xray-core/xray.module.ts
+@@ -2,6 +2,7 @@ import { Logger, Module, OnModuleDestroy } from '@nestjs/common';
+ import { CqrsModule } from '@nestjs/cqrs';
+ 
+ import { InternalModule } from '../internal/internal.module';
++import { AetherLinkService } from '../aetherlink/aetherlink.service';
+ import { XrayProcessService } from './xray-process.service';
+ import { XrayController } from './xray.controller';
+ import { XrayService } from './xray.service';
+@@ -9,7 +10,7 @@ import { COMMANDS } from './commands';
+ 
+ @Module({
+     imports: [InternalModule, CqrsModule],
+-    providers: [XrayService, XrayProcessService, ...COMMANDS],
++    providers: [XrayService, XrayProcessService, AetherLinkService, ...COMMANDS],
+     controllers: [XrayController],
+     exports: [XrayService],
+ })
+diff --git a/src/modules/xray-core/xray.service.ts b/src/modules/xray-core/xray.service.ts
+index 7246ff2..6564b8d 100644
+--- a/src/modules/xray-core/xray.service.ts
++++ b/src/modules/xray-core/xray.service.ts
+@@ -27,6 +27,7 @@ import { ResetPluginsCommand } from '../_plugin/commands/reset-plugins/reset-plu
+ import { GetTorrentBlockerStateQuery } from '../_plugin/queries/get-torrent-blocker-state';
+ import { InternalService } from '../internal/internal.service';
+ import { XrayProcessService } from './xray-process.service';
++import { AetherLinkService } from '../aetherlink/aetherlink.service';
+ 
+ const XRAY_LOG_FILE = '/var/log/xray/current' as const;
+ const execFileAsync = promisify(execFile);
+@@ -50,6 +51,7 @@ export class XrayService implements OnApplicationBootstrap {
+     constructor(
+         @InjectXtls() private readonly xtlsSdk: XtlsApi,
+         private readonly xrayProcess: XrayProcessService,
++        private readonly aetherLinkService: AetherLinkService,
+         private readonly internalService: InternalService,
+         private readonly configService: ConfigService,
+         private readonly queryBus: QueryBus,
+@@ -117,6 +119,8 @@ export class XrayService implements OnApplicationBootstrap {
+         this.isXrayStartedProccesing = true;
+ 
+         try {
++            const xrayConfig = await this.aetherLinkService.extractAndApply(body.xrayConfig);
++
+             if (this.isXrayOnline && !this.disableHashedSetCheck && !body.internals.forceRestart) {
+                 const { isOk } = await this.xtlsSdk.stats.getSysStats();
+ 
+@@ -156,7 +160,7 @@ export class XrayService implements OnApplicationBootstrap {
+             );
+ 
+             const fullConfig = generateApiConfig({
+-                config: body.xrayConfig,
++                config: xrayConfig,
+                 torrentBlockerState: isTorrentBlockerEnabled,
+                 internal: this.internal,
+             });
+@@ -272,6 +276,7 @@ export class XrayService implements OnApplicationBootstrap {
+             }
+ 
+             await this.killAllXrayProcesses();
++            await this.aetherLinkService.disable();
+ 
+             this.isXrayOnline = false;
+             this.internalService.cleanup();
+diff --git a/src/modules/aetherlink/aetherlink.service.ts b/src/modules/aetherlink/aetherlink.service.ts
+new file mode 100644
+index 0000000..4bf1e8d
+--- /dev/null
++++ b/src/modules/aetherlink/aetherlink.service.ts
+@@ -0,0 +1,117 @@
++import { chmod, mkdir, rename, writeFile } from 'node:fs/promises';
++import { dirname } from 'node:path';
++
++import { Injectable, Logger } from '@nestjs/common';
++
++type AetherLinkRuntimeConfig = {
++    version: 1;
++    enabled: true;
++    listen: string;
++    tcpListen: string;
++    token: string;
++    previousTokens: string[];
++    sni: string;
++    mode: 'turbo';
++    fallback: 'auto' | 'quic' | 'tcp';
++};
++
++@Injectable()
++export class AetherLinkService {
++    private readonly logger = new Logger(AetherLinkService.name);
++    private readonly runtimePath =
++        process.env.ALX_RUNTIME_CONFIG_PATH ?? '/etc/aetherlink-x/panel-runtime.json';
++
++    public async extractAndApply(
++        incomingConfig: Record<string, unknown>,
++    ): Promise<Record<string, unknown>> {
++        const xrayConfig = { ...incomingConfig };
++        const rawRuntime = xrayConfig.aetherlink;
++        delete xrayConfig.aetherlink;
++
++        if (rawRuntime === undefined) {
++            await this.writeRuntime({ version: 1, enabled: false });
++            return xrayConfig;
++        }
++
++        const runtime = this.parseRuntime(rawRuntime);
++        await this.writeRuntime(runtime);
++        this.logger.log(
++            `AetherLink native profile applied (${runtime.mode}, ${runtime.listen} UDP/TCP).`,
++        );
++        return xrayConfig;
++    }
++
++    public async disable(): Promise<void> {
++        await this.writeRuntime({ version: 1, enabled: false });
++    }
++
++    private parseRuntime(value: unknown): AetherLinkRuntimeConfig {
++        if (!value || typeof value !== 'object' || Array.isArray(value)) {
++            throw new Error('Invalid AetherLink runtime configuration.');
++        }
++        const raw = value as Record<string, unknown>;
++        const previousTokens = raw.previousTokens ?? [];
++        const fallback = raw.fallback ?? 'auto';
++
++        if (raw.version !== 1 || raw.enabled !== true) {
++            throw new Error('Unsupported AetherLink runtime version or state.');
++        }
++        if (typeof raw.token !== 'string' || raw.token.length < 32) {
++            throw new Error('AetherLink token is missing or invalid.');
++        }
++        if (
++            !Array.isArray(previousTokens) ||
++            previousTokens.length > 2 ||
++            previousTokens.some((token) => typeof token !== 'string' || token.length < 32)
++        ) {
++            throw new Error('AetherLink previous token list is invalid.');
++        }
++        if (typeof raw.sni !== 'string' || raw.sni.length === 0) {
++            throw new Error('AetherLink SNI is missing.');
++        }
++        if (raw.mode !== 'turbo') {
++            throw new Error('Only AetherLink Turbo mode is supported.');
++        }
++        if (fallback !== 'auto' && fallback !== 'quic' && fallback !== 'tcp') {
++            throw new Error('AetherLink fallback mode is invalid.');
++        }
++        if (!this.isListenAddress(raw.listen) || !this.isListenAddress(raw.tcpListen)) {
++            throw new Error('AetherLink listen address is invalid.');
++        }
++
++        return {
++            version: 1,
++            enabled: true,
++            listen: raw.listen,
++            tcpListen: raw.tcpListen,
++            token: raw.token,
++            previousTokens: previousTokens as string[],
++            sni: raw.sni,
++            mode: 'turbo',
++            fallback,
++        };
++    }
++
++    private isListenAddress(value: unknown): value is string {
++        if (typeof value !== 'string') return false;
++        const match = value.match(/^:(\d{1,5})$/);
++        if (!match) return false;
++        const port = Number(match[1]);
++        return port >= 1 && port <= 65535;
++    }
++
++    private async writeRuntime(runtime: object): Promise<void> {
++        const serialized = `${JSON.stringify(runtime, null, 2)}\n`;
++        try {
++            if ((await readFile(this.runtimePath, 'utf8')) === serialized) return;
++        } catch {
++            // The first configuration is expected to create the file.
++        }
++
++        await mkdir(dirname(this.runtimePath), { recursive: true, mode: 0o700 });
++        const temporaryPath = `${this.runtimePath}.tmp`;
++        await writeFile(temporaryPath, serialized, { encoding: 'utf8', mode: 0o600 });
++        await chmod(temporaryPath, 0o600);
++        await rename(temporaryPath, this.runtimePath);
++    }
++}

@@ -16,14 +16,23 @@ grep -q '^NODE_PORT=2222$' "$TEMP_DIR/auto/opt/remnanode/.env"
 grep -q '^APP_PORT=2222$' "$TEMP_DIR/auto/opt/remnanode/.env"
 grep -q '^SECRET_KEY=' "$TEMP_DIR/auto/opt/remnanode/.env"
 grep -q '^SSL_CERT=' "$TEMP_DIR/auto/opt/remnanode/.env"
-grep -q 'image: remnawave/node:latest' "$TEMP_DIR/auto/opt/remnanode/docker-compose.yml"
+grep -q 'image: ghcr.io/aetherlinkx/remnawave-node-alx:2.8.0-native.1' "$TEMP_DIR/auto/opt/remnanode/docker-compose.yml"
+grep -q '/etc/aetherlink-x:/etc/aetherlink-x' "$TEMP_DIR/auto/opt/remnanode/docker-compose.yml"
 grep -q 'ALX_LISTEN=:8443' "$TEMP_DIR/auto/etc/aetherlink-x/alx.env"
-grep -q 'X-AetherLink-Profile' "$TEMP_DIR/auto/root/aetherlink-remnawave-summary.txt"
+grep -q 'ALX_RUNTIME_CONFIG_FILE=/etc/aetherlink-x/panel-runtime.json' "$TEMP_DIR/auto/etc/aetherlink-x/alx.env"
 grep -q 'aetherlink://.*@alx.example.com:8443' "$TEMP_DIR/auto/root/aetherlink-remnawave-summary.txt"
-grep -q 'responseHeadersAdd' "$SCRIPT_DIR/install.sh"
-grep -q 'responseHeaders' "$SCRIPT_DIR/install.sh"
-grep -q 'X-AetherLink-Profile' "$SCRIPT_DIR/install.sh"
-grep -q '"activeInbounds": \[\]' "$SCRIPT_DIR/install.sh"
+grep -q '"activeInbounds": \[selected_inbound\["uuid"\]\]' "$SCRIPT_DIR/install.sh"
+grep -q 'REMNAWAVE_IMAGE="ghcr.io/aetherlinkx/remnawave-node-alx:2.8.0-native.1"' "$SCRIPT_DIR/install.sh"
+grep -q 'Reusing the existing Remnawave Node key' "$SCRIPT_DIR/install.sh"
+grep -q -- '--rotate-node-key' "$SCRIPT_DIR/install.sh"
+grep -q 'PANEL_PROFILE="AetherLink X"' "$SCRIPT_DIR/install.sh"
+grep -q '"tag": "AETHERLINK_NATIVE"' "$SCRIPT_DIR/install.sh"
+grep -q '"protocol": "aetherlink"' "$SCRIPT_DIR/install.sh"
+grep -q 'request("POST", "config-profiles/"' "$SCRIPT_DIR/install.sh"
+grep -q 'profile_explicit != "true"' "$SCRIPT_DIR/install.sh"
+! grep -q 'AETHERLINK_X_CONTROL' "$SCRIPT_DIR/install.sh"
+! grep -q 'X-AetherLink-Profile' "$SCRIPT_DIR/install.sh"
+! grep -q 'responseHeadersAdd' "$SCRIPT_DIR/install.sh"
 
 REMNAWAVE_SECRET_KEY='legacy-value' ALX_TOKEN='abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG' \
   bash "$SCRIPT_DIR/install.sh" \
@@ -50,7 +59,22 @@ REMNAWAVE_SECRET_KEY='attach-value' \
 
 grep -q '^NODE_PORT=2222$' "$TEMP_DIR/attach/opt/remnanode/.env"
 grep -q 'aetherlink://existing-token@alx.example.com:443' "$TEMP_DIR/attach/root/aetherlink-remnawave-summary.txt"
+grep -q 'Detected existing ALX listener on port' "$SCRIPT_DIR/install.sh"
 ! test -f "$TEMP_DIR/attach/etc/systemd/system/aetherlink-native.service"
+
+cat >"$TEMP_DIR/panel-compose.yml" <<'EOF'
+services:
+  remnawave:
+    image: remnawave/backend:2.7.3
+  remnawave-db:
+    image: postgres:17
+EOF
+
+panel_dry_run="$(bash "$SCRIPT_DIR/install-panel.sh" \
+  --compose-file "$TEMP_DIR/panel-compose.yml" --dry-run)"
+grep -q 'remnawave/backend:2.7.3 -> ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.3-native.1' \
+  <<<"$panel_dry_run"
+grep -q 'image: remnawave/backend:2.7.3' "$TEMP_DIR/panel-compose.yml"
 
 if REMNAWAVE_PANEL_URL='https://panel.example.com' REMNAWAVE_SECRET_KEY='test' \
   bash "$SCRIPT_DIR/install.sh" \

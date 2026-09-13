@@ -1,0 +1,65 @@
+FROM node:24.14-trixie-slim AS backend-build
+
+WORKDIR /opt/app
+ENV PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x,linux-arm64-openssl-3.0.x
+
+COPY package*.json ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./prisma.config.ts
+COPY patches ./patches
+RUN npm ci
+
+COPY . .
+RUN npm run migrate:generate \
+    && npm run build \
+    && npm cache clean --force \
+    && npm prune --omit=dev
+
+FROM node:24.14-trixie-slim
+
+LABEL org.opencontainers.image.title="Remnawave Backend with AetherLink X Native"
+LABEL org.opencontainers.image.description="Remnawave 2.7.3 with native AetherLink protocol integration"
+LABEL org.opencontainers.image.source="https://github.com/AetherLinkX/aetherlink-x"
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+
+WORKDIR /opt/app
+
+ARG BRANCH=alx-native
+ARG __RW_METADATA_VERSION=2.7.3-alx-native.1
+ARG __RW_METADATA_GIT_BACKEND_COMMIT=unknown
+ARG __RW_METADATA_GIT_FRONTEND_COMMIT=unknown
+ARG __RW_METADATA_BUILD_TIME=unknown
+ARG __RW_METADATA_BUILD_NUMBER=0
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV REMNAWAVE_BRANCH=${BRANCH}
+ENV PRISMA_HIDE_UPDATE_MESSAGE=true
+ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
+ENV PM2_DISABLE_VERSION_CHECK=true
+ENV NODE_OPTIONS="--max-old-space-size=16384"
+ENV __RW_METADATA_VERSION=${__RW_METADATA_VERSION}
+ENV __RW_METADATA_GIT_BACKEND_COMMIT=${__RW_METADATA_GIT_BACKEND_COMMIT}
+ENV __RW_METADATA_GIT_FRONTEND_COMMIT=${__RW_METADATA_GIT_FRONTEND_COMMIT}
+ENV __RW_METADATA_GIT_BRANCH=${BRANCH}
+ENV __RW_METADATA_BUILD_TIME=${__RW_METADATA_BUILD_TIME}
+ENV __RW_METADATA_BUILD_NUMBER=${__RW_METADATA_BUILD_NUMBER}
+
+COPY --from=backend-build /opt/app/dist ./dist
+COPY frontend-dist ./frontend
+COPY --from=backend-build /opt/app/prisma ./prisma
+COPY --from=backend-build /opt/app/patches ./patches
+COPY --from=backend-build /opt/app/node_modules ./node_modules
+COPY configs /var/lib/remnawave/configs
+COPY package*.json ./
+COPY prisma.config.ts ./prisma.config.ts
+COPY libs ./libs
+COPY ecosystem.config.js ./
+COPY docker-entrypoint.sh ./
+
+RUN npm install pm2 -g && npm link
+
+ENTRYPOINT ["/bin/sh", "docker-entrypoint.sh"]
+CMD ["pm2-runtime", "start", "ecosystem.config.js", "--env", "production"]

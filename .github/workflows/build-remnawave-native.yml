@@ -1,0 +1,114 @@
+name: Build Remnawave Native ALX
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - alx/native-preview
+    paths:
+      - "integrations/remnawave-native/**"
+      - ".github/workflows/build-remnawave-native.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  BACKEND_REF: "2.7.3"
+  FRONTEND_REF: "2.7.3"
+  NODE_REF: "2.8.0"
+  BACKEND_IMAGE: ghcr.io/aetherlinkx/remnawave-backend-alx
+  NODE_IMAGE: ghcr.io/aetherlinkx/remnawave-node-alx
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pinned Remnawave sources
+        run: |
+          git clone --depth 1 --branch "$BACKEND_REF" https://github.com/remnawave/backend.git remnawave-backend
+          git clone --depth 1 --branch "$FRONTEND_REF" https://github.com/remnawave/frontend.git remnawave-frontend
+          git clone --depth 1 --branch "$NODE_REF" https://github.com/remnawave/node.git remnawave-node
+
+      - name: Apply native ALX patches
+        run: |
+          git -C remnawave-backend apply --check ../integrations/remnawave-native/patches/backend-2.7.3.patch
+          git -C remnawave-backend apply ../integrations/remnawave-native/patches/backend-2.7.3.patch
+          git -C remnawave-frontend apply --check ../integrations/remnawave-native/patches/frontend-2.7.3.patch
+          git -C remnawave-frontend apply ../integrations/remnawave-native/patches/frontend-2.7.3.patch
+          git -C remnawave-node apply --check ../integrations/remnawave-native/patches/node-2.8.0.patch
+          git -C remnawave-node apply ../integrations/remnawave-native/patches/node-2.8.0.patch
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.1"
+          cache: npm
+          cache-dependency-path: |
+            remnawave-backend/package-lock.json
+            remnawave-frontend/package-lock.json
+            remnawave-node/package-lock.json
+
+      - name: Build patched frontend
+        working-directory: remnawave-frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm run start:build
+          curl -fsSL https://validator.remna.dev/wasm_exec.js -o dist/assets/wasm_exec.js
+          curl -fsSL https://validator.remna.dev/xray.schema.json -o dist/assets/xray.schema.json
+          curl -fsSL https://validator.remna.dev/xray.schema.cn.json -o dist/assets/xray.schema.cn.json
+          curl -fsSL https://validator.remna.dev/main.wasm -o dist/assets/main.wasm
+
+      - name: Verify patched backend
+        working-directory: remnawave-backend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run migrate:generate
+          npm run build
+
+      - name: Verify patched node
+        working-directory: remnawave-node
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Prepare backend image context
+        run: |
+          cp -R remnawave-frontend/dist remnawave-backend/frontend-dist
+          cp integrations/remnawave-native/Dockerfile.backend remnawave-backend/Dockerfile.alx
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish backend
+        uses: docker/build-push-action@v6
+        with:
+          context: remnawave-backend
+          file: remnawave-backend/Dockerfile.alx
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:2.7.3-native.1
+            ${{ env.BACKEND_IMAGE }}:preview
+          build-args: |
+            __RW_METADATA_GIT_BACKEND_COMMIT=${{ github.sha }}
+            __RW_METADATA_GIT_FRONTEND_COMMIT=${{ github.sha }}
+            __RW_METADATA_BUILD_TIME=${{ github.event.repository.updated_at }}
+            __RW_METADATA_BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Build and publish node
+        uses: docker/build-push-action@v6
+        with:
+          context: remnawave-node
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.NODE_IMAGE }}:2.8.0-native.1
+            ${{ env.NODE_IMAGE }}:preview

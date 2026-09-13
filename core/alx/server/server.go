@@ -9,12 +9,14 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,15 +38,26 @@ type Config struct {
 	TurboServerName   string
 	Token             string
 	PreviousTokens    string
+	RuntimeConfigFile string
 	Logger            *log.Logger
 }
 
 type Server struct {
 	config   Config
 	tokens   [][]byte
+	tokensMu sync.RWMutex
 	logger   *log.Logger
 	replay   *replayCache
 	failures *authFailureLimiter
+}
+
+type runtimeConfig struct {
+	Version        int      `json:"version"`
+	Enabled        bool     `json:"enabled"`
+	Listen         string   `json:"listen"`
+	TCPListen      string   `json:"tcpListen"`
+	Token          string   `json:"token"`
+	PreviousTokens []string `json:"previousTokens"`
 }
 
 func New(config Config) (*Server, error) {
@@ -57,12 +70,30 @@ func New(config Config) (*Server, error) {
 	if config.CertFile == "" || config.KeyFile == "" {
 		return nil, errors.New("TLS certificate and key are required")
 	}
-	token, err := alx.DecodeToken(config.Token)
+	tokens, err := decodeTokenSet(config.Token, splitTokenList(config.PreviousTokens))
+	if err != nil {
+		return nil, err
+	}
+	logger := config.Logger
+	if logger == nil {
+		logger = log.Default()
+	}
+	return &Server{
+		config:   config,
+		tokens:   tokens,
+		logger:   logger,
+		replay:   newReplayCache(),
+		failures: newAuthFailureLimiter(),
+	}, nil
+}
+
+func decodeTokenSet(current string, previous []string) ([][]byte, error) {
+	token, err := alx.DecodeToken(current)
 	if err != nil {
 		return nil, err
 	}
 	tokens := [][]byte{token}
-	for index, value := range splitTokenList(config.PreviousTokens) {
+	for index, value := range previous {
 		decoded, decodeErr := alx.DecodeToken(value)
 		if decodeErr != nil {
 			return nil, fmt.Errorf("decode previous ALX token %d: %w", index+1, decodeErr)
@@ -81,17 +112,7 @@ func New(config Config) (*Server, error) {
 	if len(tokens) > 3 {
 		return nil, errors.New("at most two previous ALX tokens may be configured")
 	}
-	logger := config.Logger
-	if logger == nil {
-		logger = log.Default()
-	}
-	return &Server{
-		config:   config,
-		tokens:   tokens,
-		logger:   logger,
-		replay:   newReplayCache(),
-		failures: newAuthFailureLimiter(),
-	}, nil
+	return tokens, nil
 }
 
 func splitTokenList(value string) []string {
@@ -100,10 +121,71 @@ func splitTokenList(value string) []string {
 	})
 }
 
+func (s *Server) reloadRuntimeConfig() error {
+	raw, err := os.ReadFile(s.config.RuntimeConfigFile)
+	if err != nil {
+		return err
+	}
+	var runtime runtimeConfig
+	if err := json.Unmarshal(raw, &runtime); err != nil {
+		return fmt.Errorf("decode runtime JSON: %w", err)
+	}
+	if runtime.Version != 1 {
+		return fmt.Errorf("unsupported runtime config version %d", runtime.Version)
+	}
+	if runtime.Listen != "" && runtime.Listen != s.config.Listen {
+		return fmt.Errorf("runtime UDP listener %s does not match process listener %s", runtime.Listen, s.config.Listen)
+	}
+	if runtime.TCPListen != "" && runtime.TCPListen != s.config.TCPListen {
+		return fmt.Errorf("runtime TCP listener %s does not match process listener %s", runtime.TCPListen, s.config.TCPListen)
+	}
+
+	var tokens [][]byte
+	if runtime.Enabled {
+		tokens, err = decodeTokenSet(runtime.Token, runtime.PreviousTokens)
+		if err != nil {
+			return fmt.Errorf("decode runtime tokens: %w", err)
+		}
+	}
+
+	s.tokensMu.Lock()
+	s.tokens = tokens
+	s.tokensMu.Unlock()
+	s.logger.Printf("ALX runtime profile applied: enabled=%t", runtime.Enabled)
+	return nil
+}
+
+func (s *Server) watchRuntimeConfig(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var lastModTime time.Time
+	if info, err := os.Stat(s.config.RuntimeConfigFile); err == nil {
+		lastModTime = info.ModTime()
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			info, err := os.Stat(s.config.RuntimeConfigFile)
+			if err != nil || !info.ModTime().After(lastModTime) {
+				continue
+			}
+			if err := s.reloadRuntimeConfig(); err != nil {
+				s.logger.Printf("ALX runtime profile rejected: %v", err)
+				continue
+			}
+			lastModTime = info.ModTime()
+		}
+	}
+}
+
 // Verify every configured key even after a match. During a planned rotation
 // this avoids exposing through timing whether the current or previous token
 // authenticated the connection.
 func (s *Server) verifyTurboAuth(auth alx.TurboAuth, binding []byte, now time.Time) bool {
+	s.tokensMu.RLock()
+	defer s.tokensMu.RUnlock()
 	valid := false
 	for _, token := range s.tokens {
 		if auth.Verify(token, binding, now, 60*time.Second) {
@@ -114,6 +196,8 @@ func (s *Server) verifyTurboAuth(auth alx.TurboAuth, binding []byte, now time.Ti
 }
 
 func (s *Server) verifyAuth(auth alx.Auth, now time.Time) bool {
+	s.tokensMu.RLock()
+	defer s.tokensMu.RUnlock()
 	valid := false
 	for _, token := range s.tokens {
 		if auth.Verify(token, now, 60*time.Second) {
@@ -124,6 +208,12 @@ func (s *Server) verifyAuth(auth alx.Auth, now time.Time) bool {
 }
 
 func (s *Server) Run(ctx context.Context) error {
+	if s.config.RuntimeConfigFile != "" {
+		if err := s.reloadRuntimeConfig(); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("load ALX runtime config: %w", err)
+		}
+		go s.watchRuntimeConfig(ctx)
+	}
 	legacyCertificate, err := tls.LoadX509KeyPair(s.config.CertFile, s.config.KeyFile)
 	if err != nil {
 		return fmt.Errorf("load TLS key pair: %w", err)

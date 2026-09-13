@@ -22,6 +22,7 @@ func main() {
 	turboServerName := flag.String("turbo-server-name", os.Getenv("ALX_TURBO_SERVER_NAME"), "SNI routed to ALX Turbo")
 	token := flag.String("token", os.Getenv("ALX_TOKEN"), "pre-shared client token")
 	previousTokens := flag.String("previous-tokens", os.Getenv("ALX_PREVIOUS_TOKENS"), "comma-separated previous tokens accepted during rotation")
+	runtimeConfig := flag.String("runtime-config", os.Getenv("ALX_RUNTIME_CONFIG_FILE"), "panel-managed ALX runtime JSON")
 	flag.Parse()
 
 	instance, err := server.New(server.Config{
@@ -35,6 +36,7 @@ func main() {
 		TurboServerName:   *turboServerName,
 		Token:             *token,
 		PreviousTokens:    *previousTokens,
+		RuntimeConfigFile: *runtimeConfig,
 	})
 	if err != nil {
 		log.Fatal(err)
