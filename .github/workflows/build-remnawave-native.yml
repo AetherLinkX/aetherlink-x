@@ -14,6 +14,7 @@ permissions:
   packages: write
 
 env:
+  NODE_OPTIONS: "--max-old-space-size=6144"
   BACKEND_REF: "2.7.3"
   FRONTEND_REF: "2.7.3"
   NODE_REF: "2.8.0"
