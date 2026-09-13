@@ -151,20 +151,6 @@ jobs:
           chmod +x gradlew
           ./gradlew testDebugUnitTest assembleDebug assembleRelease --no-daemon --stacktrace
 
-      - name: Upload APKs and core
-        uses: actions/upload-artifact@v7
-        # A full Actions artifact quota must not block the versioned GitHub
-        # Release below; both release steps use the APK already on this runner.
-        continue-on-error: true
-        with:
-          name: aetherlink-x-client-android
-          retention-days: 30
-          path: |
-            client/android/app/build/outputs/apk/debug/*.apk
-            client/android/app/build/outputs/apk/release/*.apk
-            client/android/app/libs/libv2ray.aar
-            client/android/app/libs/*/libhev-socks5-tunnel.so
-
       - name: Publish installable Android alpha
         if: github.ref == 'refs/heads/main'
         shell: bash
@@ -203,10 +189,13 @@ jobs:
           test -n "$APK"
           cp "$APK" aetherlink-x-client-android-v0.8.3-alx-preview.8-rw.1.apk
           sha256sum aetherlink-x-client-android-v0.8.3-alx-preview.8-rw.1.apk > aetherlink-x-client-android-v0.8.3-alx-preview.8-rw.1-SHA256SUMS.txt
-          git tag --force "$CLIENT_NATIVE_PREVIEW_TAG" "$GITHUB_SHA"
-          git push origin "refs/tags/$CLIENT_NATIVE_PREVIEW_TAG" --force
           if ! gh release view "$CLIENT_NATIVE_PREVIEW_TAG" >/dev/null 2>&1; then
-            gh release create "$CLIENT_NATIVE_PREVIEW_TAG" --prerelease --verify-tag \
+            gh release create "$CLIENT_NATIVE_PREVIEW_TAG" --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "AetherLink X Client 0.8.3 — Remnawave Preview" \
+              --notes "ALX Preview 8 Turbo with version-neutral Remnawave subscription-header integration. Existing Xray locations and duplicated hosts remain unchanged."
+          else
+            gh release edit "$CLIENT_NATIVE_PREVIEW_TAG" --prerelease \
               --title "AetherLink X Client 0.8.3 — Remnawave Preview" \
               --notes "ALX Preview 8 Turbo with version-neutral Remnawave subscription-header integration. Existing Xray locations and duplicated hosts remain unchanged."
           fi
