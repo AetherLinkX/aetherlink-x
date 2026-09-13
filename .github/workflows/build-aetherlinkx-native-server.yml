@@ -11,6 +11,9 @@ on:
 permissions:
   contents: write
 
+env:
+  SERVER_PREVIEW_TAG: server-v0.2.1-alx-preview.8-rw.1
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -33,8 +36,33 @@ jobs:
           bash -n core/alx/deploy/remnawave/test-install.sh
           bash core/alx/deploy/remnawave/test-install.sh
 
-  build:
+  prepare-release:
     needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare native server preview release
+        if: github.ref == 'refs/heads/alx/native-preview'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git tag --force "$SERVER_PREVIEW_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$SERVER_PREVIEW_TAG" --force
+          if ! gh release view "$SERVER_PREVIEW_TAG" >/dev/null 2>&1; then
+            gh release create "$SERVER_PREVIEW_TAG" --prerelease --verify-tag \
+              --title "AetherLink Native Server 0.2.1 — Remnawave Preview" \
+              --notes "Turbo server with Remnawave sidecar deployment, session-bound authentication, authenticated HTTP Upgrade cover transport, automatic TCP/QUIC paths, and amd64/arm64 support."
+          else
+            gh release edit "$SERVER_PREVIEW_TAG" --prerelease \
+              --title "AetherLink Native Server 0.2.1 — Remnawave Preview" \
+              --notes "Turbo server with Remnawave sidecar deployment, session-bound authentication, authenticated HTTP Upgrade cover transport, automatic TCP/QUIC paths, and amd64/arm64 support."
+          fi
+
+  build:
+    needs: [test, prepare-release]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -58,45 +86,13 @@ jobs:
             -o ../../aetherlink-native-server-linux-${GOARCH} ./cmd/alx-server
           sha256sum ../../aetherlink-native-server-linux-${GOARCH} \
             > ../../aetherlink-native-server-linux-${GOARCH}.sha256
-      - uses: actions/upload-artifact@v7
-        continue-on-error: true
-        with:
-          name: aetherlink-native-server-linux-${{ matrix.arch }}
-          retention-days: 30
-          path: |
-            aetherlink-native-server-linux-${{ matrix.arch }}
-            aetherlink-native-server-linux-${{ matrix.arch }}.sha256
-
-  publish:
-    if: github.ref == 'refs/heads/alx/native-preview'
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
-      SERVER_PREVIEW_TAG: server-v0.2.1-alx-preview.8-rw.1
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: aetherlink-native-server-linux-*
-          merge-multiple: true
-      - name: Publish native server preview
+      - name: Upload server binary to preview release
+        if: github.ref == 'refs/heads/alx/native-preview'
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          git tag --force "$SERVER_PREVIEW_TAG" "$GITHUB_SHA"
-          git push origin "refs/tags/$SERVER_PREVIEW_TAG" --force
-          if ! gh release view "$SERVER_PREVIEW_TAG" >/dev/null 2>&1; then
-            gh release create "$SERVER_PREVIEW_TAG" --prerelease --verify-tag \
-              --title "AetherLink Native Server 0.2.1 — Remnawave Preview" \
-              --notes "Turbo server with Remnawave sidecar deployment, session-bound authentication, authenticated HTTP Upgrade cover transport, automatic TCP/QUIC paths, and amd64/arm64 support."
-          fi
-          gh release edit "$SERVER_PREVIEW_TAG" --prerelease \
-            --title "AetherLink Native Server 0.2.1 — Remnawave Preview" \
-            --notes "Turbo server with Remnawave sidecar deployment, session-bound authentication, authenticated HTTP Upgrade cover transport, automatic TCP/QUIC paths, and amd64/arm64 support."
           gh release upload "$SERVER_PREVIEW_TAG" \
-            aetherlink-native-server-linux-amd64 \
-            aetherlink-native-server-linux-amd64.sha256 \
-            aetherlink-native-server-linux-arm64 \
-            aetherlink-native-server-linux-arm64.sha256 --clobber
+            "aetherlink-native-server-linux-${{ matrix.arch }}" \
+            "aetherlink-native-server-linux-${{ matrix.arch }}.sha256" --clobber
