@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible problem in the Android client or ALX
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Android client
+        - ALX client
+        - ALX server
+        - Subscription/import
+        - Build or release
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: 0.8.2-alx-preview.8
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Explain the observed and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Import a profile
+        2. Connect
+        3. Open diagnostics
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized diagnostics
+      description: Remove tokens, keys, complete links, addresses and personal data.
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Secret check
+      options:
+        - label: I removed tokens, private keys, complete share links and personal data.
+          required: true

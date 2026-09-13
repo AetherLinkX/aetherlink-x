@@ -1,15 +1,22 @@
 {
   "name": "AetherLink X",
-  "version": "0.7.2-reality-compat-signed",
-  "status": "test-reality-compat",
+  "version": "0.8.2-alx-preview.8",
+  "status": "preview",
   "platform": "android",
-  "wireProtocol": "vless",
+  "minAndroidSdk": 26,
+  "transports": [
+    "alx-turbo",
+    "xray-compatible"
+  ],
+  "alx": {
+    "version": "preview.8",
+    "mode": "turbo",
+    "encryption": "TLS 1.3 / QUIC",
+    "customCryptography": false
+  },
   "xrayCore": {
     "source": "XTLS/Xray-core",
     "version": "v26.7.28",
     "patched": false
-  },
-  "customHandshake": false,
-  "customCryptography": false,
-  "remnawavePatchRequired": false
+  }
 }

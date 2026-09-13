@@ -1,52 +1,51 @@
-# AetherLink X для Android
+# AetherLink X for Android
 
-## Текущий базовый режим
+AetherLink X is an Android 8+ VPN client with an original Compose interface,
+subscription management, profiles, connection diagnostics, split tunnelling
+and light/dark themes.
 
-В версии `0.7.2-reality-compat-signed` пункт **AetherLink X** является именованным
-профилем VLESS. При запуске приложение создаёт обычный Xray outbound
-`protocol: "vless"`; отдельный ALX handshake и изменённое ядро отсутствуют.
+## Connection engines
 
-Для AetherLink X + REALITY клиент автоматически заменяет проблемный uTLS
-отпечаток `chrome` на проверенный `safari`. VLESS, UUID, flow, REALITY-ключи
-и постквантовый X25519MLKEM768 при этом не меняются. Исправление нужно для
-сетей, где Chrome ClientHello зависает после первых 1024 байт. Обычные VLESS
-профили сохраняют ровно тот отпечаток, который прислала подписка.
+- **ALX Preview 8 Turbo** through the embedded native ALX client.
+- **Xray compatibility** for VLESS, VMess, Trojan, Shadowsocks, Hysteria2,
+  TUIC, AnyTLS, WireGuard, SOCKS5 and HTTP profiles supported by the bundled
+  Xray build.
+- RAW/TCP, WebSocket, gRPC, XHTTP and HTTP Upgrade transports where supported
+  by the selected protocol and Xray version.
 
-Поддерживаются стандартные профили приложения: VLESS, VMess, Trojan,
-Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS5 и HTTP, а также
-транспорты RAW/TCP, WebSocket, gRPC, XHTTP, HTTP Upgrade и поддерживаемые
-актуальным Xray варианты.
+ALX profiles and ordinary Xray subscriptions coexist. Importing or selecting an
+ALX location does not convert unrelated VLESS/REALITY locations.
 
-## Импорт AetherLink X
+## Current release
 
-Рекомендуемый формат для панели — обычная VLESS-ссылка с названием локации,
-содержащим `AetherLink X`, например:
+- Version: **0.8.2-alx-preview.8**
+- Minimum Android: **8.0 (API 26)**
+- [Download signed release APK](https://github.com/AetherLinkX/aetherlink-x/releases/tag/client-v0.8.2-alx-preview.8)
 
-```text
-vless://UUID@SERVER:PORT?type=tcp&security=reality&sni=SNI&fp=safari&pbk=PUBLIC_KEY&sid=SHORT_ID#AetherLink%20X%20Test
-```
+Verify the downloaded APK with the SHA-256 checksum attached to the release.
+Installing a release over an existing signed installation preserves profiles
+and settings.
 
-Клиент покажет такую локацию как AetherLink X, но передаст Xray стандартный
-VLESS-конфиг. Для ручного обмена также принимается схема `aetherlinkx://`;
-она является только псевдонимом VLESS URI и не меняет данные на проводе.
+## Build
 
-## Сборка
+The Android build requires JDK 21, Android SDK 37 and native dependencies
+produced by the release workflow. From client/android:
 
-GitHub Actions собирает `libv2ray.aar` из официального Xray-core `v26.7.28`
-без патчей, затем запускает Android unit tests и создаёт APK.
-
-Локально, при установленных Android SDK/JDK 21 и готовом `libv2ray.aar`:
-
-```text
-cd client/android
+~~~bash
 ./gradlew testDebugUnitTest assembleDebug
-```
+~~~
 
-## Проверка перед развитием протокола
+The GitHub Actions workflow pins the Xray-core, AndroidLibXrayLite and
+hev-socks5-tunnel revisions used for release builds.
 
-1. Импортировать тестовую подписку.
-2. Убедиться, что в JSON профиля outbound имеет `protocol: "vless"`.
-3. Проверить сайты, загрузку файла и DNS.
-4. Выполнить не менее пяти отключений и повторных подключений.
-5. Переключиться VLESS → AetherLink X → VLESS при активном VPN.
-6. Только после успешной серии начинать одно изолированное изменение.
+## Physical-device validation
+
+The scripts in [tools](../tools/README.md) can import a private test profile,
+check HTTPS services, exercise reconnects and verify the configured certificate
+pin. They require ADB and intentionally keep secrets outside Git.
+
+## Privacy
+
+The application needs Android's VPN permission to create the system TUN
+interface. Connection diagnostics may contain server addresses and profile
+names; remove private information before sharing logs.

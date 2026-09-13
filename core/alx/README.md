@@ -1,107 +1,131 @@
-# AetherLink Native — Preview 8 Turbo
+<div align="center">
 
-ALX is an independent authenticated tunnel that runs beside the known-good
-VLESS/REALITY compatibility path. Turbo keeps the cryptographic layer simple
-and audited while changing the transport and application framing.
+# ALX Preview 8 Turbo
 
-```text
+**An independent, authenticated tunnel for AetherLink X.**
+
+[Overview](../../README.md) · [Architecture](../../docs/ARCHITECTURE.md) ·
+[Server release](https://github.com/AetherLinkX/aetherlink-x/releases/tag/server-v0.2.0-alx-preview.8) ·
+[Русский](README.ru.md)
+
+</div>
+
+## What ALX is
+
+ALX is the transport layer implemented in this directory: access
+authentication, stream framing, UDP relay, connection management and adaptive
+path selection. Preview 8's single mode is **Turbo**.
+
+~~~text
 Android TUN -> hev-socks5-tunnel -> ALX local SOCKS5
-  -> Turbo race: Chrome-like TLS 1.3/TCP or QUIC/TLS 1.3
+  -> Turbo: QUIC/TLS 1.3 or Chrome-like TLS 1.3/TCP
   -> alx-server -> Internet
-```
+~~~
 
-## Turbo properties
+ALX does **not** invent a cipher. TLS 1.3 and QUIC libraries handle encryption
+and key exchange. ALX adds authentication and transport logic above that
+cryptographic foundation.
 
-- the TCP ClientHello follows a current Chrome fingerprint;
-- TCP uses a normal HTTP/1.1 WebSocket-style Upgrade before switching to the
-  low-overhead ALX byte stream;
-- invalid or unauthenticated web requests receive a harmless cover page;
-- the 56-byte authentication frame has no ALX magic and is bound to the exact
-  TLS session with a TLS exporter, timestamp, random nonce and HMAC-SHA256;
-- replayed authentication nonces are rejected;
-- TCP and QUIC probes run together and the first authenticated path wins;
-- UDP uses QUIC datagrams when possible and a reliable stream for larger data;
-- certificate identity is enforced with a SHA-256 SPKI pin;
-- TLS 0-RTT is disabled because authentication is intentionally non-replayable;
-- Preview 7 ALPN/authentication remains available for existing profiles.
+## Turbo capabilities
 
-There is no padding, fake traffic or artificial delay in Turbo. The mode uses
-standard TLS 1.3 and QUIC encryption; ALX owns the authentication, framing,
-multiplexing, UDP relay, routing and adaptive path selection.
+| Area | Preview 8 behavior |
+|---|---|
+| Path selection | QUIC and TCP are probed; the first authenticated path wins |
+| TCP presentation | Current Chrome-like ClientHello and HTTP/1.1 Upgrade |
+| Authentication | HMAC-SHA256 bound to the TLS session exporter |
+| Freshness | Timestamp, random nonce and replay cache |
+| Server identity | Normal certificate verification plus SHA-256 SPKI pin |
+| UDP | QUIC datagrams with reliable stream fallback |
+| Operations | Up to two previous tokens during zero-downtime rotation |
+| Probe handling | Cover response and throttling for invalid authentication |
+| Throughput | Adaptive buffers, connection reuse and BBR-controlled QUIC |
 
-## Build and test
+Turbo deliberately adds no artificial padding, fake traffic or random delay.
+It does not require a CDN.
 
-```bash
-go test ./...
+## Build
+
+Go 1.26 or the version configured by the release workflow is required.
+
+~~~bash
+go mod download
+go mod verify
+go test -race ./...
 go build -trimpath -ldflags='-s -w' -o alx-server ./cmd/alx-server
+go build -trimpath -ldflags='-s -w' -o alx-client ./cmd/alx-client
 go build -trimpath -ldflags='-s -w' -o alx-check ./cmd/alx-check
-```
-
-The diagnostic tool starts a local ALX SOCKS endpoint and measures a real HTTPS
-download through it:
-
-```bash
-./alx-check -config client.json -url 'https://speed.cloudflare.com/__down?bytes=10485760' -attempts 3
-```
-
-It emits JSON with selected transport, successful attempts, first-byte time,
-downloaded bytes, throughput and the last tunnel error.
+~~~
 
 ## Server configuration
 
-```text
+~~~text
 ALX_LISTEN=:443
 ALX_TCP_LISTEN=:443
 ALX_TCP_DEFAULT_BACKEND=127.0.0.1:8444
 ALX_CERT_FILE=/etc/aetherlink-x/server.crt
 ALX_KEY_FILE=/etc/aetherlink-x/server.key
 ALX_TOKEN=<at least 32 random Base64URL bytes>
-# Optional during a key rollout; remove after all clients use ALX_TOKEN:
+
+# Optional only during a key rollout:
 ALX_PREVIOUS_TOKENS=<old token 1>,<old token 2>
 
-# Preview 8 public web identity:
+# Public identity used by Turbo:
 ALX_TURBO_SERVER_NAME=turbo.example.com
 ALX_TURBO_CERT_FILE=/etc/aetherlink-x/turbo-fullchain.pem
 ALX_TURBO_KEY_FILE=/etc/aetherlink-x/turbo-privkey.pem
-```
+~~~
 
-The default TCP backend is optional. When present, ordinary non-ALX TLS traffic
-is forwarded unchanged to the existing Xray listener. Requests for the Turbo
-SNI are terminated by ALX, while the legacy `alx/1` ALPN continues to use the
-Preview 7 path.
+The TCP backend is optional. When configured, non-ALX TLS traffic can be passed
+through to an existing listener. Requests for the Turbo SNI are terminated by
+ALX.
 
-### Zero-downtime token rotation
-
-1. Put the new secret in `ALX_TOKEN` and the currently deployed secret in
-   `ALX_PREVIOUS_TOKENS`, then restart the server.
-2. Roll out client links containing the new token. Both generations work while
-   the rollout is in progress, and verification does not reveal which key won.
-3. Clear `ALX_PREVIOUS_TOKENS` after the migration window and restart again.
-
-At most two previous tokens are accepted. This keeps emergency rollback
-possible without allowing obsolete credentials to accumulate indefinitely.
+Never store production tokens directly in a tracked service file. Load them
+from a root-readable environment file or a secret manager.
 
 ## Client configuration
 
-```json
+~~~json
 {
   "listen": "127.0.0.1:10808",
-  "server": "SERVER_IP:443",
-  "fallbackServer": "SERVER_IP:443",
-  "transportMode": "turbo",
-  "token": "BASE64URL_32_BYTE_TOKEN",
-  "certificatePin": "BASE64URL_SHA256_SPKI",
+  "server": "203.0.113.10:443",
+  "fallbackServer": "203.0.113.10:443",
   "serverName": "turbo.example.com",
-  "handshakeTimeoutMs": 8000,
-  "quicProbeTimeoutMs": 1500
+  "transportMode": "turbo",
+  "certificatePin": "<SHA-256 SPKI pin>",
+  "token": "<Base64URL token>"
 }
-```
+~~~
 
-Share URI:
+The addresses and values above are placeholders. Do not publish a completed
+configuration.
 
-```text
-aetherlink://TOKEN@SERVER_IP:443?pin=SPKI_PIN&sni=turbo.example.com&fallback=443&mode=turbo#AetherLink%20Turbo
-```
+## Diagnostic benchmark
 
-Never commit tokens, certificate private keys, generated client configs or
-complete share links.
+~~~bash
+./alx-check \
+  -config client.json \
+  -url 'https://speed.cloudflare.com/__down?bytes=10485760' \
+  -attempts 3
+~~~
+
+The command reports the selected transport, successful attempts, time to first
+byte, downloaded bytes, throughput and the last tunnel error. Benchmark ALX and
+another transport on the same device, server, route and time window before
+drawing conclusions.
+
+## Zero-downtime token rotation
+
+1. Put the new secret in ALX_TOKEN and the deployed secret in
+   ALX_PREVIOUS_TOKENS; restart the server.
+2. Roll out clients containing the new token.
+3. Confirm both generations connect.
+4. Clear ALX_PREVIOUS_TOKENS after the migration window and restart.
+
+At most two previous tokens are accepted.
+
+## Security status
+
+The protocol has automated unit and integration tests, including TLS routing,
+session binding, replay-related behavior, invalid-auth throttling and previous
+token acceptance. It has **not** received an independent security audit. See
+[SECURITY.md](../../SECURITY.md) before deployment.

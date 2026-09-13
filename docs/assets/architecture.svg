@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="270" viewBox="0 0 1000 270" role="img" aria-labelledby="title desc">
+  <title id="title">ALX Preview 8 architecture</title>
+  <desc id="desc">Traffic flows from Android applications through TUN and ALX, then takes QUIC or TLS over TCP to the server and Internet</desc>
+  <defs>
+    <linearGradient id="box" x1="0" x2="1"><stop stop-color="#19152e"/><stop offset="1" stop-color="#211443"/></linearGradient>
+    <linearGradient id="line" x1="0" x2="1"><stop stop-color="#22c9ff"/><stop offset=".55" stop-color="#6c4cff"/><stop offset="1" stop-color="#c026ff"/></linearGradient>
+  </defs>
+  <rect width="1000" height="270" rx="26" fill="#090914"/>
+  <path d="M190 135h75m180 0h75m180 0h75" stroke="url(#line)" stroke-width="6" stroke-linecap="round"/>
+  <path d="M480 135c20-72 50-72 75-72m-75 72c20 72 50 72 75 72" fill="none" stroke="url(#line)" stroke-width="5"/>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif" text-anchor="middle">
+    <g><rect x="35" y="78" width="155" height="114" rx="22" fill="url(#box)" stroke="#353052"/><text x="112" y="125" fill="#fff" font-size="21" font-weight="700">Android</text><text x="112" y="156" fill="#a8a2c0" font-size="16">Apps + TUN</text></g>
+    <g><rect x="265" y="78" width="180" height="114" rx="22" fill="url(#box)" stroke="#5c3ac7"/><text x="355" y="125" fill="#fff" font-size="21" font-weight="700">ALX client</text><text x="355" y="156" fill="#b9a5ff" font-size="16">SOCKS5 + Turbo</text></g>
+    <g><rect x="555" y="20" width="145" height="82" rx="19" fill="#121d37" stroke="#238ee5"/><text x="627" y="55" fill="#b9e7ff" font-size="20" font-weight="700">QUIC</text><text x="627" y="80" fill="#81a7c4" font-size="14">TLS 1.3</text></g>
+    <g><rect x="555" y="168" width="145" height="82" rx="19" fill="#29113c" stroke="#9d35df"/><text x="627" y="203" fill="#e7c5ff" font-size="20" font-weight="700">TCP</text><text x="627" y="228" fill="#b28bc5" font-size="14">TLS + Upgrade</text></g>
+    <g><rect x="775" y="78" width="190" height="114" rx="22" fill="url(#box)" stroke="#7c3aed"/><text x="870" y="125" fill="#fff" font-size="21" font-weight="700">ALX server</text><text x="870" y="156" fill="#b9a5ff" font-size="16">Internet egress</text></g>
+    <text x="492" y="29" fill="#8d87a5" font-size="13">FASTEST AUTHENTICATED PATH</text>
+  </g>
+</svg>
