@@ -19,6 +19,7 @@ REMNAWAVE_SECRET_KEY="${REMNAWAVE_SECRET_KEY:-}"
 REMNAWAVE_PANEL_URL="${REMNAWAVE_PANEL_URL:-}"
 REMNAWAVE_API_TOKEN="${REMNAWAVE_API_TOKEN:-}"
 ALX_TOKEN="${ALX_TOKEN:-}"
+ALX_RUNTIME_GID="${ALX_RUNTIME_CONFIG_GID:-}"
 GH_TOKEN="${GH_TOKEN:-}"
 EXISTING_CERT=""
 EXISTING_KEY=""
@@ -446,6 +447,7 @@ PY
 
 write_remnawave_env() {
   local target="$REMNA_DIR/.env"
+  local runtime_gid="${ALX_RUNTIME_GID:-991}"
   : >"$target"
   case "$COMPAT_MODE" in
     auto)
@@ -460,6 +462,7 @@ write_remnawave_env() {
       ;;
   esac
   printf 'XTLS_API_PORT=61000\n' >>"$target"
+  printf 'ALX_RUNTIME_CONFIG_GID=%s\n' "$runtime_gid" >>"$target"
   chmod 0600 "$target"
 }
 
@@ -498,7 +501,10 @@ ALX_TURBO_KEY_FILE=${INSTALLED_KEY}
 ALX_TOKEN=${ALX_TOKEN}
 ALX_RUNTIME_CONFIG_FILE=/etc/aetherlink-x/panel-runtime.json
 EOF
-  chmod 0600 "$ALX_DIR/alx.env"
+  chmod 0640 "$ALX_DIR/alx.env"
+  if [[ "$DRY_RUN" != "true" ]]; then
+    chown root:aetherlink "$ALX_DIR/alx.env"
+  fi
 
   cat >"$SERVICE_FILE" <<'EOF'
 [Unit]
@@ -508,6 +514,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=aetherlink
+Group=aetherlink
 EnvironmentFile=/etc/aetherlink-x/alx.env
 ExecStart=/usr/local/bin/alx-server
 Restart=on-failure
@@ -534,8 +542,8 @@ write_renew_hook() {
   cat >"$RENEW_HOOK" <<EOF
 #!/bin/sh
 set -eu
-install -o root -g root -m 0644 "${LIVE_CERT_DIR}/fullchain.pem" "${INSTALLED_CERT}"
-install -o root -g root -m 0600 "${LIVE_CERT_DIR}/privkey.pem" "${INSTALLED_KEY}"
+install -o root -g aetherlink -m 0640 "${LIVE_CERT_DIR}/fullchain.pem" "${INSTALLED_CERT}"
+install -o root -g aetherlink -m 0640 "${LIVE_CERT_DIR}/privkey.pem" "${INSTALLED_KEY}"
 systemctl try-restart aetherlink-native.service
 EOF
   chmod 0755 "$RENEW_HOOK"
@@ -565,6 +573,16 @@ install_packages() {
   systemctl enable --now docker
 }
 
+ensure_alx_user() {
+  if ! getent group aetherlink >/dev/null 2>&1; then
+    groupadd --system aetherlink
+  fi
+  if ! id -u aetherlink >/dev/null 2>&1; then
+    useradd --system --gid aetherlink --home-dir /nonexistent --shell /usr/sbin/nologin aetherlink
+  fi
+  ALX_RUNTIME_GID="$(id -g aetherlink)"
+}
+
 check_dns() {
   [[ "$SKIP_DNS_CHECK" == "true" ]] && return
   local public_ip resolved
@@ -580,15 +598,15 @@ issue_certificate() {
   mkdir -p "$ALX_DIR"
   if [[ -n "$EXISTING_CERT" ]]; then
     openssl x509 -in "$EXISTING_CERT" -noout -checkend 86400 >/dev/null || die "Existing certificate is invalid or expires within 24 hours"
-    install -o root -g root -m 0644 "$EXISTING_CERT" "$ALX_DIR/fullchain.pem"
-    install -o root -g root -m 0600 "$EXISTING_KEY" "$ALX_DIR/privkey.pem"
+    install -o root -g aetherlink -m 0640 "$EXISTING_CERT" "$ALX_DIR/fullchain.pem"
+    install -o root -g aetherlink -m 0640 "$EXISTING_KEY" "$ALX_DIR/privkey.pem"
     return
   fi
   check_dns
   certbot certonly --standalone --non-interactive --agree-tos --keep-until-expiring \
     --email "$EMAIL" --preferred-challenges http -d "$DOMAIN"
-  install -o root -g root -m 0644 "$LIVE_CERT_DIR/fullchain.pem" "$ALX_DIR/fullchain.pem"
-  install -o root -g root -m 0600 "$LIVE_CERT_DIR/privkey.pem" "$ALX_DIR/privkey.pem"
+  install -o root -g aetherlink -m 0640 "$LIVE_CERT_DIR/fullchain.pem" "$ALX_DIR/fullchain.pem"
+  install -o root -g aetherlink -m 0640 "$LIVE_CERT_DIR/privkey.pem" "$ALX_DIR/privkey.pem"
   write_renew_hook
 }
 
@@ -728,6 +746,7 @@ grep -qiE '^(ID|ID_LIKE)=.*(debian|ubuntu)' /etc/os-release || die "Supported op
 
 log "Installing required packages"
 install_packages
+ensure_alx_user
 resolve_remnawave_image
 
 if [[ -z "$REMNAWAVE_SECRET_KEY" && "$ROTATE_REMNAWAVE_KEY" != "true" ]]; then
@@ -752,6 +771,10 @@ fi
 [[ -n "$REMNAWAVE_SECRET_KEY" ]] || die "Remnawave secret cannot be empty"
 
 mkdir -p "$REMNA_DIR" "$ALX_DIR" /var/log/remnanode /var/backups/aetherlink-remnawave
+chown root:aetherlink "$ALX_DIR"
+chmod 0750 "$ALX_DIR"
+chown root:aetherlink "$ALX_DIR"
+chmod 0750 "$ALX_DIR"
 if [[ -d /opt/remnanode || -d /etc/aetherlink-x || -f /etc/systemd/system/aetherlink-native.service ]]; then
   backup="/var/backups/aetherlink-remnawave/$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
   existing=()
