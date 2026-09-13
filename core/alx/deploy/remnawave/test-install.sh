@@ -38,6 +38,20 @@ grep -q '^SSL_CERT=' "$TEMP_DIR/legacy/opt/remnanode/.env"
 ! grep -q '^NODE_PORT=' "$TEMP_DIR/legacy/opt/remnanode/.env"
 ! grep -q '^SECRET_KEY=' "$TEMP_DIR/legacy/opt/remnanode/.env"
 
+printf '%s\n' 'aetherlink://existing-token@alx.example.com:443?pin=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&sni=alx.example.com&mode=turbo#Existing' \
+  >"$TEMP_DIR/existing-profile.txt"
+REMNAWAVE_SECRET_KEY='attach-value' \
+  bash "$SCRIPT_DIR/install.sh" \
+    --domain alx.example.com \
+    --email admin@example.com \
+    --panel-ip 192.0.2.10 \
+    --existing-alx-profile-file "$TEMP_DIR/existing-profile.txt" \
+    --dry-run "$TEMP_DIR/attach"
+
+grep -q '^NODE_PORT=2222$' "$TEMP_DIR/attach/opt/remnanode/.env"
+grep -q 'aetherlink://existing-token@alx.example.com:443' "$TEMP_DIR/attach/root/aetherlink-remnawave-summary.txt"
+! test -f "$TEMP_DIR/attach/etc/systemd/system/aetherlink-native.service"
+
 if REMNAWAVE_PANEL_URL='https://panel.example.com' REMNAWAVE_SECRET_KEY='test' \
   bash "$SCRIPT_DIR/install.sh" \
     --domain invalid.example.com \

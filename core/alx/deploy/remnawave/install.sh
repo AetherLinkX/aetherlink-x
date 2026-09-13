@@ -25,6 +25,7 @@ DRY_RUN="false"
 DRY_ROOT=""
 SKIP_DNS_CHECK="false"
 ROTATE_ALX_TOKEN="false"
+EXISTING_ALX_PROFILE_FILE=""
 PANEL_PROFILE=""
 PANEL_NODE_NAME="AetherLink X"
 PANEL_SQUAD_NAME="AetherLink X"
@@ -63,6 +64,9 @@ Options:
   --repository OWNER/REPO    GitHub repository used for the server binary
   --existing-cert FILE       Use an existing PEM full chain
   --existing-key FILE        Use its existing PEM private key
+  --existing-alx-profile-file FILE
+                             Attach an already working ALX profile without
+                             replacing its binary, certificate or service
   --rotate-alx-token         Generate a new ALX token on an existing install
   --skip-dns-check           Let certbot report DNS errors itself
   --dry-run DIR              Render files under DIR without changing the VPS
@@ -92,6 +96,7 @@ while (($#)); do
     --repository) REPOSITORY="${2:-}"; shift 2 ;;
     --existing-cert) EXISTING_CERT="${2:-}"; shift 2 ;;
     --existing-key) EXISTING_KEY="${2:-}"; shift 2 ;;
+    --existing-alx-profile-file) EXISTING_ALX_PROFILE_FILE="${2:-}"; shift 2 ;;
     --rotate-alx-token) ROTATE_ALX_TOKEN="true"; shift ;;
     --skip-dns-check) SKIP_DNS_CHECK="true"; shift ;;
     --dry-run) DRY_RUN="true"; DRY_ROOT="${2:-}"; shift 2 ;;
@@ -430,6 +435,12 @@ configure_firewall() {
   [[ -n "$EXISTING_CERT" ]] || ufw allow '80/tcp' comment 'ACME HTTP-01 renewal'
 }
 
+configure_node_firewall() {
+  command -v ufw >/dev/null 2>&1 || { log "UFW is not installed; firewall rules were not changed"; return; }
+  ufw status | grep -q '^Status: active' || { log "UFW is inactive; firewall rules were not changed"; return; }
+  ufw allow from "$PANEL_IP" to any port "$NODE_PORT" proto tcp comment 'Remnawave Node API'
+}
+
 prepare_acme_firewall() {
   [[ -n "$EXISTING_CERT" ]] && return
   command -v ufw >/dev/null 2>&1 || return
@@ -477,6 +488,29 @@ EOF
   chmod 0600 "$SUMMARY_FILE"
 }
 
+write_existing_summary() {
+  local profile="$1" encoded
+  encoded="$(printf '%s' "$profile" | openssl base64 -A)"
+  cat >"$SUMMARY_FILE" <<EOF
+AetherLink X + Remnawave Node
+Installer: ${INSTALLER_VERSION}
+Mode: attach existing ALX
+
+Remnawave node address: ${DOMAIN}:${NODE_PORT}
+Remnawave image: ${REMNAWAVE_IMAGE}
+Compatibility mode: ${COMPAT_MODE}
+
+Existing ALX profile (service was not modified):
+${profile}
+
+Remnawave subscription response header:
+Name: X-AetherLink-Profile
+Raw value: ${profile}
+Base64 value: base64:${encoded}
+EOF
+  chmod 0600 "$SUMMARY_FILE"
+}
+
 append_panel_summary() {
   local panel_result="$1" node_name squad_name node_uuid squad_uuid profile_name
   node_name="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("nodeName", ""))' <<<"$panel_result")"
@@ -498,11 +532,18 @@ EOF
 
 render_dry_run() {
   mkdir -p "$REMNA_DIR" "$ALX_DIR" "$(dirname "$SERVICE_FILE")" "$(dirname "$SUMMARY_FILE")"
-  [[ -n "$ALX_TOKEN" ]] || ALX_TOKEN="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   write_remnawave_env
   write_compose
-  write_alx_service
-  write_summary "$(printf '0%.0s' {1..64})" "$(make_profile "$(printf '0%.0s' {1..64})")"
+  if [[ -n "$EXISTING_ALX_PROFILE_FILE" ]]; then
+    [[ -f "$EXISTING_ALX_PROFILE_FILE" ]] || die "Existing ALX profile file does not exist"
+    profile="$(grep -m1 '^aetherlink://' "$EXISTING_ALX_PROFILE_FILE" || true)"
+    [[ "$profile" == aetherlink://* ]] || die "Existing ALX profile file does not contain an aetherlink:// profile"
+    write_existing_summary "$profile"
+  else
+    [[ -n "$ALX_TOKEN" ]] || ALX_TOKEN="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    write_alx_service
+    write_summary "$(printf '0%.0s' {1..64})" "$(make_profile "$(printf '0%.0s' {1..64})")"
+  fi
   log "Dry-run files rendered under $DRY_ROOT"
 }
 
@@ -543,40 +584,60 @@ if [[ -d /opt/remnanode || -d /etc/aetherlink-x || -f /etc/systemd/system/aether
   log "Backup saved to $backup"
 fi
 
-if [[ "$ROTATE_ALX_TOKEN" == "false" && -f "$ALX_DIR/alx.env" ]]; then
+if [[ -n "$EXISTING_ALX_PROFILE_FILE" ]]; then
+  [[ -f "$EXISTING_ALX_PROFILE_FILE" ]] || die "Existing ALX profile file does not exist"
+  profile="$(grep -m1 '^aetherlink://' "$EXISTING_ALX_PROFILE_FILE" || true)"
+  [[ "$profile" == aetherlink://* ]] || die "Existing ALX profile file does not contain an aetherlink:// profile"
+elif [[ "$ROTATE_ALX_TOKEN" == "false" && -f "$ALX_DIR/alx.env" ]]; then
   existing_token="$(sed -n 's/^ALX_TOKEN=//p' "$ALX_DIR/alx.env" | head -n1)"
   [[ -z "$existing_token" ]] || ALX_TOKEN="$existing_token"
 fi
-[[ -n "$ALX_TOKEN" ]] || ALX_TOKEN="$(openssl rand -base64 48 | tr -d '\n=' | tr '+/' '-_' | cut -c1-64)"
+if [[ -z "$EXISTING_ALX_PROFILE_FILE" ]]; then
+  [[ -n "$ALX_TOKEN" ]] || ALX_TOKEN="$(openssl rand -base64 48 | tr -d '\n=' | tr '+/' '-_' | cut -c1-64)"
+fi
 
 log "Writing Remnawave Node configuration ($COMPAT_MODE mode)"
 write_remnawave_env
 write_compose
 
-log "Issuing or installing TLS certificate"
-prepare_acme_firewall
-issue_certificate
+if [[ -z "$EXISTING_ALX_PROFILE_FILE" ]]; then
+  log "Issuing or installing TLS certificate"
+  prepare_acme_firewall
+  issue_certificate
 
-log "Downloading and verifying ALX server"
-install_server_binary
-write_alx_service
+  log "Downloading and verifying ALX server"
+  install_server_binary
+  write_alx_service
+else
+  log "Attach mode: preserving the existing ALX binary, service, certificate and token"
+fi
 
-log "Starting Remnawave Node and ALX"
+log "Starting Remnawave Node"
 docker compose -f "$REMNA_DIR/docker-compose.yml" --env-file "$REMNA_DIR/.env" pull
 docker compose -f "$REMNA_DIR/docker-compose.yml" --env-file "$REMNA_DIR/.env" up -d
-systemctl daemon-reload
-systemctl enable --now aetherlink-native.service
-
-configure_firewall
+if [[ -z "$EXISTING_ALX_PROFILE_FILE" ]]; then
+  log "Starting ALX"
+  systemctl daemon-reload
+  systemctl enable --now aetherlink-native.service
+  configure_firewall
+else
+  configure_node_firewall
+fi
 
 sleep 2
-systemctl is-active --quiet aetherlink-native.service || die "ALX service failed; run: journalctl -u aetherlink-native -n 100"
+if [[ -z "$EXISTING_ALX_PROFILE_FILE" ]]; then
+  systemctl is-active --quiet aetherlink-native.service || die "ALX service failed; run: journalctl -u aetherlink-native -n 100"
+fi
 docker inspect -f '{{.State.Running}}' remnanode 2>/dev/null | grep -qx true || die "Remnawave Node container is not running"
 
-pin="$(calculate_pin)"
-[[ "$pin" =~ ^[0-9a-f]{64}$ ]] || die "Could not calculate certificate pin"
-profile="$(make_profile "$pin")"
-write_summary "$pin" "$profile"
+if [[ -n "$EXISTING_ALX_PROFILE_FILE" ]]; then
+  write_existing_summary "$profile"
+else
+  pin="$(calculate_pin)"
+  [[ "$pin" =~ ^[0-9a-f]{64}$ ]] || die "Could not calculate certificate pin"
+  profile="$(make_profile "$pin")"
+  write_summary "$pin" "$profile"
+fi
 
 if [[ -n "$REMNAWAVE_PANEL_URL" ]]; then
   log "Registering the node and ALX External Squad in Remnawave"

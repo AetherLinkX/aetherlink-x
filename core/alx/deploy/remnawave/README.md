@@ -32,6 +32,19 @@ Finally, assign the users who should receive ALX to the created External Squad.
 Their existing Internal Squads, VLESS locations, hosts and config profiles are
 not changed.
 
+### Attach a working ALX server without reinstalling it
+
+If ALX is already tested on the VPS, keep its binary, service, certificate,
+token and ports intact. Store its private `aetherlink://` link in a root-only
+file and add:
+
+```bash
+--existing-alx-profile-file /root/alx-profile.private.txt
+```
+
+In this mode only the official Remnawave Node and panel objects are installed.
+This is the safest mode for an existing production ALX location.
+
 ## Manual installation
 
 Create a Node in the panel first and copy its secret. Point the ALX domain to
