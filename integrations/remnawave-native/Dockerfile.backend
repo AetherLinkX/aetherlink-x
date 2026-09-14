@@ -28,7 +28,7 @@ WORKDIR /opt/app
 # upstream release channel names.  Keep the runtime channel compatible with
 # stock 2.7.4; ALX build identity is carried by the metadata and image tag.
 ARG BRANCH=main
-ARG __RW_METADATA_VERSION=2.7.4-alx-native.2
+ARG __RW_METADATA_VERSION=2.7.4-alx-native.3
 ARG __RW_METADATA_GIT_BACKEND_COMMIT=unknown
 ARG __RW_METADATA_GIT_FRONTEND_COMMIT=unknown
 ARG __RW_METADATA_BUILD_TIME=unknown

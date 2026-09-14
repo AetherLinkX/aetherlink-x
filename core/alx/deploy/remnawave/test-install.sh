@@ -77,7 +77,7 @@ EOF
 
 panel_dry_run="$(bash "$SCRIPT_DIR/install-panel.sh" \
   --compose-file "$TEMP_DIR/panel-compose.yml" --dry-run)"
-grep -q 'remnawave/backend:2.7.3 -> ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.4-native.2' \
+grep -q 'remnawave/backend:2.7.3 -> ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.4-native.3' \
   <<<"$panel_dry_run"
 grep -q 'image: remnawave/backend:2.7.3' "$TEMP_DIR/panel-compose.yml"
 
@@ -94,7 +94,7 @@ panel_override_dry_run="$(bash "$SCRIPT_DIR/install-panel.sh" \
   --compose-file "$TEMP_DIR/panel-override.yml" \
   --dry-run)"
 grep -q "Image override: .*panel-override.yml" <<<"$panel_override_dry_run"
-grep -q 'remnawave/backend:custom -> ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.4-native.2' \
+grep -q 'remnawave/backend:custom -> ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.4-native.3' \
   <<<"$panel_override_dry_run"
 grep -q 'image: remnawave/backend:custom' "$TEMP_DIR/panel-override.yml"
 

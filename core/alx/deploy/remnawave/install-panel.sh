@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly DEFAULT_IMAGE="ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.4-native.2"
+readonly DEFAULT_IMAGE="ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.4-native.3"
 
 IMAGE="${REMNAWAVE_ALX_BACKEND_IMAGE:-$DEFAULT_IMAGE}"
 declare -a COMPOSE_FILES=()

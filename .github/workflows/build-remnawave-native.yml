@@ -103,7 +103,7 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.BACKEND_IMAGE }}:2.7.4-native.2
+            ${{ env.BACKEND_IMAGE }}:2.7.4-native.3
             ${{ env.BACKEND_IMAGE }}:preview
           build-args: |
             __RW_METADATA_GIT_BACKEND_COMMIT=${{ github.sha }}

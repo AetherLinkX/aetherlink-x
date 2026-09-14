@@ -42,3 +42,23 @@ index d878234..5c6bd15 100644
              const snippetDescriptions = snippets.map((snippet) => {
                  const snippetJson = JSON.stringify(snippet.snippet, null, 1)
  
+diff --git a/src/features/dashboard/config-profiles/config-validation/config-validation.feature.tsx b/src/features/dashboard/config-profiles/config-validation/config-validation.feature.tsx
+index be9f50d..da8add9 100644
+--- a/src/features/dashboard/config-profiles/config-validation/config-validation.feature.tsx
++++ b/src/features/dashboard/config-profiles/config-validation/config-validation.feature.tsx
+@@ -66,6 +66,15 @@ export const ConfigValidationFeature = {
+                 replaceSnippetsInArray(clonedCurrentValue.routing.balancers, snippetsMap)
+             }
+ 
++            // AetherLink Native is executed by the independent ALX core. The
++            // bundled WASM parser is Xray itself and must only validate the
++            // Xray-compatible portion of a mixed Remnawave profile.
++            if (Array.isArray(clonedCurrentValue.inbounds)) {
++                clonedCurrentValue.inbounds = clonedCurrentValue.inbounds.filter(
++                    (inbound: { protocol?: unknown }) => inbound?.protocol !== 'aetherlink'
++                )
++            }
++
+             const validationResult = window.XrayParseConfig(JSON.stringify(clonedCurrentValue))
+ 
+             setResult(
