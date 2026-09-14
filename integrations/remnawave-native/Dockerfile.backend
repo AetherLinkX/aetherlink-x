@@ -24,8 +24,11 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 
 WORKDIR /opt/app
 
-ARG BRANCH=alx-native
-ARG __RW_METADATA_VERSION=2.7.4-alx-native.1
+# Remnawave validates REMNAWAVE_BRANCH at startup and only accepts its
+# upstream release channel names.  Keep the runtime channel compatible with
+# stock 2.7.4; ALX build identity is carried by the metadata and image tag.
+ARG BRANCH=main
+ARG __RW_METADATA_VERSION=2.7.4-alx-native.2
 ARG __RW_METADATA_GIT_BACKEND_COMMIT=unknown
 ARG __RW_METADATA_GIT_FRONTEND_COMMIT=unknown
 ARG __RW_METADATA_BUILD_TIME=unknown

@@ -31,6 +31,9 @@ grep -q 'PANEL_PROFILE="AetherLink X"' "$SCRIPT_DIR/install.sh"
 grep -q '"tag": "AETHERLINK_NATIVE"' "$SCRIPT_DIR/install.sh"
 grep -q '"protocol": "aetherlink"' "$SCRIPT_DIR/install.sh"
 grep -q 'request("POST", "config-profiles/"' "$SCRIPT_DIR/install.sh"
+grep -q 'nodes/{node\["uuid"\]}/actions/enable' "$SCRIPT_DIR/install.sh"
+grep -q 'ALX_PREVIOUS_TOKENS_PANEL' "$SCRIPT_DIR/install.sh"
+grep -q 'urlsafe_b64decode' "$SCRIPT_DIR/install.sh"
 grep -q 'profile_explicit != "true"' "$SCRIPT_DIR/install.sh"
 ! grep -q 'AETHERLINK_X_CONTROL' "$SCRIPT_DIR/install.sh"
 ! grep -q 'X-AetherLink-Profile' "$SCRIPT_DIR/install.sh"
@@ -74,9 +77,26 @@ EOF
 
 panel_dry_run="$(bash "$SCRIPT_DIR/install-panel.sh" \
   --compose-file "$TEMP_DIR/panel-compose.yml" --dry-run)"
-grep -q 'remnawave/backend:2.7.3 -> ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.4-native.1' \
+grep -q 'remnawave/backend:2.7.3 -> ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.4-native.2' \
   <<<"$panel_dry_run"
 grep -q 'image: remnawave/backend:2.7.3' "$TEMP_DIR/panel-compose.yml"
+
+cat >"$TEMP_DIR/panel-override.yml" <<'EOF'
+services:
+  remnawave:
+    image: remnawave/backend:custom
+    environment:
+      REMNAWAVE_BRANCH: main
+EOF
+
+panel_override_dry_run="$(bash "$SCRIPT_DIR/install-panel.sh" \
+  --compose-file "$TEMP_DIR/panel-compose.yml" \
+  --compose-file "$TEMP_DIR/panel-override.yml" \
+  --dry-run)"
+grep -q "Image override: .*panel-override.yml" <<<"$panel_override_dry_run"
+grep -q 'remnawave/backend:custom -> ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.4-native.2' \
+  <<<"$panel_override_dry_run"
+grep -q 'image: remnawave/backend:custom' "$TEMP_DIR/panel-override.yml"
 
 if REMNAWAVE_PANEL_URL='https://panel.example.com' REMNAWAVE_SECRET_KEY='test' \
   bash "$SCRIPT_DIR/install.sh" \

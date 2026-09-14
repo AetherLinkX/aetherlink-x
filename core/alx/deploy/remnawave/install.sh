@@ -179,6 +179,7 @@ import json
 import os
 import ssl
 import sys
+import base64
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -224,10 +225,26 @@ if not profile_link.startswith("aetherlink://"):
 parsed_profile = urllib.parse.urlsplit(profile_link)
 profile_query = urllib.parse.parse_qs(parsed_profile.query)
 native_token = urllib.parse.unquote(parsed_profile.username or "")
-native_pin = (profile_query.get("pin") or [""])[0]
+native_pin_value = (profile_query.get("pin") or [""])[0].strip().removeprefix("sha256/")
+try:
+    native_pin_bytes = bytes.fromhex(native_pin_value.replace(":", ""))
+except ValueError:
+    native_pin_bytes = b""
+if len(native_pin_bytes) != 32:
+    try:
+        padded_pin = native_pin_value + "=" * ((4 - len(native_pin_value) % 4) % 4)
+        native_pin_bytes = base64.urlsafe_b64decode(padded_pin)
+    except (ValueError, TypeError):
+        native_pin_bytes = b""
+native_pin = native_pin_bytes.hex() if len(native_pin_bytes) == 32 else ""
 native_sni = (profile_query.get("sni") or [domain])[0]
 native_mode = (profile_query.get("mode") or ["turbo"])[0]
 native_fallback = (profile_query.get("fallback") or ["auto"])[0]
+previous_tokens = [
+    value
+    for value in os.environ.get("ALX_PREVIOUS_TOKENS_PANEL", "").split(",")
+    if len(value) >= 32
+][:2]
 if len(native_token) < 32 or len(native_pin) != 64 or native_mode != "turbo":
     raise SystemExit("ALX_PROFILE does not contain a valid native token, pin and Turbo mode")
 
@@ -253,7 +270,7 @@ native_config = {
             "protocol": "aetherlink",
             "settings": {
                 "token": native_token,
-                "previousTokens": [],
+                "previousTokens": previous_tokens,
                 "pin": native_pin,
                 "sni": native_sni,
                 "mode": "turbo",
@@ -343,6 +360,9 @@ else:
             "tags": list(dict.fromkeys((node.get("tags") or []) + ["AETHERLINK_X"])),
         }
         node = request("PATCH", "nodes/", update_payload)["response"]
+
+if node.get("isDisabled"):
+    node = request("POST", f'nodes/{node["uuid"]}/actions/enable').get("response", node)
 
 hosts_response = request("GET", "hosts/").get("response", [])
 hosts = hosts_response if isinstance(hosts_response, list) else hosts_response.get("hosts", [])
@@ -808,6 +828,25 @@ if [[ -n "$EXISTING_ALX_PROFILE_FILE" ]]; then
   [[ -f "$EXISTING_ALX_PROFILE_FILE" ]] || die "Existing ALX profile file does not exist"
   profile="$(grep -m1 '^aetherlink://' "$EXISTING_ALX_PROFILE_FILE" || true)"
   [[ "$profile" == aetherlink://* ]] || die "Existing ALX profile file does not contain an aetherlink:// profile"
+  if [[ -f "$ALX_DIR/alx.env" ]]; then
+    existing_token="$(sed -n 's/^ALX_TOKEN=//p' "$ALX_DIR/alx.env" | head -n1)"
+    if [[ -n "$existing_token" ]]; then
+      profile="$(python3 - "$profile" "$existing_token" <<'PY'
+import sys
+import urllib.parse
+
+profile, token = sys.argv[1:]
+parsed = urllib.parse.urlsplit(profile)
+host = parsed.hostname or ""
+port = parsed.port or 443
+authority = f"{urllib.parse.quote(token, safe='')}@{host}:{port}"
+print(urllib.parse.urlunsplit((parsed.scheme, authority, parsed.path, parsed.query, parsed.fragment)))
+PY
+)"
+    fi
+    ALX_PREVIOUS_TOKENS_PANEL="$(sed -n 's/^ALX_PREVIOUS_TOKENS=//p' "$ALX_DIR/alx.env" | head -n1)"
+    export ALX_PREVIOUS_TOKENS_PANEL
+  fi
 elif [[ "$ROTATE_ALX_TOKEN" == "false" && -f "$ALX_DIR/alx.env" ]]; then
   existing_token="$(sed -n 's/^ALX_TOKEN=//p' "$ALX_DIR/alx.env" | head -n1)"
   [[ -z "$existing_token" ]] || ALX_TOKEN="$existing_token"

@@ -50,10 +50,11 @@ curl -fsSL https://raw.githubusercontent.com/AetherLinkX/aetherlink-x/alx/native
   | sudo bash
 ```
 
-The panel installer changes only the `remnawave` backend image, backs up the
-existing Compose file and restores it automatically if the replacement is not
-healthy. PostgreSQL, Valkey, volumes, environment variables and existing Xray
-profiles are not changed.
+The panel installer changes only the effective `remnawave` backend image,
+automatically detects active Compose override files, backs up the complete
+Compose set and restores it without pulling on rollback if the replacement is
+not healthy. PostgreSQL, Valkey, volumes, environment variables and existing
+Xray profiles are not changed.
 
 ## One-command node installation
 
@@ -77,7 +78,10 @@ The installer:
 - starts the compatible Remnawave Node;
 - creates or updates the native `AetherLink X` Config Profile;
 - creates the native Host and `AetherLink X` Internal Squad;
-- assigns the node to the native inbound without changing existing profiles.
+- assigns and enables the node on the native inbound without changing existing
+  profiles;
+- reuses the live ALX token when attaching an existing runtime and keeps up to
+  two previous tokens for a graceful client migration.
 
 Assign users to the generated Internal Squad to include ALX in their normal
 subscription. Private tokens and profile links are written only to root-owned
