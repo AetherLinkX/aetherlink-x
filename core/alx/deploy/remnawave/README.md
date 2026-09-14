@@ -87,6 +87,11 @@ Assign users to the generated Internal Squad to include ALX in their normal
 subscription. Private tokens and profile links are written only to root-owned
 files on the node.
 
+The generated `aetherlink://` URI uses the Host port as its `fallback` value.
+This is the Turbo/TCP recovery listener, while the inbound setting named
+`fallback` remains the server-side `auto`/`quic`/`tcp` policy. Older clients
+that receive `fallback=auto` fall back to the primary Host port.
+
 ## Compatibility
 
 The integration is version-pinned because Remnawave's backend and node APIs

@@ -619,11 +619,12 @@ object ProfileCodec {
     private fun decodeAetherLinkNative(raw: String): VpnProfile {
         val uri = Uri.parse(raw)
         val params = uri.queryParameterNames.associateWith { uri.getQueryParameter(it) ?: "" }
+        val serverPort = uri.port.takeIf { it > 0 } ?: 443
         return VpnProfile(
             name = Uri.decode(uri.fragment ?: "AetherLink Native"),
             protocol = Protocol.AETHERLINK_NATIVE,
             address = uri.host ?: "",
-            port = uri.port.takeIf { it > 0 } ?: 443,
+            port = serverPort,
             uuid = uri.userInfo ?: "", // per-client 256-bit ALX token
             transport = Transport.QUIC,
             security = Security.TLS,
@@ -631,7 +632,12 @@ object ProfileCodec {
             publicKey = params["pin"] ?: "", // SHA-256 SPKI pin
             alpn = "h3",
             transportMode = params["mode"]?.ifBlank { "tcp-first" } ?: "tcp-first",
-            fallbackPort = params["fallback"]?.toIntOrNull()?.takeIf { it in 1..65535 } ?: 443,
+            // Older panel builds emitted fallback=auto. In that case the TCP
+            // recovery listener is the same port as the primary ALX endpoint.
+            fallbackPort = params["fallback"]
+                ?.toIntOrNull()
+                ?.takeIf { it in 1..65535 }
+                ?: serverPort,
             muxEnabled = false,
         )
     }

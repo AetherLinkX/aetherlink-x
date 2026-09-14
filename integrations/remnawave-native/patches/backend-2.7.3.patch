@@ -234,7 +234,7 @@ index da2e3ca..b430076 100644
              case 'vless':
                  return this.buildVlessLink(host);
              case 'trojan':
-@@ -60,6 +62,22 @@ export class XrayGeneratorService {
+@@ -60,6 +62,25 @@ export class XrayGeneratorService {
          }
      }
  
@@ -247,7 +247,10 @@ index da2e3ca..b430076 100644
 +            pin: host.protocolOptions.pin,
 +            sni: host.protocolOptions.sni,
 +            mode: host.protocolOptions.mode,
-+            fallback: host.protocolOptions.fallback,
++            // The native client expects the TCP recovery port here, not the
++            // server-side transport policy (auto/quic/tcp). ALX exposes QUIC
++            // and Turbo/TCP on the same Host port.
++            fallback: String(host.port),
 +        });
 +        const token = encodeURIComponent(host.protocolOptions.token);
 +        const remark = encodeURIComponent(host.finalRemark);

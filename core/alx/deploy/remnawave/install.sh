@@ -239,7 +239,11 @@ if len(native_pin_bytes) != 32:
 native_pin = native_pin_bytes.hex() if len(native_pin_bytes) == 32 else ""
 native_sni = (profile_query.get("sni") or [domain])[0]
 native_mode = (profile_query.get("mode") or ["turbo"])[0]
-native_fallback = (profile_query.get("fallback") or ["auto"])[0]
+native_fallback_value = (profile_query.get("fallback") or ["auto"])[0]
+# The URI field is the TCP recovery port. Older links used the transport
+# policy string here; keep accepting them while storing the policy separately
+# in Remnawave's native inbound settings.
+native_fallback = native_fallback_value if native_fallback_value in {"auto", "quic", "tcp"} else "auto"
 previous_tokens = [
     value
     for value in os.environ.get("ALX_PREVIOUS_TOKENS_PANEL", "").split(",")
@@ -696,8 +700,8 @@ calculate_pin() {
 
 make_profile() {
   local pin="$1"
-  printf 'aetherlink://%s@%s:%s?pin=%s&sni=%s&fallback=auto&mode=turbo#AetherLink%%20X%%20Turbo' \
-    "$ALX_TOKEN" "$DOMAIN" "$ALX_PORT" "$pin" "$DOMAIN"
+  printf 'aetherlink://%s@%s:%s?pin=%s&sni=%s&fallback=%s&mode=turbo#AetherLink%%20X%%20Turbo' \
+    "$ALX_TOKEN" "$DOMAIN" "$ALX_PORT" "$pin" "$DOMAIN" "$ALX_PORT"
 }
 
 write_summary() {
