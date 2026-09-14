@@ -74,7 +74,7 @@ EOF
 
 panel_dry_run="$(bash "$SCRIPT_DIR/install-panel.sh" \
   --compose-file "$TEMP_DIR/panel-compose.yml" --dry-run)"
-grep -q 'remnawave/backend:2.7.3 -> ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.3-native.1' \
+grep -q 'remnawave/backend:2.7.3 -> ghcr.io/aetherlinkx/remnawave-backend-alx:2.7.4-native.1' \
   <<<"$panel_dry_run"
 grep -q 'image: remnawave/backend:2.7.3' "$TEMP_DIR/panel-compose.yml"
 

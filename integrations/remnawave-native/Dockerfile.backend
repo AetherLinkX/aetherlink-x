@@ -18,14 +18,14 @@ RUN npm run migrate:generate \
 FROM node:24.14-trixie-slim
 
 LABEL org.opencontainers.image.title="Remnawave Backend with AetherLink X Native"
-LABEL org.opencontainers.image.description="Remnawave 2.7.3 with native AetherLink protocol integration"
+LABEL org.opencontainers.image.description="Remnawave 2.7.4 with native AetherLink protocol integration"
 LABEL org.opencontainers.image.source="https://github.com/AetherLinkX/aetherlink-x"
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 
 WORKDIR /opt/app
 
 ARG BRANCH=alx-native
-ARG __RW_METADATA_VERSION=2.7.3-alx-native.1
+ARG __RW_METADATA_VERSION=2.7.4-alx-native.1
 ARG __RW_METADATA_GIT_BACKEND_COMMIT=unknown
 ARG __RW_METADATA_GIT_FRONTEND_COMMIT=unknown
 ARG __RW_METADATA_BUILD_TIME=unknown

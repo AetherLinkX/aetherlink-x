@@ -86,6 +86,6 @@ files on the node.
 ## Compatibility
 
 The integration is version-pinned because Remnawave's backend and node APIs
-change between major releases. The current tested baseline is Panel 2.7.3 with
+change between major releases. The current tested baseline is Panel 2.7.4 with
 Node 2.8.0. New releases use dedicated overlays and build tests instead of
 silently falling back to VLESS.

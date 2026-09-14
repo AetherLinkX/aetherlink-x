@@ -15,8 +15,8 @@ permissions:
 
 env:
   NODE_OPTIONS: "--max-old-space-size=6144"
-  BACKEND_REF: "2.7.3"
-  FRONTEND_REF: "2.7.3"
+  BACKEND_REF: "2.7.4"
+  FRONTEND_REF: "2.7.4"
   NODE_REF: "2.8.0"
   BACKEND_IMAGE: ghcr.io/aetherlinkx/remnawave-backend-alx
   NODE_IMAGE: ghcr.io/aetherlinkx/remnawave-node-alx
@@ -96,7 +96,7 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.BACKEND_IMAGE }}:2.7.3-native.1
+            ${{ env.BACKEND_IMAGE }}:2.7.4-native.1
             ${{ env.BACKEND_IMAGE }}:preview
           build-args: |
             __RW_METADATA_GIT_BACKEND_COMMIT=${{ github.sha }}
