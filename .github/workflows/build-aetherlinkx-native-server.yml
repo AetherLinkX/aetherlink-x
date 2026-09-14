@@ -94,6 +94,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release upload "$SERVER_PREVIEW_TAG" \
-            "aetherlink-native-server-linux-${{ matrix.arch }}" \
-            "aetherlink-native-server-linux-${{ matrix.arch }}.sha256" --clobber
+          for attempt in 1 2 3 4 5; do
+            if gh release upload "$SERVER_PREVIEW_TAG" \
+              "aetherlink-native-server-linux-${{ matrix.arch }}" \
+              "aetherlink-native-server-linux-${{ matrix.arch }}.sha256" --clobber; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 5 ]]; then
+              echo "Release upload failed after ${attempt} attempts" >&2
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
