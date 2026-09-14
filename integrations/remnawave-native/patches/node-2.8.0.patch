@@ -92,7 +92,7 @@ index 0000000..38a75cc
 +export class AetherLinkService {
 +    private readonly logger = new Logger(AetherLinkService.name);
 +    private readonly runtimePath =
-+        process.env.ALX_RUNTIME_CONFIG_PATH ?? '/etc/aetherlink-x/panel-runtime.json';
++        process.env.ALX_RUNTIME_CONFIG_FILE ?? '/etc/aetherlink-x/panel-runtime.json';
 +    private readonly runtimeGid = this.parseRuntimeGid(process.env.ALX_RUNTIME_CONFIG_GID);
 +
 +    public async extractAndApply(
