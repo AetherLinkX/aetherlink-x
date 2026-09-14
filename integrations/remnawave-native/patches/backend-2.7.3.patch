@@ -378,3 +378,58 @@ index 8be63f4..265bb9f 100644
                              inbounds: config.response.config.inbounds!.filter(
                                  (inbound) =>
                                      activeNodeInboundsTags.has(inbound.tag!) ||
+diff --git a/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts b/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts
+index 2446b740..1dbee4b7 100644
+--- a/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts
++++ b/src/modules/nodes/events/add-user-to-node/add-user-to-node.handler.ts
+@@ -50,13 +50,15 @@ export class AddUserToNodeHandler implements IEventHandler<AddUserToNodeEvent> {
+                 return;
+             }
+ 
++            const managedInbounds = inbounds.filter((inbound) => inbound.type !== 'aetherlink');
++
+             const userData: AddUserToNodeCommandSdk.Request = {
+                 hashData: {
+                     vlessUuid,
+                     prevVlessUuid: event.prevVlessUuid,
+                 },
+ 
+-                data: inbounds.map((inbound) => {
++                data: managedInbounds.map((inbound) => {
+                     const inboundType = this.resolveInboundType(inbound);
+ 
+                     switch (inboundType) {
+@@ -109,7 +111,13 @@ export class AddUserToNodeHandler implements IEventHandler<AddUserToNodeEvent> {
+                     continue;
+                 }
+ 
+-                const activeTags = new Set(node.activeInbounds.map((inbound) => inbound.tag));
++                const activeTags = new Set(
++                    node.activeInbounds
++                        .filter((inbound) => inbound.type !== 'aetherlink')
++                        .map((inbound) => inbound.tag),
++                );
++
++                if (activeTags.size === 0) continue;
+ 
+                 const filteredData = {
+                     ...userData,
+diff --git a/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts b/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts
+index 8e058362..eeee18cc 100644
+--- a/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts
++++ b/src/modules/nodes/events/add-users-to-node/add-users-to-node.handler.ts
+@@ -48,7 +48,13 @@ export class AddUsersToNodeHandler implements IEventHandler<AddUsersToNodeEvent>
+             if (activeNodes.length === 0) return;
+ 
+             for (const node of activeNodes) {
+-                const activeTags = new Set(node.activeInbounds.map((ib) => ib.tag));
++                const activeTags = new Set(
++                    node.activeInbounds
++                        .filter((inbound) => inbound.type !== 'aetherlink')
++                        .map((inbound) => inbound.tag),
++                );
++
++                if (activeTags.size === 0) continue;
+ 
+                 const usersForNode: AddUsersToNodeCommandSdk.Request['users'] = [];
+                 const usersToRemove: Array<{ userId: string; hashUuid: string }> = [];
