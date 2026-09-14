@@ -6,6 +6,7 @@ on:
     branches:
       - alx/native-preview
     paths:
+      - "core/alx/**"
       - "integrations/remnawave-native/**"
       - ".github/workflows/build-remnawave-native.yml"
 
@@ -41,6 +42,12 @@ jobs:
           git -C remnawave-frontend apply ../integrations/remnawave-native/patches/frontend-2.7.3.patch
           git -C remnawave-node apply --check ../integrations/remnawave-native/patches/node-2.8.0.patch
           git -C remnawave-node apply ../integrations/remnawave-native/patches/node-2.8.0.patch
+
+      - name: Test native installer
+        run: |
+          bash -n core/alx/deploy/remnawave/install.sh
+          bash -n core/alx/deploy/remnawave/install-panel.sh
+          bash core/alx/deploy/remnawave/test-install.sh
 
       - uses: actions/setup-node@v4
         with:
@@ -113,3 +120,19 @@ jobs:
           tags: |
             ${{ env.NODE_IMAGE }}:2.8.0-native.1
             ${{ env.NODE_IMAGE }}:preview
+
+      - name: Prepare native runtime node image context
+        run: |
+          cp -R core/alx remnawave-node/alx-src
+          cp integrations/remnawave-native/Dockerfile.node-runtime remnawave-node/Dockerfile.alx-runtime
+
+      - name: Build and publish node with native runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: remnawave-node
+          file: remnawave-node/Dockerfile.alx-runtime
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.NODE_IMAGE }}:2.8.0-native.2
+            ${{ env.NODE_IMAGE }}:native-runtime

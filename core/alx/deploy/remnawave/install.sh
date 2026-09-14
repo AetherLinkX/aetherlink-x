@@ -412,10 +412,10 @@ resolve_remnawave_image() {
     panel_version="$(panel_tool version)"
     panel_major="${panel_version#v}"
     panel_major="${panel_major%%.*}"
-    REMNAWAVE_IMAGE="ghcr.io/aetherlinkx/remnawave-node-alx:2.8.0-native.1"
+    REMNAWAVE_IMAGE="ghcr.io/aetherlinkx/remnawave-node-alx:2.8.0-native.2"
     log "Panel ${panel_version}: selected ${REMNAWAVE_IMAGE}"
   else
-    REMNAWAVE_IMAGE="ghcr.io/aetherlinkx/remnawave-node-alx:2.8.0-native.1"
+    REMNAWAVE_IMAGE="ghcr.io/aetherlinkx/remnawave-node-alx:2.8.0-native.2"
     log "Panel version is unavailable: selected conservative ${REMNAWAVE_IMAGE}"
   fi
 }
@@ -611,11 +611,30 @@ issue_certificate() {
 }
 
 install_server_binary() {
-  local arch asset base temp actual expected auth=()
+  local arch asset base temp actual expected auth=() container_id=""
   arch="$(detect_arch)"
   asset="aetherlink-native-server-linux-${arch}"
-  base="https://github.com/${REPOSITORY}/releases/download/${RELEASE_TAG}"
   temp="$(mktemp -d)"
+
+  if docker pull "$REMNAWAVE_IMAGE" >/dev/null 2>&1; then
+    if container_id="$(docker create "$REMNAWAVE_IMAGE" 2>/dev/null)"; then
+      if docker cp "$container_id:/usr/local/lib/aetherlink-x/alx-server" "$temp/$asset" >/dev/null 2>&1 \
+        && docker cp "$container_id:/usr/local/lib/aetherlink-x/alx-server.sha256" "$temp/$asset.sha256" >/dev/null 2>&1; then
+        docker rm "$container_id" >/dev/null
+        container_id=""
+        expected="$(awk 'NR==1 {print $1}' "$temp/$asset.sha256")"
+        actual="$(sha256sum "$temp/$asset" | awk '{print $1}')"
+        [[ "$expected" =~ ^[0-9a-fA-F]{64}$ && "$actual" == "$expected" ]] || die "ALX server checksum mismatch"
+        install -o root -g root -m 0755 "$temp/$asset" "$ALX_BIN"
+        rm -rf -- "$temp"
+        log "Installed ALX server from the native Remnawave Node image"
+        return
+      fi
+    fi
+    [[ -z "$container_id" ]] || docker rm "$container_id" >/dev/null 2>&1 || true
+  fi
+
+  base="https://github.com/${REPOSITORY}/releases/download/${RELEASE_TAG}"
   [[ -n "$GH_TOKEN" ]] && auth=(-H "Authorization: Bearer $GH_TOKEN")
   curl -fL --retry 3 "${auth[@]}" "$base/$asset" -o "$temp/$asset"
   curl -fL --retry 3 "${auth[@]}" "$base/$asset.sha256" -o "$temp/$asset.sha256"
@@ -736,7 +755,7 @@ render_dry_run() {
 
 if [[ "$DRY_RUN" == "true" ]]; then
   [[ -n "$DRY_ROOT" && "$DRY_ROOT" != "/" ]] || die "--dry-run requires a safe output directory"
-  [[ "$REMNAWAVE_IMAGE" != "auto" ]] || REMNAWAVE_IMAGE="ghcr.io/aetherlinkx/remnawave-node-alx:2.8.0-native.1"
+  [[ "$REMNAWAVE_IMAGE" != "auto" ]] || REMNAWAVE_IMAGE="ghcr.io/aetherlinkx/remnawave-node-alx:2.8.0-native.2"
   render_dry_run
   exit 0
 fi

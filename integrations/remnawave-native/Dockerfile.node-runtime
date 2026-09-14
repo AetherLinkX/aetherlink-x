@@ -1,0 +1,18 @@
+FROM golang:1.26.0-bookworm AS alx-build
+
+WORKDIR /src
+COPY alx-src/go.mod alx-src/go.sum ./
+RUN go mod download
+COPY alx-src/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w -buildid=' \
+    -o /out/alx-server ./cmd/alx-server \
+    && sha256sum /out/alx-server > /out/alx-server.sha256
+
+FROM ghcr.io/aetherlinkx/remnawave-node-alx:2.8.0-native.1
+
+LABEL org.opencontainers.image.title="Remnawave Node with AetherLink X Native Runtime"
+LABEL org.opencontainers.image.description="Remnawave Node 2.8.0 with native ALX control and bundled server runtime"
+LABEL org.opencontainers.image.source="https://github.com/AetherLinkX/aetherlink-x"
+
+COPY --from=alx-build /out/alx-server /usr/local/lib/aetherlink-x/alx-server
+COPY --from=alx-build /out/alx-server.sha256 /usr/local/lib/aetherlink-x/alx-server.sha256
