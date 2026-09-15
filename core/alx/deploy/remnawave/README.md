@@ -78,7 +78,8 @@ The installer:
 - starts the compatible Remnawave Node;
 - creates or updates the native `AetherLink X` Config Profile;
 - or, when `--panel-profile` selects an existing regional profile, adds the
-  native inbound without removing its existing Xray inbounds and routing;
+  native inbound with a profile-unique tag without removing its existing Xray
+  inbounds and routing;
 - creates the native Host and `AetherLink X` Internal Squad;
 - assigns and enables the native inbound while preserving the node's existing
   address, API port and active inbounds;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly INSTALLER_VERSION="2.0.2-native"
+readonly INSTALLER_VERSION="2.0.3-native"
 readonly DEFAULT_RELEASE_TAG="server-v0.2.2-alx-preview.8-rw.2"
 readonly DEFAULT_REPOSITORY="AetherLinkX/aetherlink-x"
 
@@ -302,6 +302,11 @@ if selected is None:
     names = ", ".join(str(item.get("name", "unnamed")) for item in profiles)
     raise SystemExit("Select a profile with --panel-profile. Available: " + (names or "none"))
 
+native_tag = "AETHERLINK_NATIVE"
+if selected.get("name") != "AetherLink X":
+    native_tag += "_" + selected["uuid"].replace("-", "")[:8].upper()
+native_config["inbounds"][0]["tag"] = native_tag
+
 selected_details = request("GET", f'config-profiles/{selected["uuid"]}').get("response", selected)
 merged_config = selected_details.get("config")
 if not isinstance(merged_config, dict):
@@ -309,10 +314,10 @@ if not isinstance(merged_config, dict):
 merged_config = json.loads(json.dumps(merged_config))
 merged_inbounds = merged_config.setdefault("inbounds", [])
 for inbound in merged_inbounds:
-    if inbound.get("tag") != "AETHERLINK_NATIVE" and int(inbound.get("port") or 0) == int(alx_port):
+    if inbound.get("tag") != native_tag and int(inbound.get("port") or 0) == int(alx_port):
         raise SystemExit(f"Selected profile already uses ALX port {alx_port} for inbound {inbound.get('tag', 'unnamed')}")
 merged_config["inbounds"] = [
-    inbound for inbound in merged_inbounds if inbound.get("tag") != "AETHERLINK_NATIVE"
+    inbound for inbound in merged_inbounds if inbound.get("tag") != native_tag
 ] + native_config["inbounds"]
 if not merged_config.get("outbounds"):
     merged_config["outbounds"] = native_config["outbounds"]
@@ -327,9 +332,9 @@ profiles = request("GET", "config-profiles/").get("response", {}).get("configPro
 selected = next((item for item in profiles if item.get("uuid") == selected["uuid"]), None)
 
 inbounds = selected.get("inbounds") or []
-selected_inbound = next((item for item in inbounds if item.get("tag") == "AETHERLINK_NATIVE"), None)
+selected_inbound = next((item for item in inbounds if item.get("tag") == native_tag), None)
 if selected_inbound is None or selected_inbound.get("type") != "aetherlink":
-    raise SystemExit("Selected profile does not contain the native AETHERLINK_NATIVE inbound")
+    raise SystemExit(f"Selected profile does not contain the native {native_tag} inbound")
 
 nodes_response = request("GET", "nodes/").get("response", [])
 nodes = nodes_response if isinstance(nodes_response, list) else nodes_response.get("nodes", [])
