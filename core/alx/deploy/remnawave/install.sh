@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly INSTALLER_VERSION="2.0.0-native"
+readonly INSTALLER_VERSION="2.0.1-native"
 readonly DEFAULT_RELEASE_TAG="server-v0.2.2-alx-preview.8-rw.2"
 readonly DEFAULT_REPOSITORY="AetherLinkX/aetherlink-x"
 
@@ -302,32 +302,42 @@ if selected is None:
     names = ", ".join(str(item.get("name", "unnamed")) for item in profiles)
     raise SystemExit("Select a profile with --panel-profile. Available: " + (names or "none"))
 
-if selected.get("name") == "AetherLink X":
-    request("PATCH", "config-profiles/", {
-        "uuid": selected["uuid"],
-        "name": "AetherLink X",
-        "config": native_config,
-    })
-    profiles = request("GET", "config-profiles/").get("response", {}).get("configProfiles", [])
-    selected = next((item for item in profiles if item.get("uuid") == selected["uuid"]), None)
+selected_details = request("GET", f'config-profiles/{selected["uuid"]}').get("response", selected)
+merged_config = selected_details.get("config")
+if not isinstance(merged_config, dict):
+    raise SystemExit("Selected profile does not expose an editable config")
+merged_config = json.loads(json.dumps(merged_config))
+merged_inbounds = merged_config.setdefault("inbounds", [])
+for inbound in merged_inbounds:
+    if inbound.get("tag") != "AETHERLINK_NATIVE" and int(inbound.get("port") or 0) == int(alx_port):
+        raise SystemExit(f"Selected profile already uses ALX port {alx_port} for inbound {inbound.get('tag', 'unnamed')}")
+merged_config["inbounds"] = [
+    inbound for inbound in merged_inbounds if inbound.get("tag") != "AETHERLINK_NATIVE"
+] + native_config["inbounds"]
+if not merged_config.get("outbounds"):
+    merged_config["outbounds"] = native_config["outbounds"]
+if not merged_config.get("log"):
+    merged_config["log"] = native_config["log"]
+request("PATCH", "config-profiles/", {
+    "uuid": selected["uuid"],
+    "name": selected.get("name", profile_selector),
+    "config": merged_config,
+})
+profiles = request("GET", "config-profiles/").get("response", {}).get("configProfiles", [])
+selected = next((item for item in profiles if item.get("uuid") == selected["uuid"]), None)
 
 inbounds = selected.get("inbounds") or []
 selected_inbound = next((item for item in inbounds if item.get("tag") == "AETHERLINK_NATIVE"), None)
 if selected_inbound is None or selected_inbound.get("type") != "aetherlink":
     raise SystemExit("Selected profile does not contain the native AETHERLINK_NATIVE inbound")
 
-desired_profile = {
-    "activeConfigProfileUuid": selected["uuid"],
-    "activeInbounds": [selected_inbound["uuid"]],
-}
-
 nodes_response = request("GET", "nodes/").get("response", [])
 nodes = nodes_response if isinstance(nodes_response, list) else nodes_response.get("nodes", [])
 node = next((item for item in nodes if item.get("name") == node_name), None)
-if node is not None and (node.get("address") != domain or int(node.get("port") or 0) != int(node_port)):
+if node is not None and int(node.get("port") or 0) != int(node_port):
     raise SystemExit(
-        f'Remnawave node "{node_name}" already exists with another address or port; '
-        "choose another --panel-node-name"
+        f'Remnawave node "{node_name}" already uses API port {node.get("port")}; '
+        "pass that value with --node-port"
     )
 if node is None:
     node = next(
@@ -335,6 +345,10 @@ if node is None:
         None,
     )
 if node is None:
+    desired_profile = {
+        "activeConfigProfileUuid": selected["uuid"],
+        "activeInbounds": [selected_inbound["uuid"]],
+    }
     node_payload = {
         "name": node_name,
         "address": domain,
@@ -349,14 +363,20 @@ else:
     current_profile = node.get("configProfile") or {}
     current_inbounds = current_profile.get("activeInbounds") or []
     current_inbound_ids = [item.get("uuid") if isinstance(item, dict) else item for item in current_inbounds]
+    desired_inbound_ids = current_inbound_ids if current_profile.get("activeConfigProfileUuid") == selected["uuid"] else []
+    desired_inbound_ids = list(dict.fromkeys([value for value in desired_inbound_ids if value] + [selected_inbound["uuid"]]))
+    desired_profile = {
+        "activeConfigProfileUuid": selected["uuid"],
+        "activeInbounds": desired_inbound_ids,
+    }
     if (
         current_profile.get("activeConfigProfileUuid") != selected["uuid"]
-        or current_inbound_ids != desired_profile["activeInbounds"]
+        or current_inbound_ids != desired_inbound_ids
     ):
         update_payload = {
             "uuid": node["uuid"],
             "name": node.get("name", node_name),
-            "address": domain,
+            "address": node.get("address") or domain,
             "port": int(node_port),
             "countryCode": node.get("countryCode") or country,
             "isTrafficTrackingActive": node.get("isTrafficTrackingActive", True),

@@ -77,9 +77,11 @@ The installer:
 - installs the ALX core and certificate;
 - starts the compatible Remnawave Node;
 - creates or updates the native `AetherLink X` Config Profile;
+- or, when `--panel-profile` selects an existing regional profile, adds the
+  native inbound without removing its existing Xray inbounds and routing;
 - creates the native Host and `AetherLink X` Internal Squad;
-- assigns and enables the node on the native inbound without changing existing
-  profiles;
+- assigns and enables the native inbound while preserving the node's existing
+  address, API port and active inbounds;
 - reuses the live ALX token when attaching an existing runtime and keeps up to
   two previous tokens for a graceful client migration.
 
