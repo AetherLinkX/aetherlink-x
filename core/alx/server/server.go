@@ -794,11 +794,30 @@ func dialPublic(ctx context.Context, network, destination string) (net.Conn, err
 	if err != nil {
 		return nil, errors.New("invalid destination")
 	}
-	addresses, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
-	if err != nil {
-		return nil, err
+	var addresses []net.IP
+	if literal := net.ParseIP(host); literal != nil {
+		addresses = append(addresses, literal)
+	} else {
+		// Prefer IPv4 before IPv6. Some VPS providers advertise an IPv6 route
+		// that silently drops outbound traffic; trying that address first used to
+		// consume the entire request deadline and made otherwise healthy ALX
+		// locations appear connected while no application traffic could pass.
+		ipv4, ipv4Err := net.DefaultResolver.LookupIP(ctx, "ip4", host)
+		if ipv4Err == nil {
+			addresses = append(addresses, ipv4...)
+		}
+		ipv6, ipv6Err := net.DefaultResolver.LookupIP(ctx, "ip6", host)
+		if ipv6Err == nil {
+			addresses = append(addresses, ipv6...)
+		}
+		if len(addresses) == 0 {
+			if ipv4Err != nil {
+				return nil, ipv4Err
+			}
+			return nil, ipv6Err
+		}
 	}
-	dialer := net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	dialer := net.Dialer{Timeout: 4 * time.Second, KeepAlive: 30 * time.Second}
 	for _, address := range addresses {
 		if !isPublic(address) {
 			continue
