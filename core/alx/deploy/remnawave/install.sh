@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly INSTALLER_VERSION="2.0.1-native"
+readonly INSTALLER_VERSION="2.0.2-native"
 readonly DEFAULT_RELEASE_TAG="server-v0.2.2-alx-preview.8-rw.2"
 readonly DEFAULT_REPOSITORY="AetherLinkX/aetherlink-x"
 
@@ -604,7 +604,10 @@ detect_arch() {
 install_packages() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
-  apt-get install -y ca-certificates curl openssl python3 certbot docker.io
+  apt-get install -y ca-certificates curl openssl python3 certbot
+  if ! command -v docker >/dev/null 2>&1; then
+    apt-get install -y docker.io
+  fi
   if ! docker compose version >/dev/null 2>&1; then
     if apt-cache show docker-compose-v2 >/dev/null 2>&1; then
       apt-get install -y docker-compose-v2

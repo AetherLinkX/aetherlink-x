@@ -40,6 +40,7 @@ grep -q 'fallback: String(host.port)' "$SCRIPT_DIR/../../../../integrations/remn
 grep -q 'merged_config.setdefault("inbounds", \[\])' "$SCRIPT_DIR/install.sh"
 grep -q 'desired_inbound_ids = list(dict.fromkeys' "$SCRIPT_DIR/install.sh"
 grep -q '"address": node.get("address") or domain' "$SCRIPT_DIR/install.sh"
+grep -q 'if ! command -v docker >/dev/null 2>&1; then' "$SCRIPT_DIR/install.sh"
 grep -q 'profile_explicit != "true"' "$SCRIPT_DIR/install.sh"
 ! grep -q 'AETHERLINK_X_CONTROL' "$SCRIPT_DIR/install.sh"
 ! grep -q 'X-AetherLink-Profile' "$SCRIPT_DIR/install.sh"
