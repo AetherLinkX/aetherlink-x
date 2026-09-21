@@ -118,8 +118,23 @@ class MainActivity : ComponentActivity() {
             // palazikvpn://<base64>#name          → import the share link itself
             "palazikvpn", "alxclient" ->
                 vm.importFromText(data.getQueryParameter("config") ?: data.toString())
+            // AetherLinkX://import?config=<subscription URL> opens the branded
+            // one-tap subscription flow. Keep every other aetherlinkx:// URI as
+            // the existing VLESS-baseline profile format.
+            "aetherlinkx" -> {
+                val isSubscriptionImport = data.host.equals("import", ignoreCase = true)
+                val subscriptionUrl = data.getQueryParameter("config")
+                    ?: data.getQueryParameter("url")
+                vm.importFromText(
+                    if (isSubscriptionImport && !subscriptionUrl.isNullOrBlank()) {
+                        subscriptionUrl
+                    } else {
+                        data.toString()
+                    }
+                )
+            }
             // Other proxy schemes opened from a browser / file manager
-            "aetherlink", "aetherlinkx", "vmess", "vless", "ss", "trojan", "hysteria2", "wireguard", "socks5", "tuic", "anytls", "xhttp", "httpproxy" ->
+            "aetherlink", "vmess", "vless", "ss", "trojan", "hysteria2", "wireguard", "socks5", "tuic", "anytls", "xhttp", "httpproxy" ->
                 vm.importFromText(data.toString())
             "http", "https" -> vm.importFromText(data.toString())
         }
