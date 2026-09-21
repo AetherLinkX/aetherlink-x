@@ -223,6 +223,13 @@ class palazikVpnService : VpnService() {
             stopSelf()
             return
         }
+        if (_connectionState.value == ServiceState.STOPPING) {
+            // ACTION_START already persisted the requested profile. The in-flight stop
+            // checks that flag after native teardown and starts it without overlapping
+            // the old TUN worker.
+            addDiagnostic("Start queued until the previous tunnel is fully stopped")
+            return
+        }
         activeProfile = profile
         rememberDesiredConnection(true, profile.id)
 
@@ -586,6 +593,8 @@ class palazikVpnService : VpnService() {
         // stopVpn() is invoked from onStartCommand (main thread) and the xray shutdown
         // callback, so run the blocking part off the main thread to avoid jank/ANR.
         scope.launch {
+            var restartAfterStop = false
+            var restartProfileId: String? = null
             lifecycleMutex.withLock {
                 teardownCore()
                 _connectionState.value = ServiceState.STOPPED
@@ -594,11 +603,20 @@ class palazikVpnService : VpnService() {
                 _bytesIn.value  = 0L
                 _bytesOut.value = 0L
                 addDiagnostic("Stopped")
-                releaseWakeLock()
-                withContext(Dispatchers.Main) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
+                val prefs = SecurePreferences.get(applicationContext)
+                restartAfterStop = prefs.getBoolean(PREF_VPN_DESIRED, false)
+                restartProfileId = prefs.getString(PREF_VPN_PROFILE, null)
+                if (!restartAfterStop) {
+                    releaseWakeLock()
+                    withContext(Dispatchers.Main) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    }
                 }
+            }
+            if (restartAfterStop) {
+                addDiagnostic("Starting queued connection after clean teardown")
+                startVpn(restartProfileId)
             }
         }
     }
