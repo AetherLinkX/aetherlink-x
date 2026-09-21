@@ -45,6 +45,18 @@ class TProxyService(
     private var logFile: File? = null
 
     fun start(): Boolean {
+        // A rapid reconnect can arrive while the previous native worker is still
+        // unwinding.  The JNI bridge is process-global and rejects a second worker,
+        // which used to surface as the vague "Не удалось запустить туннель" error.
+        // Always drain a stale worker before handing it a new VPN descriptor.
+        if (isRunning()) {
+            Log.w(TAG, "Stale native tunnel found before start; stopping it first")
+            runCatching { TProxyStopService() }
+            if (!awaitStopped()) {
+                Log.e(TAG, "Stale native tunnel did not stop in time")
+                return false
+            }
+        }
         val file = File(context.filesDir, "aetherlink-hev.yaml")
         val nativeLog = File(context.cacheDir, "aetherlink-hev.log")
         nativeLog.delete()
@@ -123,8 +135,25 @@ class TProxyService(
     fun stop() {
         runCatching { TProxyStopService() }
             .onFailure { Log.w(TAG, "Failed to stop native tunnel", it) }
+        if (!awaitStopped()) {
+            Log.w(TAG, "Native tunnel did not report a clean stop before timeout")
+        }
         configFile?.delete()
         configFile = null
+    }
+
+    private fun awaitStopped(timeoutMs: Long = 3_000L): Boolean {
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        do {
+            if (!isRunning()) return true
+            try {
+                Thread.sleep(25L)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return !isRunning()
+            }
+        } while (System.nanoTime() < deadline)
+        return !isRunning()
     }
 
     fun isRunning(): Boolean = runCatching { TProxyIsRunning() }.getOrDefault(false)

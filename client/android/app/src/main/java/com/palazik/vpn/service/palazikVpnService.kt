@@ -11,6 +11,7 @@ import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.PowerManager
 import android.os.StrictMode
 import android.provider.Settings
 import android.system.OsConstants
@@ -29,6 +30,8 @@ import go.Seq
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.Libv2ray
@@ -49,6 +52,9 @@ class palazikVpnService : VpnService() {
         const val EXTRA_PROFILE   = "profile_id"
         const val NOTIFICATION_ID = 1001
         private const val TAG     = "AetherLinkX"
+        private const val PREF_VPN_DESIRED = "vpn_service_desired"
+        private const val PREF_VPN_PROFILE = "vpn_service_profile_id"
+        private const val MAX_RECONNECT_ATTEMPTS = 5
 
         // initCoreEnv must only be called once per process lifetime (like v2rayNG)
         private val coreEnvInitialized = AtomicBoolean(false)
@@ -85,6 +91,10 @@ class palazikVpnService : VpnService() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
     private var egressVerificationJob: Job? = null
+    private var reconnectJob: Job? = null
+    private var reconnectAttempts = 0
+    private val lifecycleMutex = Mutex()
+    private var wakeLock: PowerManager.WakeLock? = null
     private val networkLock = Any()
     private val underlyingNetworks = linkedSetOf<Network>()
 
@@ -138,18 +148,34 @@ class palazikVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> startVpn(intent.getStringExtra(EXTRA_PROFILE))
-            ACTION_STOP  -> stopVpn()
-            ACTION_SWITCH -> switchVpn(intent.getStringExtra(EXTRA_PROFILE))
+            ACTION_START -> {
+                val profileId = intent.getStringExtra(EXTRA_PROFILE)
+                rememberDesiredConnection(true, profileId)
+                reconnectAttempts = 0
+                startVpn(profileId)
+            }
+            ACTION_STOP  -> stopVpn(userInitiated = true)
+            ACTION_SWITCH -> {
+                val profileId = intent.getStringExtra(EXTRA_PROFILE)
+                rememberDesiredConnection(true, profileId)
+                switchVpn(profileId)
+            }
             null -> {
-                addDiagnostic("Sticky restart ignored: missing start action")
-                return START_NOT_STICKY
+                val prefs = SecurePreferences.get(applicationContext)
+                if (prefs.getBoolean(PREF_VPN_DESIRED, false)) {
+                    val profileId = prefs.getString(PREF_VPN_PROFILE, null)
+                    addDiagnostic("Android restarted VPN service; restoring connection")
+                    startVpn(profileId)
+                } else {
+                    addDiagnostic("Sticky restart ignored: VPN was stopped by user")
+                    stopSelf(startId)
+                }
             }
         }
         return START_STICKY
     }
 
-    override fun onRevoke() { stopVpn() }
+    override fun onRevoke() { stopVpn(userInitiated = true) }
 
     override fun onDestroy() {
         // Synchronous teardown here — the process is going away, so we cannot rely on a
@@ -158,6 +184,8 @@ class palazikVpnService : VpnService() {
         statsJob = null
         egressVerificationJob?.cancel()
         egressVerificationJob = null
+        reconnectJob?.cancel()
+        reconnectJob = null
         unregisterNetworkCallbackSafely()
         val s = _connectionState.value
         if (s != ServiceState.STOPPED && s != ServiceState.ERROR) {
@@ -167,6 +195,7 @@ class palazikVpnService : VpnService() {
             _bytesIn.value = 0L
             _bytesOut.value = 0L
         }
+        releaseWakeLock()
         scope.cancel()
         super.onDestroy()
     }
@@ -189,18 +218,23 @@ class palazikVpnService : VpnService() {
             _lastError.value = "Активный профиль не выбран"
             addDiagnostic("Start failed: no active profile")
             _connectionState.value = ServiceState.ERROR
+            rememberDesiredConnection(false, null)
+            releaseWakeLock()
             stopSelf()
             return
         }
         activeProfile = profile
+        rememberDesiredConnection(true, profile.id)
 
         _connectionState.value = ServiceState.STARTING
         _lastError.value = null
         addDiagnostic("Starting ${profile.name}")
         startForeground(NOTIFICATION_ID, buildNotification("Подключение…"))
+        acquireWakeLock()
 
         scope.launch {
-            try {
+            lifecycleMutex.withLock {
+              try {
                 prepareGeodata()
                 initializeLibv2ray()
 
@@ -319,6 +353,7 @@ class palazikVpnService : VpnService() {
                 LocalProxyEndpoint.publish(socksPort)
 
                 _connectionState.value = ServiceState.RUNNING
+                reconnectAttempts = 0
                 _connectedSince.value = System.currentTimeMillis()
                 addDiagnostic("Connected: ${profile.name}")
                 updateNotification("Подключено — ${profile.name}")
@@ -329,11 +364,14 @@ class palazikVpnService : VpnService() {
                     startEgressVerification(requireNotNull(controller), settings, profile.name)
                 }
 
-            } catch (e: Exception) {
+              } catch (e: CancellationException) {
+                throw e
+              } catch (e: Exception) {
                 Log.e(TAG, "VPN start failed: ${e.message}", e)
                 _lastError.value = userFacingError(e)
                 addDiagnostic("Start failed: ${e.message ?: e.javaClass.simpleName}")
-                withContext(Dispatchers.Main) { failVpn() }
+                failVpnLocked()
+              }
             }
         }
     }
@@ -470,6 +508,33 @@ class palazikVpnService : VpnService() {
         return com.palazik.vpn.data.model.AppSettingsCodec.fromJson(prefs.getString("app_settings", null))
     }
 
+    private fun rememberDesiredConnection(enabled: Boolean, profileId: String?) {
+        SecurePreferences.get(applicationContext).edit().apply {
+            putBoolean(PREF_VPN_DESIRED, enabled)
+            if (enabled && !profileId.isNullOrBlank()) putString(PREF_VPN_PROFILE, profileId)
+            if (!enabled) remove(PREF_VPN_PROFILE)
+        }.apply()
+    }
+
+    private fun acquireWakeLock() {
+        val lock = wakeLock ?: (getSystemService(POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:VpnConnection")
+            .apply { setReferenceCounted(false) }
+            .also { wakeLock = it }
+        if (!lock.isHeld) {
+            runCatching { lock.acquire() }
+                .onFailure { Log.w(TAG, "Unable to acquire VPN wake lock", it) }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.takeIf { it.isHeld }?.let { lock ->
+            runCatching { lock.release() }
+                .onFailure { Log.w(TAG, "Unable to release VPN wake lock", it) }
+        }
+        wakeLock = null
+    }
+
     private fun loadActiveProfile(): VpnProfile? {
         val prefs = SecurePreferences.get(applicationContext)
         val links = runCatching { JSONArray(prefs.getString("profiles_links", "[]")) }.getOrNull() ?: return null
@@ -499,7 +564,13 @@ class palazikVpnService : VpnService() {
 
     // ── Stop ──────────────────────────────────────────────────────────────────
 
-    private fun stopVpn() {
+    private fun stopVpn(userInitiated: Boolean) {
+        if (userInitiated) {
+            rememberDesiredConnection(false, null)
+            reconnectJob?.cancel()
+            reconnectJob = null
+            reconnectAttempts = 0
+        }
         val s = _connectionState.value
         // Guard STOPPING too — stop may be requested again while async teardown runs
         if (s == ServiceState.STOPPED || s == ServiceState.STOPPING) return
@@ -515,16 +586,19 @@ class palazikVpnService : VpnService() {
         // stopVpn() is invoked from onStartCommand (main thread) and the xray shutdown
         // callback, so run the blocking part off the main thread to avoid jank/ANR.
         scope.launch {
-            teardownCore()
-            _connectionState.value = ServiceState.STOPPED
-            _lastError.value = null
-            _connectedSince.value = 0L
-            _bytesIn.value  = 0L
-            _bytesOut.value = 0L
-            addDiagnostic("Stopped")
-            withContext(Dispatchers.Main) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+            lifecycleMutex.withLock {
+                teardownCore()
+                _connectionState.value = ServiceState.STOPPED
+                _lastError.value = null
+                _connectedSince.value = 0L
+                _bytesIn.value  = 0L
+                _bytesOut.value = 0L
+                addDiagnostic("Stopped")
+                releaseWakeLock()
+                withContext(Dispatchers.Main) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
             }
         }
     }
@@ -559,7 +633,8 @@ class palazikVpnService : VpnService() {
         setUnderlyingNetworks(null)
     }
 
-    private fun failVpn() {
+    /** Run while [lifecycleMutex] is held. */
+    private fun failVpnLocked() {
         if (_connectionState.value == ServiceState.STOPPED) {
             _connectionState.value = ServiceState.ERROR
             return
@@ -568,36 +643,54 @@ class palazikVpnService : VpnService() {
         statsJob = null
         egressVerificationJob?.cancel()
         egressVerificationJob = null
-        LocalProxyEndpoint.clear(localSocksPort)
-        localSocksPort = 0
         sessionBytesIn = 0L
         sessionBytesOut = 0L
-
-        try { tunBridge?.stop() } catch (e: Throwable) { Log.w(TAG, "hev stop: ${e.message}") }
-        tunBridge = null
-
-        if (nativeCoreRunning) {
-			try { Libv2ray.alxStopClient() } catch (e: Throwable) { Log.w(TAG, "ALX stop: ${e.message}") }
-            nativeCoreRunning = false
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try { connectivity.unregisterNetworkCallback(defaultNetworkCallback) } catch (_: Exception) {}
-        }
-
-        coreCallback?.expectShutdown()
-        try { coreController?.stopLoop() } catch (e: Exception) { Log.w(TAG, "stopLoop: ${e.message}") }
-        coreController = null
-        coreCallback = null
-        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
-        try { vpnInterface?.close() } catch (e: Exception) { Log.w(TAG, "iface close: ${e.message}") }
-        vpnInterface = null
+        unregisterNetworkCallbackSafely()
+        teardownCore()
         _bytesIn.value = 0L
         _bytesOut.value = 0L
         _connectedSince.value = 0L
         _connectionState.value = ServiceState.ERROR
         addDiagnostic("Service entered error state")
-        stopSelf()
+        if (SecurePreferences.get(applicationContext).getBoolean(PREF_VPN_DESIRED, false)) {
+            scheduleReconnect()
+        } else {
+            releaseWakeLock()
+            try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
+            stopSelf()
+        }
+    }
+
+    private fun failVpn() {
+        scope.launch {
+            lifecycleMutex.withLock { failVpnLocked() }
+        }
+    }
+
+    private fun scheduleReconnect() {
+        if (reconnectJob?.isActive == true) return
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            addDiagnostic("Automatic reconnect stopped after $MAX_RECONNECT_ATTEMPTS attempts")
+            rememberDesiredConnection(false, null)
+            releaseWakeLock()
+            try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
+            stopSelf()
+            return
+        }
+        reconnectAttempts++
+        val delayMs = (1_000L shl (reconnectAttempts - 1)).coerceAtMost(15_000L)
+        val prefs = SecurePreferences.get(applicationContext)
+        val profileId = prefs.getString(PREF_VPN_PROFILE, null)
+        addDiagnostic("Reconnect $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS in ${delayMs / 1000}s")
+        updateNotification("Восстановление соединения…")
+        reconnectJob = scope.launch {
+            delay(delayMs)
+            if (!SecurePreferences.get(applicationContext).getBoolean(PREF_VPN_DESIRED, false)) {
+                return@launch
+            }
+            _connectionState.value = ServiceState.STOPPED
+            startVpn(profileId)
+        }
     }
 
     // ── CoreCallbackHandler ───────────────────────────────────────────────────
@@ -620,8 +713,9 @@ class palazikVpnService : VpnService() {
                 addDiagnostic("xray stopped as requested")
                 return 0L
             }
-            addDiagnostic("xray requested shutdown")
-            scope.launch(Dispatchers.Main) { stopVpn() }
+            _lastError.value = "VPN-ядро неожиданно остановилось. Соединение восстанавливается"
+            addDiagnostic("xray stopped unexpectedly; reconnect requested")
+            failVpn()
             return 0L
         }
         override fun startup(): Long = 0L
@@ -691,7 +785,7 @@ class palazikVpnService : VpnService() {
                         else coreController?.isRunning != true
                     if (transientFailures >= 3 || coreStopped) {
                         _lastError.value = "Туннель неожиданно остановился. Повторите подключение"
-                        withContext(Dispatchers.Main) { failVpn() }
+                        failVpn()
                         break
                     }
                 }
@@ -718,6 +812,9 @@ class palazikVpnService : VpnService() {
             .setContentText(status)
             .setSmallIcon(R.drawable.ic_vpn_key)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .addAction(0, "Отключить", stopPi)
         builder.setContentIntent(pi)
         return builder.build()
@@ -771,14 +868,24 @@ class palazikVpnService : VpnService() {
         egressVerificationJob = null
         unregisterNetworkCallbackSafely()
         scope.launch {
-            teardownCore()
-            _connectedSince.value = 0L
-            _bytesIn.value = 0L
-            _bytesOut.value = 0L
-            _connectionState.value = ServiceState.STOPPED
-            activeProfile = profile
-            addDiagnostic("Old VPN stopped; starting ${profile.name}")
-            startVpn(profile.id)
+            lifecycleMutex.withLock {
+                teardownCore()
+                _connectedSince.value = 0L
+                _bytesIn.value = 0L
+                _bytesOut.value = 0L
+                _connectionState.value = ServiceState.STOPPED
+                activeProfile = profile
+                addDiagnostic("Old VPN stopped; starting ${profile.name}")
+            }
+            if (SecurePreferences.get(applicationContext).getBoolean(PREF_VPN_DESIRED, false)) {
+                startVpn(profile.id)
+            } else {
+                releaseWakeLock()
+                withContext(Dispatchers.Main) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+            }
         }
     }
 

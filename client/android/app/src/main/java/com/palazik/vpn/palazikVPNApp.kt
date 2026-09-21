@@ -9,6 +9,7 @@ import com.palazik.vpn.data.model.AppSettings
 import com.palazik.vpn.data.model.AppSettingsCodec
 import com.palazik.vpn.data.SecurePreferences
 import com.palazik.vpn.data.repository.SubscriptionUpdateScheduler
+import com.palazik.vpn.data.repository.AppUpdateScheduler
 import com.palazik.vpn.service.palazikVpnService
 import com.palazik.vpn.widget.VpnWidgetProvider
 import dagger.hilt.android.HiltAndroidApp
@@ -22,6 +23,7 @@ class palazikVPNApp : Application() {
 
     companion object {
         const val CHANNEL_VPN = "palazikvpn_service"
+        const val CHANNEL_UPDATES = "aetherlinkx_updates"
     }
 
     override fun onCreate() {
@@ -36,8 +38,18 @@ class palazikVPNApp : Application() {
                 setShowBadge(false)
             }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            val updates = NotificationChannel(
+                CHANNEL_UPDATES,
+                "Обновления AetherLink X",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                description = "Уведомления о новых версиях приложения"
+                setShowBadge(true)
+            }
+            getSystemService(NotificationManager::class.java).createNotificationChannel(updates)
         }
         SubscriptionUpdateScheduler.sync(this, loadAppSettings())
+        AppUpdateScheduler.schedule(this)
 
         // Keep the home-screen widget in sync with the live connection state.
         appScope.launch {

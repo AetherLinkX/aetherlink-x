@@ -361,7 +361,14 @@ class ProfileRepository @Inject constructor(
 
     /** Compare dotted version strings numerically, ignoring a leading "v"/"V". */
     private fun isNewerVersion(latest: String, current: String): Boolean {
-        fun parts(v: String) = v.trimStart('v', 'V').split('.', '-', '_').mapNotNull { it.toIntOrNull() }
+        // Release tags are named "client-v0.8.4-..." while Android reports
+        // "0.8.4-...".  Start at the first digit so the repository prefix cannot
+        // shift every component and falsely notify users about their own version.
+        fun parts(v: String): List<Int> {
+            val normalized = v.dropWhile { !it.isDigit() }
+            return normalized.split(Regex("[^0-9]+"))
+                .mapNotNull { it.toIntOrNull() }
+        }
         val a = parts(latest)
         val b = parts(current)
         for (i in 0 until maxOf(a.size, b.size)) {
