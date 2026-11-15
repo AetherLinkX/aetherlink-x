@@ -30,8 +30,8 @@ android {
         applicationId = "io.aetherlinkx.client"
         minSdk        = 26
         targetSdk     = 36
-        versionCode   = 42
-        versionName   = "0.8.4-alx-preview.8-rw.2"
+        versionCode   = 43
+        versionName   = "0.8.5-alx-preview.8-routing.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Only real-device ABIs — dropping x86/x86_64 saves ~36MB from libgojni.so
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -138,6 +138,8 @@ dependencies {
     implementation(libs.miuix.preference)
 
     testImplementation(libs.junit)
+    // Android's mockable org.json throws on the JVM; exercise real policy JSON.
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

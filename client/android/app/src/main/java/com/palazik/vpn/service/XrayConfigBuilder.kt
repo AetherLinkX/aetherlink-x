@@ -40,12 +40,17 @@ object XrayConfigBuilder {
         localSocksPort: Int = 10808,
         includeHttpInbound: Boolean = true,
         includeNativeTun: Boolean = false,
-    ): String =
-        JSONObject().apply {
+    ): String {
+        // Provider DNS uses real addresses. Keep the user's FakeDNS option for
+        // ordinary profiles; never add a mismatched fake pool to imported policy.
+        val localSettings = if (profile.subscriptionDnsJson.isNotBlank()) {
+            settings.copy(enableFakeDns = false)
+        } else settings
+        return JSONObject().apply {
             put("log",       buildLog())
-            put("dns",       buildDns(settings))
+            put("dns",       buildSubscriptionDns(profile, localSettings))
             // FakeDNS pool — speeds up routing and avoids real DNS leaks (#6)
-            if (settings.enableFakeDns) {
+            if (localSettings.enableFakeDns) {
                 put("fakedns", JSONArray().apply {
                     put(JSONObject().apply {
                         put("ipPool",   "198.18.0.0/15")
@@ -53,12 +58,44 @@ object XrayConfigBuilder {
                     })
                 })
             }
-            put("inbounds",  buildInbounds(settings, localSocksPort, includeHttpInbound, includeNativeTun))
+            put("inbounds",  buildInbounds(localSettings, localSocksPort, includeHttpInbound, includeNativeTun))
             put("outbounds", buildOutbounds(profile, settings))
-            put("routing",   buildRouting(settings))
+            put("routing",   buildSubscriptionRouting(profile, settings))
             put("stats",     JSONObject())
             put("policy",    buildPolicy())
         }.toString(2)
+    }
+
+    private fun buildSubscriptionDns(profile: VpnProfile, settings: AppSettings): JSONObject {
+        if (profile.subscriptionDnsJson.isBlank()) return buildDns(settings)
+        return JSONObject(profile.subscriptionDnsJson).apply {
+            // Some older panel templates put the routing strategy here by
+            // mistake. Xray DNS accepts only UseIP/UseIPv4/UseIPv6.
+            val strategy = optString("queryStrategy")
+            if (!settings.enableIpv6 || strategy !in setOf("UseIP", "UseIPv4", "UseIPv6")) {
+                put("queryStrategy", if (settings.enableIpv6) "UseIP" else "UseIPv4")
+            }
+        }
+    }
+
+    private fun buildSubscriptionRouting(profile: VpnProfile, settings: AppSettings): JSONObject {
+        val local = buildRouting(settings)
+        if (profile.subscriptionRoutingJson.isBlank()) return local
+        return JSONObject(profile.subscriptionRoutingJson).apply {
+            val imported = getJSONArray("rules")
+            val rules = JSONArray()
+            val localRules = local.getJSONArray("rules")
+            // Retain the Android DNS interception and explicit user blocking.
+            // Location policy replaces global direct/proxy presets only for this
+            // profile; no global AppSettings value is changed.
+            for (index in 0 until localRules.length()) {
+                val rule = localRules.getJSONObject(index)
+                if (rule.optString("outboundTag") in setOf("dns-out", "block")) rules.put(rule)
+            }
+            for (index in 0 until imported.length()) rules.put(imported.getJSONObject(index))
+            put("rules", rules)
+        }
+    }
 
     // ── Log ───────────────────────────────────────────────────────────────────
 

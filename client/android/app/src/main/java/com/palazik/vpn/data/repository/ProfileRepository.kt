@@ -173,21 +173,21 @@ class ProfileRepository @Inject constructor(
                 var freshProfiles = usableProfiles(decodedProfiles, sub.id)
 
                 // Remnawave's regular endpoint depends on User-Agent and can contain a
-                // reduced/encoded format. Its /json variant is deterministic and may expose
-                // more locations, so compare both and keep the larger valid result instead
-                // of trying JSON only after a total parse failure.
+                // reduced/encoded format. JSON may contain per-location routing, while
+                // raw links contain native ALX profiles that Xray JSON cannot represent.
+                // Merge both formats rather than discarding the one with fewer entries.
                 compatibleJsonUrl(sub.url)?.let { jsonUrl ->
                     runCatching { fetchSubscriptionBody(jsonUrl) }.getOrNull()?.let { jsonFetch ->
                         val jsonDecoded = ProfileCodec.decodeSubscriptionBody(jsonFetch.body)
                         val jsonUsable = usableProfiles(jsonDecoded, sub.id)
-                        if (jsonUsable.size > freshProfiles.size ||
+                        if (jsonUsable.isNotEmpty() ||
                             (freshProfiles.isEmpty() &&
                                 jsonDecoded.any(ProfileValidator::isProviderPlaceholder) &&
                                 decodedProfiles.none(ProfileValidator::isProviderPlaceholder))
                         ) {
                             fetched = jsonFetch
-                            decodedProfiles = jsonDecoded
-                            freshProfiles = jsonUsable
+                            decodedProfiles = decodedProfiles + jsonDecoded
+                            freshProfiles = SubscriptionFormatMerger.merge(freshProfiles, jsonUsable)
                         }
                     }
                 }
@@ -226,7 +226,7 @@ class ProfileRepository @Inject constructor(
                     .mapNotNull(ProfileCodec::decode)
                     .filter { it.protocol == com.palazik.vpn.data.model.Protocol.AETHERLINK_NATIVE }
                     .let { usableProfiles(it, sub.id) }
-                freshProfiles = freshProfiles + nativeProfiles
+                freshProfiles = SubscriptionFormatMerger.merge(freshProfiles, nativeProfiles)
 
                 val providerExplicitlyEmpty = decodedProfiles.any(ProfileValidator::isProviderPlaceholder) &&
                     freshProfiles.isEmpty()

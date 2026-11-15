@@ -83,6 +83,10 @@ data class VpnProfile(
     val muxEnabled: Boolean = true,        // force-disable mux when false (auto-off still applies)
     val fragmentEnabled: Boolean = false,  // route this profile through the TLS-fragment dialer (#23)
 
+    // Client-side policy belongs to this location, never to the entire subscription.
+    val subscriptionRoutingJson: String = "",
+    val subscriptionDnsJson: String = "",
+
     // ── metadata ─────────────────────────────────────────────────────────────
     val subscriptionId: String? = null,
     val latencyMs: Long   = -1L,

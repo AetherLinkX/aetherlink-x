@@ -143,10 +143,42 @@ object ProfileCodec {
                     val remark = root.optString("remarks").ifBlank { outer.optString("remarks") }
                     val outbounds = root.optJSONArray("outbounds")
                         ?: org.json.JSONArray().put(root.takeIf { it.has("protocol") })
-                    for (i in 0 until outbounds.length()) {
-                        val outbound = outbounds.optJSONObject(i) ?: continue
-                        addAll(decodeXrayOutbound(outbound, remark))
+                    val profiles = buildList {
+                        for (i in 0 until outbounds.length()) {
+                            val outbound = outbounds.optJSONObject(i) ?: continue
+                            addAll(decodeXrayOutbound(outbound, remark))
+                        }
                     }
+                    // This client builds one proxy per location. Import policy only for
+                    // that shape; do not attach a multi-proxy/balancer's routes to each
+                    // extracted outbound, which could reference a missing proxy.
+                    val routing = root.optJSONObject("routing")
+                    val rules = routing?.optJSONArray("rules")
+                    val supportedPolicy = profiles.size == 1 && routing != null && rules != null &&
+                        !root.has("fakedns") &&
+                        root.optJSONObject("dns")?.optJSONArray("servers")?.let { servers ->
+                            (0 until servers.length()).none { servers.optString(it) == "fakedns" }
+                        } != false &&
+                        routing.optJSONArray("balancers").let { it == null || it.length() == 0 } &&
+                        (0 until rules.length()).all { index ->
+                            val rule = rules.optJSONObject(index)
+                            rule != null && !rule.has("balancerTag") &&
+                                rule.optString("outboundTag") in setOf("proxy", "direct", "block")
+                        } && (0 until outbounds.length()).all { index ->
+                            val outbound = outbounds.getJSONObject(index)
+                            when (outbound.optString("tag")) {
+                                "proxy" -> true
+                                "direct" -> outbound.optString("protocol") == "freedom"
+                                "block" -> outbound.optString("protocol") == "blackhole"
+                                else -> false
+                            }
+                        }
+                    addAll(if (supportedPolicy) profiles.map { profile ->
+                        profile.copy(
+                            subscriptionRoutingJson = routing.toString(),
+                            subscriptionDnsJson = root.optJSONObject("dns")?.toString().orEmpty(),
+                        )
+                    } else profiles)
                 }
             }
         }.getOrDefault(emptyList())
@@ -469,6 +501,8 @@ object ProfileCodec {
             put("hystObfsPwd", p.hystObfsPassword)
             put("muxEnabled", p.muxEnabled)
             put("fragmentEnabled", p.fragmentEnabled)
+            put("subscriptionRoutingJson", p.subscriptionRoutingJson)
+            put("subscriptionDnsJson", p.subscriptionDnsJson)
             put("name", p.name)
         }.toString()
         val b64 = Base64.encodeToString(json.toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP)
@@ -529,6 +563,8 @@ object ProfileCodec {
             hystObfsPassword = json.optString("hystObfsPwd"),
             muxEnabled  = json.optBoolean("muxEnabled", true),
             fragmentEnabled = json.optBoolean("fragmentEnabled", false),
+            subscriptionRoutingJson = json.optString("subscriptionRoutingJson"),
+            subscriptionDnsJson = json.optString("subscriptionDnsJson"),
             name        = json.optString("name", "Imported"),
         )
     }
