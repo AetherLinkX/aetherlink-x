@@ -28,7 +28,13 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import com.palazik.vpn.ui.screen.AppNavHost
 import com.palazik.vpn.ui.screen.OnboardingScreen
 import com.palazik.vpn.ui.theme.DarkModePreference
@@ -64,9 +70,18 @@ class MainActivity : ComponentActivity() {
 
         requestNotificationPermissionIfNeeded()
         handleIntent(intent)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (isActive) {
+                    vm.checkForUpdate(automatic = true)
+                    delay(5 * 60_000L)
+                }
+            }
+        }
 
         setContent {
             val themeUi by vm.themeUi.collectAsStateWithLifecycle()
+            val requiredUpdate by vm.requiredUpdate.collectAsStateWithLifecycle()
 
             palazikVPNTheme(
                 appTheme           = themeUi.appTheme,
@@ -102,6 +117,7 @@ class MainActivity : ComponentActivity() {
                         AppNavHost(vm = vm, permLauncher = vpnPermLauncher)
                     }
                 }
+                requiredUpdate?.let { RequiredUpdateDialog(it) }
             }
         }
     }

@@ -43,7 +43,7 @@ import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
 
-data class UpdateInfo(val version: String, val url: String)
+
 
 @Singleton
 class ProfileRepository @Inject constructor(
@@ -342,6 +342,12 @@ class ProfileRepository @Inject constructor(
      * Ask GitHub for the latest release and return it if it's newer than [currentVersion],
      * or null if already up to date.
      */
+    fun cachedAppUpdate(currentVersion: String): UpdateInfo? = runCatching {
+        prefs.getString("verified_android_release", null)?.let {
+            AppReleasePolicy.findUpdate(JSONObject(it), currentVersion)
+        }
+    }.getOrNull()
+
     suspend fun checkForUpdate(currentVersion: String): Result<UpdateInfo?> = withContext(Dispatchers.IO) {
         runCatching {
             val req = Request.Builder()
@@ -352,31 +358,15 @@ class ProfileRepository @Inject constructor(
                 if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
                 resp.body?.string()?.takeIf { it.isNotBlank() } ?: throw Exception("Empty response")
             }
-            val json = JSONObject(body)
-            val tag  = json.optString("tag_name").takeIf { it.isNotBlank() } ?: return@runCatching null
-            val url  = json.optString("html_url").ifBlank { "https://github.com/AetherLinkX/aetherlink-x/releases" }
-            if (isNewerVersion(tag, currentVersion)) UpdateInfo(tag.trimStart('v', 'V'), url) else null
+            val update = AppReleasePolicy.findUpdate(JSONObject(body), currentVersion)
+            if (update != null) {
+                prefs.edit().putString("verified_android_release", body).apply()
+            } else {
+                // A successful rollback to an older release revokes a cached gate.
+                prefs.edit().remove("verified_android_release").apply()
+            }
+            update
         }
-    }
-
-    /** Compare dotted version strings numerically, ignoring a leading "v"/"V". */
-    private fun isNewerVersion(latest: String, current: String): Boolean {
-        // Release tags are named "client-v0.8.4-..." while Android reports
-        // "0.8.4-...".  Start at the first digit so the repository prefix cannot
-        // shift every component and falsely notify users about their own version.
-        fun parts(v: String): List<Int> {
-            val normalized = v.dropWhile { !it.isDigit() }
-            return normalized.split(Regex("[^0-9]+"))
-                .mapNotNull { it.toIntOrNull() }
-        }
-        val a = parts(latest)
-        val b = parts(current)
-        for (i in 0 until maxOf(a.size, b.size)) {
-            val x = a.getOrElse(i) { 0 }
-            val y = b.getOrElse(i) { 0 }
-            if (x != y) return x > y
-        }
-        return false
     }
 
     // ── Ping ──────────────────────────────────────────────────────────────────

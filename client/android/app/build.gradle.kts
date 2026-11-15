@@ -30,8 +30,8 @@ android {
         applicationId = "io.aetherlinkx.client"
         minSdk        = 26
         targetSdk     = 36
-        versionCode   = 43
-        versionName   = "0.8.5-alx-preview.8-routing.1"
+        versionCode   = 44
+        versionName   = "0.8.6-alx-preview.8-update.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Only real-device ABIs — dropping x86/x86_64 saves ~36MB from libgojni.so
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }

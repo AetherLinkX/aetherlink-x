@@ -634,7 +634,6 @@ fun LanguageSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 @Composable
 fun AboutSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     val ui by vm.ui.collectAsStateWithLifecycle()
-    val context = LocalContext.current
     SettingsScaffold(stringResource(R.string.settings_about), onBack) {
         SettingsCard {
             ListItem(
@@ -657,26 +656,6 @@ fun AboutSettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
         }
     }
 
-    ui.updateAvailable?.let { info ->
-        AlertDialog(
-            onDismissRequest = { vm.dismissUpdate() },
-            icon  = { Icon(Icons.Rounded.SystemUpdate, null) },
-            title = { Text("Доступно обновление") },
-            text  = { Text("Доступна версия ${info.version}. У вас V${stringResource(R.string.app_version)}.") },
-            confirmButton = {
-                Button(onClick = {
-                    runCatching {
-                        context.startActivity(
-                            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(info.url))
-                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
-                    }
-                    vm.dismissUpdate()
-                }) { Text("Скачать") }
-            },
-            dismissButton = { TextButton(onClick = { vm.dismissUpdate() }) { Text("Позже") } },
-        )
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

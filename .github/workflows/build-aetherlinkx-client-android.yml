@@ -27,7 +27,7 @@ jobs:
       HEV_REPOSITORY: https://github.com/heiher/hev-socks5-tunnel.git
       HEV_COMMIT: 64cc609
       CLIENT_RELEASE_TAG: client-v0.7.2-reality-compat-signed
-      CLIENT_NATIVE_PREVIEW_TAG: client-v0.8.5-alx-preview.8-routing.1
+      CLIENT_NATIVE_PREVIEW_TAG: client-v0.8.6-alx-preview.8-update.1
 
     steps:
       - uses: actions/checkout@v7
@@ -187,21 +187,21 @@ jobs:
           set -euo pipefail
           APK=$(find client/android/app/build/outputs/apk/debug -type f -name '*universal*.apk' | head -1)
           test -n "$APK"
-          cp "$APK" aetherlink-x-client-android-v0.8.5-alx-preview.8-routing.1.apk
-          sha256sum aetherlink-x-client-android-v0.8.5-alx-preview.8-routing.1.apk > aetherlink-x-client-android-v0.8.5-alx-preview.8-routing.1-SHA256SUMS.txt
+          cp "$APK" aetherlink-x-client-android-v0.8.6-alx-preview.8-update.1.apk
+          sha256sum aetherlink-x-client-android-v0.8.6-alx-preview.8-update.1.apk > aetherlink-x-client-android-v0.8.6-alx-preview.8-update.1-SHA256SUMS.txt
           if ! gh release view "$CLIENT_NATIVE_PREVIEW_TAG" >/dev/null 2>&1; then
             gh release create "$CLIENT_NATIVE_PREVIEW_TAG" --latest \
               --target "$GITHUB_SHA" \
-              --title "AetherLink X Client 0.8.5 — Subscription Routing" \
-              --notes "Imports JSON-only locations together with ordinary links and native ALX. Preserves per-location routing and DNS, including direct access to Ozon, Wildberries and Gosuslugi. Keeps existing locations, provider duplicates, local tunnel listeners and update signatures."
+              --title "AetherLink X Client 0.8.6 — Required Updates" \
+              --notes "Adds a required update dialog across all screens when a newer published Android release is available. Includes a direct APK download button, foreground checks, safe release validation, and the existing per-location subscription routing fixes. Android still requires user confirmation to install an update."
           else
             gh release edit "$CLIENT_NATIVE_PREVIEW_TAG" --prerelease=false --latest \
-              --title "AetherLink X Client 0.8.5 — Subscription Routing" \
-              --notes "Imports JSON-only locations together with ordinary links and native ALX. Preserves per-location routing and DNS, including direct access to Ozon, Wildberries and Gosuslugi. Keeps existing locations, provider duplicates, local tunnel listeners and update signatures."
+              --title "AetherLink X Client 0.8.6 — Required Updates" \
+              --notes "Adds a required update dialog across all screens when a newer published Android release is available. Includes a direct APK download button, foreground checks, safe release validation, and the existing per-location subscription routing fixes. Android still requires user confirmation to install an update."
           fi
           gh release upload "$CLIENT_NATIVE_PREVIEW_TAG" \
-            aetherlink-x-client-android-v0.8.5-alx-preview.8-routing.1.apk \
-            aetherlink-x-client-android-v0.8.5-alx-preview.8-routing.1-SHA256SUMS.txt --clobber
+            aetherlink-x-client-android-v0.8.6-alx-preview.8-update.1.apk \
+            aetherlink-x-client-android-v0.8.6-alx-preview.8-update.1-SHA256SUMS.txt --clobber
 
       - name: Publish versioned Android release
         if: github.ref == 'refs/heads/main'

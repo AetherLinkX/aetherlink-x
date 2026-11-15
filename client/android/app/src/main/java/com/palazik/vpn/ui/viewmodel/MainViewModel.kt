@@ -46,7 +46,6 @@ data class UiState(
     val isUpdatingSubscriptions: Boolean  = false,
     val updatingSubscriptionIds: Set<String> = emptySet(),
     val checkingUpdate: Boolean           = false,
-    val updateAvailable: UpdateInfo?      = null,
 )
 
 /** Small, stable slices keep root navigation/theme from observing the complete profile list. */
@@ -95,6 +94,13 @@ class MainViewModel @Inject constructor(
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
+    private val _requiredUpdate = MutableStateFlow(repo.cachedAppUpdate(
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+            .getOrNull().orEmpty(),
+    ))
+    val requiredUpdate: StateFlow<UpdateInfo?> = _requiredUpdate.asStateFlow()
+    private var updateCheckRunning = false
+    private var nextAutomaticUpdateCheckMs = 0L
     val themeUi: StateFlow<ThemeUiState> = ui
         .map { ThemeUiState(it.appTheme, it.darkMode, it.settings.uiAnimationsEnabled) }
         .distinctUntilChanged()
@@ -625,24 +631,35 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun checkForUpdate() {
+    fun checkForUpdate(automatic: Boolean = false) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (updateCheckRunning || (automatic && now < nextAutomaticUpdateCheckMs)) return
+        updateCheckRunning = true
         viewModelScope.launch {
             _ui.update { it.copy(checkingUpdate = true) }
-            val current = runCatching {
-                context.packageManager.getPackageInfo(context.packageName, 0).versionName
-            }.getOrNull().orEmpty()
-            repo.checkForUpdate(current).fold(
-                onSuccess = { info ->
-                    if (info != null) _ui.update { it.copy(updateAvailable = info) }
-                    else snack("У вас актуальная версия")
-                },
-                onFailure = { snack("Не удалось проверить обновления") },
-            )
-            _ui.update { it.copy(checkingUpdate = false) }
+            try {
+                val current = runCatching {
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                }.getOrNull().orEmpty()
+                repo.checkForUpdate(current).fold(
+                    onSuccess = { info ->
+                        _requiredUpdate.value = info
+                        nextAutomaticUpdateCheckMs = android.os.SystemClock.elapsedRealtime() + 5 * 60_000L
+                        if (info == null && !automatic) snack("У вас актуальная версия")
+                    },
+                    onFailure = {
+                        // An outage must not lock a user without a known update, or
+                        // dismiss a requirement already found during this app session.
+                        nextAutomaticUpdateCheckMs = android.os.SystemClock.elapsedRealtime() + 30_000L
+                        if (!automatic) snack("Не удалось проверить обновления")
+                    },
+                )
+            } finally {
+                updateCheckRunning = false
+                _ui.update { it.copy(checkingUpdate = false) }
+            }
         }
     }
-
-    fun dismissUpdate() = _ui.update { it.copy(updateAvailable = null) }
 
     fun updateGeoFiles() {
         viewModelScope.launch {
