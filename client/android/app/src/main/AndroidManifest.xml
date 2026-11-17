@@ -23,6 +23,7 @@
 
     <!-- Fallback visibility for launcher apps if QUERY_ALL_PACKAGES is unavailable -->
     <queries>
+        <package android:name="ru.rostel" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />

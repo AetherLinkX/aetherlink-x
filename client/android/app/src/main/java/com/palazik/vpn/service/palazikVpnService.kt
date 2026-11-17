@@ -22,7 +22,6 @@ import com.palazik.vpn.R
 import com.palazik.vpn.data.SecurePreferences
 import com.palazik.vpn.data.network.LocalProxyEndpoint
 import com.palazik.vpn.data.model.AppSettings
-import com.palazik.vpn.data.model.SplitTunnelMode
 import com.palazik.vpn.data.model.VpnProfile
 import com.palazik.vpn.palazikVPNApp
 import com.palazik.vpn.ui.MainActivity
@@ -491,21 +490,20 @@ class palazikVpnService : VpnService() {
      * exclusive. Our own package is always kept off the tunnel to avoid a loop.
      */
     private fun applyAppFilter(builder: Builder, settings: AppSettings) {
-        val packages = settings.bypassPackages.filter { it != packageName }
-
-        if (settings.splitTunnelMode == SplitTunnelMode.ONLY && packages.isNotEmpty()) {
-            // Whitelist: route only the chosen apps. We are not in the list, so our own
-            // traffic stays direct — no need (and not allowed) to also disallow ourselves.
-            packages.forEach { pkg ->
-                runCatching { builder.addAllowedApplication(pkg) }
-                    .onFailure { Log.w(TAG, "Allowed app ignored: $pkg") }
+        val filter = AppTunnelPolicy.resolve(settings, packageName) { pkg ->
+            runCatching { packageManager.getApplicationInfo(pkg, 0) }.isSuccess
+        }
+        if (filter.allowOnly) {
+            var allowedCount = 0
+            filter.packages.forEach { pkg ->
+                runCatching { builder.addAllowedApplication(pkg) }.onSuccess { allowedCount++ }
+                    .onFailure { Log.w(TAG, "Allowed app ignored: $pkg", it) }
             }
+            check(allowedCount > 0) { "Выбранные приложения больше не доступны. Обновите список приложений для VPN." }
         } else {
-            // Bypass (default): the chosen apps plus ourselves skip the tunnel.
-            builder.addDisallowedApplication(packageName)
-            packages.forEach { pkg ->
+            filter.packages.forEach { pkg ->
                 runCatching { builder.addDisallowedApplication(pkg) }
-                    .onFailure { Log.w(TAG, "Bypass app ignored: $pkg") }
+                    .onFailure { Log.w(TAG, "Bypass app ignored: $pkg", it) }
             }
         }
     }

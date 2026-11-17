@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AetherLink X</string>
-    <string name="app_version">0.8.7 ALX Preview 8</string>
+    <string name="app_version">0.8.8 ALX Preview 8</string>
+    <string name="bypass_gosuslugi_title">Госуслуги без VPN</string>
+    <string name="bypass_gosuslugi_summary">Автоматически на всех локациях. Изменения применяются после переподключения VPN.</string>
     <string name="connect">Подключить</string>
     <string name="disconnect">Отключить</string>
     <string name="connecting">Подключение…</string>

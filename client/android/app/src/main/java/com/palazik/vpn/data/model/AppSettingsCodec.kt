@@ -31,6 +31,7 @@ object AppSettingsCodec {
                     ?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList(),
                 splitTunnelMode = runCatching { SplitTunnelMode.valueOf(o.optString("splitTunnelMode", d.splitTunnelMode.name)) }
                     .getOrDefault(d.splitTunnelMode),
+                bypassGosuslugi = o.optBoolean("bypassGosuslugi", d.bypassGosuslugi),
                 startOnBoot = o.optBoolean("startOnBoot", d.startOnBoot),
                 autoUpdateSubscriptions = o.optBoolean("autoUpdateSubscriptions", d.autoUpdateSubscriptions),
                 subscriptionUpdateIntervalHours = o.optLong("subscriptionUpdateIntervalHours", d.subscriptionUpdateIntervalHours)
@@ -94,6 +95,7 @@ object AppSettingsCodec {
         put("directDns", s.directDns)
         put("bypassPackages", JSONArray().apply { s.bypassPackages.forEach { put(it) } })
         put("splitTunnelMode", s.splitTunnelMode.name)
+        put("bypassGosuslugi", s.bypassGosuslugi)
         put("startOnBoot", s.startOnBoot)
         put("autoUpdateSubscriptions", s.autoUpdateSubscriptions)
         put("subscriptionUpdateIntervalHours", s.subscriptionUpdateIntervalHours)

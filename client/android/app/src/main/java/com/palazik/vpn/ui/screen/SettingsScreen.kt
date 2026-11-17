@@ -672,6 +672,14 @@ private fun SplitTunnelContent(
     var showAppPicker by remember { mutableStateOf(false) }
     val onlyMode = settings.splitTunnelMode == SplitTunnelMode.ONLY
 
+    SettingRow(
+        title = stringResource(R.string.bypass_gosuslugi_title),
+        subtitle = stringResource(R.string.bypass_gosuslugi_summary),
+        checked = settings.bypassGosuslugi,
+        onChange = { vm.updateAppSettings(settings.copy(bypassGosuslugi = it)) },
+    )
+    HorizontalDivider(Modifier.padding(vertical = 10.dp))
+
     Text("Режим", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(

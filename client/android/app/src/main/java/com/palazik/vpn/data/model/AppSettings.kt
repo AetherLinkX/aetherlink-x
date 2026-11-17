@@ -25,6 +25,7 @@ data class AppSettings(
     val directDns: String = "223.5.5.5",
     val bypassPackages: List<String> = emptyList(),
     val splitTunnelMode: SplitTunnelMode = SplitTunnelMode.BYPASS,
+    val bypassGosuslugi: Boolean = true,
     val startOnBoot: Boolean = false,
     val autoUpdateSubscriptions: Boolean = true,
     val subscriptionUpdateIntervalHours: Long = 2L,
